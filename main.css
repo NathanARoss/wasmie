@@ -1,0 +1,276 @@
+:root {
+  --line-height: 40px;
+  --hover-color: #2D3333;
+  --primary-color: #3B3B3B;
+  --secondary-color: DarkSlateGray;
+}
+
+/* Chrome, Safari, Edge, Opera */
+::-webkit-scrollbar {
+    display: none;
+}
+
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+body {
+  margin: 0px;
+  font-size: 16px;
+  background-color: #2B2B2B;
+  color: white;
+}
+
+div.selected .inner-row {
+  background-color: #2B2B2B;
+}
+
+button.selected {
+  border: solid thin #FFC66D;
+}
+
+.outer-row {
+  height: var(--line-height);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.outer-row:hover {
+  background-color: var(--hover-color)
+}
+
+.selected .outer-row:not(.selected) {
+  filter: brightness(0.5);
+  background-color: #242424;
+}
+
+.inner-row {
+  display: inline-flex;
+  height: var(--line-height);
+  width: 100%;
+  overflow-y: hidden;
+  vertical-align: top;
+  -ms-overflow-style: none;
+}
+
+.slide-menu {
+  display: inline-flex;
+  line-height: var(--line-height);
+  width: 0;
+  overflow: hidden;
+}
+
+.slide-menu-item {
+  display: inline-block;
+  height: var(--line-height);
+  flex-shrink: 0;
+  margin: 0;
+}
+
+#line-number-item {
+  text-align: left;
+  width: 80px;
+  padding: 0 0.5em;
+  line-height: var(--line-height);
+  background-color: var(--primary-color);
+  box-sizing: border-box;
+  white-space: pre;
+  font-family: monospace;
+}
+
+#newline-item {
+  background: url(ic_subdirectory_arrow_left_white_24px.svg) no-repeat center left var(--secondary-color);
+  width: 120px;
+}
+
+#delete-line-item {
+  background: url(ic_delete_white_24px.svg) no-repeat center left var(--primary-color);
+  flex-grow: 1;
+}
+
+.slow-transition {
+  transition: width 0.5s;
+}
+
+@media only screen and (min-width: 450px) {
+  .slide-menu {
+    width: 3.5em;
+  }
+  
+  #line-number-item {
+    width: calc(80px + 3.5em);
+  }
+  
+  .inner-row {
+    width: calc(100% - 3.5em);
+  }
+}
+
+/* Desktop Firefox, mobile Firefox (not Firefox Focus), Samsung Browser (oddly) */
+@-moz-document url-prefix() {
+  .inner-row {
+    height: calc(30px + var(--line-height));
+  }
+}
+
+button {
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  height: var(--line-height);
+
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* The append button has a minimum size, but grows to fill remaining space. */
+.append {
+  order: 999;
+  flex-grow: 1;
+  min-width: var(--line-height);
+}
+
+.indentation {
+  border-right: 6px;
+  border-color: var(--secondary-color);
+  border-style: solid;
+}
+
+.item {
+  padding: 0 4px;
+  white-space: pre;
+  color: white;
+}
+
+.global-var {
+  color: #9876AA;
+}
+.class {
+  color: #A9B7C6;
+}
+.keyword::first-line, .keyword-call::first-line, .keyword-def::first-line, .keyword-declaration::first-line {
+  color: #CC7832;
+}
+.numeric {
+  color: #6897BB;
+}
+.string {
+  color: #A5C25C;
+}
+.string:before, .string:after {
+  content: '"';
+}
+.comment {
+  color: #808080;
+}
+.function-definition, .keyword-def {
+  color: #FFC66D;
+}
+.keyword-declaration, .declaration {
+  color: rgb(204, 189, 166);
+}
+.function-call, .keyword-call {
+  color: #A9B7C6;
+}
+.error {
+  color: red;
+}
+
+.text-input {
+  background: url(baseline-keyboard-24px.svg) no-repeat center;
+}
+.rename {
+  background: url(rename-box.svg) no-repeat center;
+}
+.delete {
+  background: url(ic_delete_white_24px.svg) no-repeat center;
+}
+
+#debug {
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  padding: 0.5em;
+  margin: 0.5em;
+  background-color: var(--primary-color);
+  white-space: pre;
+}
+
+@media only screen and (max-width: 450px) {
+  #debug {
+    display: none;
+  }
+}
+
+#run-button {
+  bottom: 20px;
+  right: 20px;
+  width: 50px;
+  border-radius: 50%;
+  background-color: var(--secondary-color);
+  
+  font-family: Monospace;
+  font-size: 32px;
+  text-decoration: none;
+  text-align: center;
+  line-height: 50px;
+  color: white;
+}
+
+#debug, #run-button {
+  position: fixed;
+  z-index: 1;
+}
+
+#run-button:hover, #run-button:active {
+  background-color: #888888;
+}
+
+.selected #run-button, .selected #debug {
+  display: none;
+}
+
+/* I set this so the Canvas does not cause scroll bars to appear*/
+/* I still manually modify the resolution in onresize() */
+canvas, #modal, #console-output {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#modal {
+  display: none;
+  justify-content: center;
+  align-content: flex-start;
+  flex-wrap: wrap-reverse;
+  z-index: 2
+}
+
+.selected #modal {
+  display: flex;
+}
+
+.modal-item {
+  min-width: var(--line-height);
+  padding: 0.5em;
+  margin: 0.5em;
+  background-color: var(--primary-color);
+  box-sizing: content-box;
+  align-self: flex-start;
+}
+
+#console-output {
+  box-sizing: border-box;
+  padding: 0.5em;
+  margin: 0;
+  overflow-y: scroll;
+}

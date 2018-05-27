@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang=en-US>
+  <head>
+    <title>TouchScript</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="main.css">
+  </head>
+  
+  <body>
+    <div id="runtime">
+      <canvas id="canvas"></canvas>
+      <pre id="console-output"></pre>
+    </div>
+
+    
+    <div id="editor_div">
+      <div id="modal"></div>  
+      <p id="debug" class="no-select">&nbsp;</p>
+      <a id="run-button" class="no-select" href="#run">&gt;</a>
+
+      <div id="spacer"></div>
+      <div id="list"></div>
+    </div>
+    
+    <script src="script_builtins.js"></script>
+    <script src="script.js"></script>
+    <script src="ui.js"></script>
+  </body>
+</html>
