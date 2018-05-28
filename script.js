@@ -464,6 +464,10 @@ class Script {
       }
     }
 
+    if (this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE) {
+      return [];
+    }
+
     const index = this.data[row].lastIndexOf(this.ITEMS.FUNC);
     if (index > 0) {
       let options = [];

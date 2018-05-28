@@ -365,7 +365,7 @@ function configureModal(options) {
 
   for (const option of options) {
     let button = getItem(option.text);
-    button.className = "item modal-item " + option.style;
+    button.className = "item modal-item no-select " + option.style;
     button.position = option.payload;
     modal.appendChild(button);
   }
