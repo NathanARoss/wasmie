@@ -12,7 +12,7 @@ class Script {
     this.comments = new Map();
     this.data = [];
 
-    const [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, JS_KEYWORDS, KEYWORD_MAP, SAMPLE_SCRIPT] = getBuiltIns();
+    const [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP, SAMPLE_SCRIPT] = getBuiltIns();
     this.classes = CLASSES;
     this.classMap = CLASS_MAP;
     this.variables = VARIABLES;
@@ -21,7 +21,6 @@ class Script {
     this.symbols = SYMBOLS;
     this.symbolMap = SYMBOL_MAP;
     this.keywords = KEYWORDS;
-    this.jsKeywords = JS_KEYWORDS;
     this.keywordMap = KEYWORD_MAP;
 
     this.ITEMS = {};
@@ -39,6 +38,8 @@ class Script {
     this.ITEMS.WHILE    = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("while"));
     this.ITEMS.UNTIL    = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("until"));
     this.ITEMS.RETURN   = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("return"));
+    this.ITEMS.TRUE     = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("true"));
+    this.ITEMS.FALSE    = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("false"));
     this.toggles = [this.ITEMS.VAR, this.ITEMS.LET, this.ITEMS.WHILE, this.ITEMS.UNTIL, this.ITEMS.CONTINUE, this.ITEMS.BREAK];
 
     this.ITEMS.EQUALS            = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get("="));
@@ -67,6 +68,8 @@ class Script {
     this.PAYLOADS.PARENTHESIS_PAIR = payloads--;
     this.PAYLOADS.RENAME = payloads--;
     this.PAYLOADS.DELETE_ITEM = payloads--;
+    this.PAYLOADS.DELETE_SUBEXPRESSION = payloads--;
+    this.PAYLOADS.REMOVE_PARENTHESIS_PAIR = payloads--;
 
 
     function includes(i) {
@@ -81,9 +84,18 @@ class Script {
       return options;
     }
 
+    function getMenuItemsUnary() {
+      let options = [];
+      for (let i = this.start; i < this.end; ++i) {
+        options.push({text: SYMBOLS[i] + "\n(unary)", style: "", payload: Script.makeItem(Script.SYMBOL, i)});
+      }
+      return options;
+    }
+
     this.ASSIGNMENT_OPERATORS = {start: 0, end: 9, includes, getMenuItems};
+    this.COMPARISON_OPERATORS = {start: 9, end: 17, includes, getMenuItems};
     this.BINARY_OPERATORS = {start: 9, end: 27, includes, getMenuItems};
-    this.UNARY_OPERATORS = {start: 27, end: 30, includes, getMenuItems};
+    this.UNARY_OPERATORS = {start: 27, end: 30, includes, getMenuItems: getMenuItemsUnary};
     
     if (SAMPLE_SCRIPT)
       this.loadScript(SAMPLE_SCRIPT);
@@ -287,7 +299,7 @@ class Script {
         const i = this.toggles.indexOf(item);
         if (i !== -1) {
           this.data[row][col] = this.toggles[i ^ 1];
-          let newKeyword = this.keywords[this.data[row][col] & 0xFFFFFF];
+          let newKeyword = this.keywords[this.data[row][col] & 0xFFFFFF].name;
           return {text: newKeyword, style: "keyword"};
         }
       }
@@ -295,6 +307,34 @@ class Script {
 
     if (format === Script.SYMBOL && this.ASSIGNMENT_OPERATORS.includes(data)) {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
+    }
+
+    let matchingParenthesis = col;
+    if (item === this.ITEMS.END_PARENTHESIS) {
+      while (matchingParenthesis > 1) {
+        if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS)
+          break;
+
+        --matchingParenthesis;
+      }
+    }
+
+    if (item === this.ITEMS.START_PARENTHESIS || item === this.ITEMS.END_PARENTHESIS) {
+      if (this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE)
+        return [];
+
+      let options;
+      if (this.data[row][matchingParenthesis - 1] >>> 28 === Script.FUNCTION_REFERENCE) {
+        options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_SUBEXPRESSION}];
+      } else {
+        options = [
+          {text: "", style: "delete", payload: this.PAYLOADS.DELETE_SUBEXPRESSION},
+          {text: "", style: "delete-outline", payload: this.PAYLOADS.REMOVE_PARENTHESIS_PAIR}
+        ];
+      }
+
+      options.push(...this.BINARY_OPERATORS.getMenuItems());
+      return options;
     }
 
     if (format === Script.VARIABLE_REFERENCE
@@ -307,15 +347,26 @@ class Script {
     if (col === 1) {
       if (format === Script.VARIABLE_REFERENCE)
         options.push(...this.getVisibleVariables(row, true));
-      else if (format === Script.FUNCTION_REFERENCE) {
+      else if (format === Script.FUNCTION_REFERENCE)
         options.push(...this.getFunctionList(false));
-      }
     } else {
-      const prevItem = this.data[row][col - 1];
-      const prevFormat = prevItem >>> 28;
-      const prevData = prevItem & 0xFFFFFFF;
-      const prevMeta = prevData >>> 16;
-      const prevValue = prevItem & 0xFFFF;
+      //don't allow the user to delete the item if it is a binary operator followed by anything meaningful
+      if (format !== Script.VARIABLE_DEFINITION && format !== Script.FUNCTION_DEFINITION) {
+        if (format !== Script.SYMBOL
+        || !this.BINARY_OPERATORS.includes(data)
+        || (this.data[row][col + 1] === undefined || this.data[row][col + 1] === this.HINTS.EXPRESSION))
+          options.push( {text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM} );
+      }
+
+      if (format === Script.VARIABLE_REFERENCE
+      || format === Script.FUNCTION_REFERENCE
+      || format === Script.NUMERIC_LITERAL
+      || format === Script.STRING_LITERAL
+      || item === this.ITEMS.TRUE
+      || item === this.ITEMS.FALSE) {
+        options.push( {text: "( )", style: "", payload: this.PAYLOADS.PARENTHESIS_PAIR} );
+        options.push(...this.BINARY_OPERATORS.getMenuItems());
+      }
 
       if (format === Script.VARIABLE_DEFINITION || format === Script.FUNCTION_DEFINITION) {
         let option = {text: "", style: "comment", payload: Script.makeItemWithMeta(Script.COMMENT, 0, 0)};
@@ -327,19 +378,28 @@ class Script {
             options.push({text: this.classes[i].name, style: "keyword", payload: Script.makeItemWithMeta(Script.COMMENT, i, 0)});
         }
       }
+      
+      const prevItem = this.data[row][col - 1];
+      const prevFormat = prevItem >>> 28;
+      const prevData = prevItem & 0xFFFFFFF;
+      const prevMeta = prevData >>> 16;
+      const prevValue = prevItem & 0xFFFF;
 
-      if (prevFormat === Script.SYMBOL && (this.BINARY_OPERATORS.includes(prevData) || this.ASSIGNMENT_OPERATORS.includes(prevData))
-      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA) {
-        options.push( {text: "( )", style: "", payload: this.PAYLOADS.PARENTHESIS_PAIR} );
-        options.push(...this.UNARY_OPERATORS.getMenuItems());
-      }
-
-      if (prevFormat === Script.VARIABLE_REFERENCE || prevFormat === Script.NUMERIC_LITERAL || prevFormat === Script.STRING_LITERAL) {
+      if (prevFormat === Script.VARIABLE_REFERENCE
+      || prevFormat === Script.NUMERIC_LITERAL
+      || prevFormat === Script.STRING_LITERAL
+      || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE
+      || prevItem === this.ITEMS.END_PARENTHESIS) {
         options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
       if (prevFormat === Script.SYMBOL && (this.BINARY_OPERATORS.includes(prevData) || this.UNARY_OPERATORS.includes(prevData) || this.ASSIGNMENT_OPERATORS.includes(prevData))
-      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA) {
+      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA
+      || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE) {
+        if (prevFormat !== Script.SYMBOL || !this.UNARY_OPERATORS.includes(prevData)) {
+          options.push(...this.UNARY_OPERATORS.getMenuItems());
+        }
+
         options.push( {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN} );
         options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
         options.push(...this.getVisibleVariables(row, false));
@@ -432,8 +492,20 @@ class Script {
       this.data.push([indentation]);
     }
 
+    let isValue = false;
     if (col === -1)
       col = this.data[row].length;
+    else {
+      const item = this.data[row][col];
+      const format = item >>> 28;
+      if (format === Script.VARIABLE_REFERENCE
+      || format === Script.NUMERIC_LITERAL
+      || format === Script.STRING_LITERAL
+      || item === this.ITEMS.TRUE || item === this.ITEMS.FALSE
+      || item === this.ITEMS.END_PARENTHESIS) {
+        isValue = true;
+      }
+    }
 
     switch (payload) {
       case this.ITEMS.CASE:
@@ -523,6 +595,8 @@ class Script {
           hint = this.numericLiterals.get(item & 0xFFFFFFF);
         } else if (format === Script.STRING_LITERAL) {
           hint = '"' + this.stringLiterals.get(item & 0xFFFFFFF) + '"';
+        } else if (item === this.ITEMS.TRUE || item === this.ITEMS.FALSE) {
+          hint = this.keywords[item & 0xFFFFFFF].name;
         }
 
         let input = prompt("Enter a string or a number:", hint);
@@ -532,6 +606,10 @@ class Script {
         if (!isNaN(input)) {
           this.numericLiterals.set(this.nextNumericLiteral, input);
           this.data[row][col] = Script.makeItem(Script.NUMERIC_LITERAL, this.nextNumericLiteral++);
+        } else if (input === "true") {
+          this.data[row][col] = this.ITEMS.TRUE;
+        } else if (input === "false") {
+          this.data[row][col] = this.ITEMS.FALSE;
         } else {
           if (input.startsWith('"')) {
             if (input.endsWith('"')) {
@@ -577,6 +655,96 @@ class Script {
         }
       }
 
+      case this.PAYLOADS.DELETE_ITEM: {
+        const item = this.data[row][col];
+        const format = item >>> 28;
+        const data = item & 0xFFFFFF;
+
+        if (format === Script.SYMBOL) {
+          if (this.UNARY_OPERATORS.includes(data)) {
+            this.data[row].splice(col, 1);
+          }
+          if (this.BINARY_OPERATORS.includes(data)) {
+            this.data[row].splice(col, 2);
+          }
+        }
+
+        if (format === Script.VARIABLE_REFERENCE
+        || format === Script.NUMERIC_LITERAL
+        || format === Script.STRING_LITERAL
+        || item === this.ITEMS.TRUE || item === this.ITEMS.FALSE) {
+          this.data[row].splice(col, 1, this.HINTS.EXPRESSION);
+        }
+
+        if (format === Script.FUNCTION_REFERENCE) {
+          let end = col + 2;
+          while (end < this.data[row].length) {
+            if (this.data[row][end] === this.ITEMS.END_PARENTHESIS)
+              break;
+            
+            ++end;
+          }
+
+          this.data[row].splice(col, end - col + 1, this.HINTS.EXPRESSION);
+        }
+
+        return Script.RESPONSE.ROW_UPDATED;
+      }
+
+      case this.PAYLOADS.DELETE_SUBEXPRESSION:
+      case this.PAYLOADS.REMOVE_PARENTHESIS_PAIR: {
+        const item = this.data[row][col];
+        let matchingParenthesis = col;
+        let depth = 0;
+
+        if (item === this.ITEMS.END_PARENTHESIS) {
+          while (matchingParenthesis > 1) {
+            if (this.data[row][matchingParenthesis] === this.ITEMS.END_PARENTHESIS) {
+              --depth;
+            }
+
+            if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS) {
+              ++depth;
+              if (depth === 0)
+                break;
+            }
+
+            --matchingParenthesis;
+          }
+        }
+
+        if (item === this.ITEMS.START_PARENTHESIS) {
+          while (matchingParenthesis < this.data[row].length) {
+            if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS) {
+              --depth;
+            }
+
+            if (this.data[row][matchingParenthesis] === this.ITEMS.END_PARENTHESIS) {
+              ++depth;
+              if (depth === 0)
+                break;
+            }
+
+            ++matchingParenthesis;
+          }
+        }
+
+        let start = Math.min(col, matchingParenthesis);
+        const end = Math.max(col, matchingParenthesis);
+        
+        if (payload === this.PAYLOADS.DELETE_SUBEXPRESSION) {
+          if (this.data[row][start - 1] >>> 28 === Script.FUNCTION_REFERENCE)
+            --start;
+
+          this.data[row].splice(start, end - start + 1, this.HINTS.EXPRESSION);
+        } else {
+          this.data[row].splice(end, 1);
+          this.data[row].splice(start, 1);
+        }
+
+        return Script.RESPONSE.ROW_UPDATED;
+      }
+
       case this.PAYLOADS.FUNCTION_REFERENCE:
       case this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN: {
         const requireReturn = payload === this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN;
@@ -601,7 +769,34 @@ class Script {
       }
 
       case this.PAYLOADS.PARENTHESIS_PAIR: {
-        this.data[row].splice(col, 1, this.ITEMS.START_PARENTHESIS, this.data[row][col], this.ITEMS.END_PARENTHESIS);
+        let start = col;
+        let end = col;
+
+        if (this.data[row][col - 1] >>> 28 === Script.SYMBOL && this.UNARY_OPERATORS.includes(this.data[row][col - 1] & 0xFFFFFF)) {
+          --start;
+        }
+
+        if (this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
+          end = col + 1;
+          let depth = 0;
+          while (end < this.data[row].length) {
+            if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
+              --depth;
+            }
+
+            if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
+              ++depth;
+              if (depth === 0)
+                break;
+            }
+
+            ++end;
+          }
+        }
+
+        this.data[row].splice(end + 1, 0, this.ITEMS.END_PARENTHESIS);
+        this.data[row].splice(start, 0, this.ITEMS.START_PARENTHESIS);
+
         return Script.RESPONSE.ROW_UPDATED;
       }
     }
@@ -695,8 +890,16 @@ class Script {
       }
     }
 
+    //user chose a symbol to insert into the script
     if (format === Script.SYMBOL) {
-      this.data[row][col] = payload;
+      if (isValue || this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
+        if (this.UNARY_OPERATORS.includes(payload & 0xFFFFFF))
+          this.data[row].splice(col, 0, payload);
+        else
+          this.data[row].splice(col + 1, 0, payload, this.HINTS.EXPRESSION);
+      } else {
+        this.data[row][col] = payload;
+      }
       return Script.RESPONSE.ROW_UPDATED;
     }
 
@@ -818,7 +1021,7 @@ class Script {
         return [this.symbols[data], ""];
 
       case Script.KEYWORD:
-        return [this.keywords[data], "keyword"];
+        return [this.keywords[data].name, "keyword"];
 
       case Script.NUMERIC_LITERAL:
         return [this.numericLiterals.get(data), "numeric"];
@@ -858,7 +1061,7 @@ class Script {
         console.log(this.ITEMS.CASE);
         console.log(this.ITEMS.DEFAULT);
       } else if ((rowData[1] >>> 28) === Script.KEYWORD) {
-        if (this.jsKeywords[(rowData[1] & 0xFFFF)].endsWith("(")) {
+        if (this.keywords[rowData[1] & 0xFFFF].js.endsWith("(")) {
           needsEndParenthesis = true;
         }
       }
@@ -920,8 +1123,7 @@ class Script {
             break;
 
           case Script.KEYWORD:
-            if (this.jsKeywords[value] !== null)
-              js += `${this.jsKeywords[value]} `;
+            js += `${this.keywords[value].js} `;
             break;
 
           case Script.NUMERIC_LITERAL:

@@ -382,7 +382,8 @@ function closeModal() {
     outerRow.classList.remove("selected");
 
     let button = outerRow.childNodes[1].childNodes[1 + modal.col];
-    button.classList.remove("selected");
+    if (button)
+      button.classList.remove("selected");
   }
 
   modal.row = -1;
@@ -458,18 +459,18 @@ function rowClickHandler(event) {
   let options = script.itemClicked(row, col);
 
   if (Array.isArray(options)) {
-    if (options.length === 1) {
-      modal.row = row;
-      modal.col = col;
-      menuItemClicked(options[0].payload);
-    } else if (options.length > 1) {
+    // if (options.length === 1) {
+    //   modal.row = row;
+    //   modal.col = col;
+    //   menuItemClicked(options[0].payload);
+    // } else if (options.length > 1) {
       modal.row = row;
       modal.col = col;
       configureModal(options);
       document.body.classList.add("selected");
       this.parentElement.classList.add("selected");
       event.target.classList.add("selected");
-    }
+    //}
   }
   else {
     event.target.firstChild.nodeValue = options.text;

@@ -104,42 +104,42 @@ function getBuiltIns() {
   
   
   const SYMBOLS = [
-    "=",
-    "+=",
-    "-=",
-    "*=",
-    "/=",
-    "%=",
-    "^=",
-    "&=",
-    "|=",
-    "==",
-    "!=",
-    "===",
-    "!==",
-    ">",
-    ">=",
-    "<",
-    "<=",
-    "+",
-    "*",
-    "/",
-    "%",
-    "^",
-    "&",
-    "|",
-    "&&",
-    "||",
-    "-", //subtraction
-    "-", //negation
-    "!",
-    "~",
+    "=", //asignment
+    "+=", //asignment
+    "-=", //asignment
+    "*=", //asignment
+    "/=", //asignment
+    "%=", //asignment
+    "^=", //asignment
+    "&=", //asignment
+    "|=", //asignment
+    "==", //comparison
+    "!=", //comparison
+    "===", //comparison
+    "!==", //comparison
+    ">", //comparison
+    ">=", //comparison
+    "<", //comparison
+    "<=", //comparison
+    "+", //binary operator
+    "*", //binary operator
+    "/", //binary operator
+    "%", //binary operator
+    "^", //binary operator
+    "&", //binary operator
+    "|", //binary operator
+    "&&", //binary operator
+    "||", //binary operator
+    "-", //binary operator
+    "-", //unary operator
+    "!", //unary operator
+    "~", //unary operator
     "(",
     ")",
     "[",
     "]",
     ".",
-    ","
+    ",",
   ];
   
   const SYMBOL_MAP = new Map();
@@ -150,46 +150,27 @@ function getBuiltIns() {
   
   
   const KEYWORDS = [
-    "func",
-    "let",
-    "var",
-    "if",
-    "for",
-    "in",
-    "while",
-    "until",
-    "switch",
-    "case",
-    "default",
-    "return",
-    "break",
-    "continue",
-    "true",
-    "false",
-  ]
-  
-  const JS_KEYWORDS = [
-    "",
-    "const",
-    "let",
-    "if (",
-    "for (",
-    "in",
-    "while (",
-    "until (",
-    "switch (",
-    "case",
-    "default",
-    "return",
-    "break",
-    "continue",
-    "true",
-    "false",
+    {name: "func",     js: ""},
+    {name: "let",      js: "const"},
+    {name: "var",      js: "let"},
+    {name: "if",       js: "if ("},
+    {name: "for",      js: "for ("},
+    {name: "in",       js: "of"},
+    {name: "while",    js: "while ("},
+    {name: "until",    js: "until ("},
+    {name: "switch",   js: "switch ("},
+    {name: "case",     js: "case"},
+    {name: "default",  js: "default"},
+    {name: "return",   js: "return"},
+    {name: "break",    js: "break"},
+    {name: "continue", js: "continue"},
+    {name: "true",     js: "true"},
+    {name: "false",    js: "false"}
   ]
   
   const KEYWORD_MAP = new Map();
   for (let i = 0; i < KEYWORDS.length; ++i) {
-    KEYWORD_MAP.set(KEYWORDS[i], i);
+    KEYWORD_MAP.set(KEYWORDS[i].name, i);
   }
   
   
@@ -337,5 +318,5 @@ while counter < 100 {
  counter += 1 
 }`;
   
-  return [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, JS_KEYWORDS, KEYWORD_MAP, counter];
+  return [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP, counter];
 }

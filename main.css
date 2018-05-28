@@ -192,6 +192,9 @@ button {
 .delete {
   background: url(ic_delete_white_24px.svg) no-repeat center;
 }
+.delete-outline {
+  background: url(baseline-delete_outline-24px.svg) no-repeat center;
+}
 
 #debug {
   left: 50%;
