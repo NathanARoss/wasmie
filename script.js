@@ -310,21 +310,29 @@ class Script {
     }
 
     let matchingParenthesis = col;
+    let depth = 0;
     if (item === this.ITEMS.END_PARENTHESIS) {
       while (matchingParenthesis > 1) {
-        if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS)
-          break;
+        if (this.data[row][matchingParenthesis] === this.ITEMS.END_PARENTHESIS) {
+          --depth;
+        }
+
+        if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS) {
+          ++depth;
+          if (depth === 0)
+            break;
+        }
 
         --matchingParenthesis;
       }
     }
+    console.log(matchingParenthesis);
 
     if (item === this.ITEMS.START_PARENTHESIS || item === this.ITEMS.END_PARENTHESIS) {
-      if (this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE)
-        return [];
-
       let options;
       if (this.data[row][matchingParenthesis - 1] >>> 28 === Script.FUNCTION_REFERENCE) {
+        if (this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE)
+          return [];
         options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_SUBEXPRESSION}];
       } else {
         options = [
