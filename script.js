@@ -326,7 +326,6 @@ class Script {
         --matchingParenthesis;
       }
     }
-    console.log(matchingParenthesis);
 
     if (item === this.ITEMS.START_PARENTHESIS || item === this.ITEMS.END_PARENTHESIS) {
       let options;
@@ -1086,10 +1085,6 @@ class Script {
       //check the first symbol
       if (rowData[1] === this.ITEMS.CASE || rowData[1] === this.ITEMS.DEFAULT) {
         needsEndColon = true;
-        console.log(`needs an end colon`);
-        console.log(rowData[1]);
-        console.log(this.ITEMS.CASE);
-        console.log(this.ITEMS.DEFAULT);
       } else if ((rowData[1] >>> 28) === Script.KEYWORD) {
         if (this.keywords[rowData[1] & 0xFFFF].js.endsWith("(")) {
           needsEndParenthesis = true;

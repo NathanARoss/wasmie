@@ -29,7 +29,7 @@ div.selected .inner-row {
 }
 
 button.selected {
-  border: solid thin #FFC66D;
+  border: solid thin rgb(143, 111, 61);
 }
 
 .outer-row {
@@ -43,8 +43,11 @@ button.selected {
 }
 
 .selected .outer-row:not(.selected) {
-  filter: brightness(0.5);
+  filter: brightness(0.4);
   background-color: #242424;
+}
+.selected .outer-row.selected {
+  filter: brightness(0.4);
 }
 
 .inner-row {
@@ -264,9 +267,8 @@ canvas, #modal, #console-output {
 
 .modal-item {
   min-width: var(--line-height);
-  padding: 0.5em;
-  margin: 0.5em;
-  background-color: var(--primary-color);
+  padding: 1em;
+  background-color: rgba(59, 59, 59, 0.0);
   box-sizing: content-box;
   align-self: flex-start;
 }
