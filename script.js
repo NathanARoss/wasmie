@@ -870,7 +870,23 @@ class Script {
       replacementItems[1] = this.ITEMS.START_PARENTHESIS;
       replacementItems.push(this.ITEMS.END_PARENTHESIS);
 
-      this.data[row].splice(col, 1, ...replacementItems);
+      let end = col + 1;
+      let depth = 0;
+      while (end < this.data[row].length) {
+        if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
+          --depth;
+        }
+
+        if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
+          ++depth;
+          if (depth === 0)
+            break;
+        }
+
+        ++end;
+      }
+
+      this.data[row].splice(col, end - col + 1, ...replacementItems);
       return Script.RESPONSE.ROW_UPDATED;
     }
 
