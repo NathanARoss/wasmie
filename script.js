@@ -871,22 +871,24 @@ class Script {
       replacementItems.push(this.ITEMS.END_PARENTHESIS);
 
       let end = col + 1;
-      let depth = 0;
-      while (end < this.data[row].length) {
-        if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
-          --depth;
-        }
+      if (this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
+        let depth = 0;
+        while (end < this.data[row].length) {
+          if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
+            --depth;
+          }
 
-        if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
-          ++depth;
-          if (depth === 0)
-            break;
-        }
+          if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
+            ++depth;
+            if (depth === 0)
+              break;
+          }
 
-        ++end;
+          ++end;
+        }
       }
 
-      this.data[row].splice(col, end - col + 1, ...replacementItems);
+      this.data[row].splice(col, end - col, ...replacementItems);
       return Script.RESPONSE.ROW_UPDATED;
     }
 
