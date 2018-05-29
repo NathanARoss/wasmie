@@ -376,7 +376,7 @@ class Script {
       || item === this.ITEMS.TRUE
       || item === this.ITEMS.FALSE) {
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.PARENTHESIS_PAIR} );
-        options.push(...this.BINARY_OPERATORS.getMenuItems());
+        //options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
       if (format === Script.VARIABLE_DEFINITION || format === Script.FUNCTION_DEFINITION) {
@@ -405,7 +405,7 @@ class Script {
       }
 
       if (prevFormat === Script.SYMBOL && (this.BINARY_OPERATORS.includes(prevData) || this.UNARY_OPERATORS.includes(prevData) || this.ASSIGNMENT_OPERATORS.includes(prevData))
-      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA
+      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.IN
       || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE) {
         if (prevFormat !== Script.SYMBOL || !this.UNARY_OPERATORS.includes(prevData)) {
           options.push(...this.UNARY_OPERATORS.getMenuItems());
@@ -566,7 +566,19 @@ class Script {
 
       case this.ITEMS.FOR:
         this.data[row][0] |= 1 << 31;
-        this.data[row].push(payload, this.HINTS.ITEM, this.ITEMS.IN, this.HINTS.COLLECTION);
+
+        let id = this.variables.length;
+        this.variables.push({name: "i", type: 0, scope: 0});
+
+        this.data[row].push(payload, Script.makeItemWithMeta(Script.VARIABLE_REFERENCE, 0, id), this.ITEMS.IN,
+          Script.makeItem(Script.FUNCTION_REFERENCE, this.functionMap.get("stride")),
+          this.ITEMS.START_PARENTHESIS,
+          Script.makeItemWithMeta(Script.ARGUMENT_HINT, 0, this.functionMap.get("stride")),
+          this.ITEMS.COMMA,
+          Script.makeItemWithMeta(Script.ARGUMENT_HINT, 1, this.functionMap.get("stride")),
+          this.ITEMS.COMMA,
+          Script.makeItemWithMeta(Script.ARGUMENT_HINT, 2, this.functionMap.get("stride")),
+          this.ITEMS.END_PARENTHESIS);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
       case this.ITEMS.SWITCH:
