@@ -272,10 +272,3 @@ canvas, #modal, #console-output {
   box-sizing: content-box;
   align-self: flex-start;
 }
-
-#console-output {
-  box-sizing: border-box;
-  padding: 0.5em;
-  margin: 0;
-  overflow-y: scroll;
-}

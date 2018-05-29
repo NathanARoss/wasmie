@@ -23,6 +23,8 @@ class Script {
     this.keywords = KEYWORDS;
     this.keywordMap = KEYWORD_MAP;
 
+    this.EXTERNAL_VARIABLE_COUNT = this.variables.length;
+
     this.ITEMS = {};
     this.ITEMS.FUNC     = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("func"));
     this.ITEMS.LET      = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("let"));
@@ -219,7 +221,7 @@ class Script {
       }
       
       //this token represents a variable declaration or parameter
-      else if (isFuncDef || line.peek() === this.ITEMS.LET || line.peek() === this.ITEMS.VAR || (parenthesisCount === 0 && line.peek() === this.ITEMS.COMMA)) {
+      else if (isFuncDef || line.peek() === this.ITEMS.FOR || line.peek() === this.ITEMS.LET || line.peek() === this.ITEMS.VAR || (parenthesisCount === 0 && line.peek() === this.ITEMS.COMMA)) {
         let variable = {};
         
         let indexOf = token.indexOf(":");
@@ -228,10 +230,10 @@ class Script {
           variable.type = this.classMap.get(token.substring(indexOf + 1));
         } else {
           variable.name = token;
-          variable.type = this.classMap.get("Hidden");
+          variable.type = 0;
         }
         
-        variable.scope = this.classMap.get("Hidden");
+        variable.scope = 0;
         
         let id = this.variables.length;
         this.variables.push(variable);
@@ -248,7 +250,7 @@ class Script {
         let indexOf = token.lastIndexOf(".");
         if (indexOf === -1) {
           name = token;
-          scope = this.classMap.get("Hidden");
+          scope = 0;
         } else {
           name = token.substring(indexOf + 1);
           scope = this.classMap.get(token.substring(0, indexOf));
@@ -309,29 +311,31 @@ class Script {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
-    let matchingParenthesis = col;
+    let beginParenthesis = col;
     let depth = 0;
     if (item === this.ITEMS.END_PARENTHESIS) {
-      while (matchingParenthesis > 1) {
-        if (this.data[row][matchingParenthesis] === this.ITEMS.END_PARENTHESIS) {
+      while (beginParenthesis > 1) {
+        if (this.data[row][beginParenthesis] === this.ITEMS.END_PARENTHESIS) {
           --depth;
         }
 
-        if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS) {
+        if (this.data[row][beginParenthesis] === this.ITEMS.START_PARENTHESIS) {
           ++depth;
           if (depth === 0)
             break;
         }
 
-        --matchingParenthesis;
+        --beginParenthesis;
       }
     }
 
     if (item === this.ITEMS.START_PARENTHESIS || item === this.ITEMS.END_PARENTHESIS) {
       let options;
-      if (this.data[row][matchingParenthesis - 1] >>> 28 === Script.FUNCTION_REFERENCE) {
-        if (this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE)
+      if (this.data[row][beginParenthesis - 1] >>> 28 === Script.FUNCTION_REFERENCE) {
+        //don't allow removal operations if the parenthesis belongs to a function call that sits alone in a line
+        if (beginParenthesis === 2 && this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE)
           return [];
+        
         options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_SUBEXPRESSION}];
       } else {
         options = [
@@ -614,7 +618,7 @@ class Script {
         if (input === null)
           return Script.RESPONSE.NO_CHANGE;
         
-        if (!isNaN(input)) {
+        if (input.trim().length !== 0 && !isNaN(input)) {
           this.numericLiterals.set(this.nextNumericLiteral, input);
           this.data[row][col] = Script.makeItem(Script.NUMERIC_LITERAL, this.nextNumericLiteral++);
         } else if (input === "true") {
@@ -877,7 +881,7 @@ class Script {
       replacementItems[1] = this.ITEMS.START_PARENTHESIS;
       replacementItems.push(this.ITEMS.END_PARENTHESIS);
 
-      let end = col + 1;
+      let end = col;
       if (this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
         let depth = 0;
         while (end < this.data[row].length) {
@@ -895,7 +899,7 @@ class Script {
         }
       }
 
-      this.data[row].splice(col, end - col, ...replacementItems);
+      this.data[row].splice(col, end - col + 1, ...replacementItems);
       return Script.RESPONSE.ROW_UPDATED;
     }
 
@@ -955,12 +959,19 @@ class Script {
           for (let col = 1; col < itemCount; ++col) {
             if (this.data[r][col] >>> 28 === Script.VARIABLE_DEFINITION) {
               let varId = this.data[r][col] & 0xFFFF;
-              const [text, style] = this.getItem(r, col);
-              options.push({text, style, payload: (Script.VARIABLE_REFERENCE << 28) | varId});
+              const v = this.variables[varId];
+              const text = this.classes[v.type].name + " " + this.classes[v.scope].name + "\n" + v.name;
+              options.push({text, style: "keyword-declaration", payload: (Script.VARIABLE_REFERENCE << 28) | varId});
             }
           }
         }
       }
+    }
+
+    for (let i = 0; i < this.EXTERNAL_VARIABLE_COUNT; ++i) {
+      const v = this.variables[i];
+      const text = this.classes[v.type].name + " " + this.classes[v.scope].name + "\n" + v.name;
+      options.push({text, style: "keyword-declaration", payload: (Script.VARIABLE_REFERENCE << 28) | i});
     }
 
     return options;

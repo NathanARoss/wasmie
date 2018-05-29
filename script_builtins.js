@@ -2,7 +2,7 @@
 
 function getBuiltIns() {
   let CLASSES = [
-    {name: "global", size: 0},
+    {name: "", size: 0},
     {name: "Any", size: 0},
     {name: "Int8", size: 1},
     {name: "UInt8", size: 1},
@@ -15,8 +15,6 @@ function getBuiltIns() {
     {name: "Float", size: 4},
     {name: "Double", size: 8},
     {name: "System", size: 0},
-    {name: "System.Event", size: 0},
-    {name: "System.Screen", size: 0},
     {name: "Math", size: 0},
     {name: "Canvas", size: 0},
     {name: "Function", size: 0},
@@ -28,18 +26,18 @@ function getBuiltIns() {
   }
   
   
-  //static variables of classes only
+  //static variables of classes only.  no instance variables
   let VARIABLES = [
-    {name: "ondraw", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['ondraw']"},
-    {name: "onresize", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['onresize']"},
-    {name: "ontouchstart", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['ontouchstart']"},
-    {name: "ontouchmove", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['ontouchmove']"},
-    {name: "ontouchend", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['ontouchend']"},
-    {name: "onmousedown", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['onmousedown']"},
-    {name: "onmousemove", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['onmousemove']"},
-    {name: "onmouseup", type: CLASS_MAP.get("Function"), scope: CLASS_MAP.get("System.Event"), js: "eventHandlers['onmouseup']"},
-    {name: "width", type: CLASS_MAP.get("Int32"), scope: CLASS_MAP.get("System.Screen"), js: "canvas.width"},
-    {name: "height", type: CLASS_MAP.get("Int32"), scope: CLASS_MAP.get("System.Screen"), js: "canvas.height"},
+    {name: "width", type: CLASS_MAP.get("Int32"), scope: CLASS_MAP.get("Canvas"), js: "canvas.width"},
+    {name: "height", type: CLASS_MAP.get("Int32"), scope: CLASS_MAP.get("Canvas"), js: "canvas.height"},
+    {name: "E", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.E"},
+    {name: "PI", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.PI"},
+    {name: "SQRT(2)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.SQRT2"},
+    {name: "SQRT(1/2)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.SQRT1_2"},
+    {name: "LN(2)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LN2"},
+    {name: "LN(10)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LN10"},
+    {name: "LOG₂(E)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LOG2E"},
+    {name: "LOG₁₀(E)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LOG10E"},
   ];
   
   
@@ -49,9 +47,15 @@ function getBuiltIns() {
     }
     
     let tokens = source.match(/[\w]+/g);
-    
     let newFunc = {};
-    newFunc.scope = CLASS_MAP.get(tokens[0]);
+
+    if (!source.includes(".")) {
+      tokens.unshift(0);
+      newFunc.scope = 0;
+    } else {
+      newFunc.scope = CLASS_MAP.get(tokens[0]);
+    }
+    
     newFunc.name = tokens[1];
     newFunc.returnType = CLASS_MAP.get(tokens[tokens.length - 1]);
     
@@ -69,25 +73,38 @@ function getBuiltIns() {
   
   /* The .js property prepresents the equivalent javascript function to use when translating. */
   let FUNCTIONS = [
-    parseFunction("Int8.Int8(toConvert:Any) -> Int8", "Number"),
-    parseFunction("UInt8.UInt8(toConvert:Any) -> UInt8", "Number"),
-    parseFunction("Int16.Int16(toConvert:Any) -> Int16", "Number"),
-    parseFunction("UInt16.UInt16(toConvert:Any) -> UInt16", "Number"),
-    parseFunction("Int32.Int32(toConvert:Any) -> Int32", "Number"),
-    parseFunction("UInt32.UInt32(toConvert:Any) -> UInt32", "Number"),
-    parseFunction("Int64.Int64(toConvert:Any) -> Int64", "Number"),
-    parseFunction("UInt64.UInt64(toConvert:Any) -> UInt64", "Number"),
+    // parseFunction("Int8.Int8(toConvert:Any) -> Int8", "Number"),
+    // parseFunction("UInt8.UInt8(toConvert:Any) -> UInt8", "Number"),
+    // parseFunction("Int16.Int16(toConvert:Any) -> Int16", "Number"),
+    // parseFunction("UInt16.UInt16(toConvert:Any) -> UInt16", "Number"),
+    // parseFunction("Int32.Int32(toConvert:Any) -> Int32", "Number"),
+    // parseFunction("UInt32.UInt32(toConvert:Any) -> UInt32", "Number"),
+    // parseFunction("Int64.Int64(toConvert:Any) -> Int64", "Number"),
+    // parseFunction("UInt64.UInt64(toConvert:Any) -> UInt64", "Number"),
       
-    parseFunction("System.print(item:Any)", "print"),
+    parseFunction("stride(start:Int32, end:Int32, by:Int32)", "stride"),
+    parseFunction("Canvas.drawText(x:Double, y:Double, size:Double, item:Any)", "drawText"),
     parseFunction("Canvas.drawCircle(x:Double, y:Double, r:Double, color:String)", "drawCircle"),
     parseFunction("Canvas.drawRect(x:Double, y:Double, w:Double, h:Double, color:String)", "drawRectangle"),
     parseFunction("Math.cos(angle:Double) -> Double", "Math.cos"),
     parseFunction("Math.sin(angle:Double) -> Double", "Math.sin"),
+    parseFunction("Math.tan(angle:Double) -> Double", "Math.tan"),
+    parseFunction("Math.acos(x/r:Double) -> Double", "Math.acos"),
+    parseFunction("Math.asin(y/r:Double) -> Double", "Math.asin"),
+    parseFunction("Math.atan(y/x:Double) -> Double", "Math.atan"),
+    parseFunction("Math.atan2(y:Double, x:Double) -> Double", "Math.atan2"),
     parseFunction("Math.min(a:Double, b:Double) -> Double", "Math.min"),
     parseFunction("Math.max(a:Double, b:Double) -> Double", "Math.max"),
     parseFunction("Math.random() -> Double", "Math.random"),
-    parseFunction("Math.abs() -> Double", "Math.abs"),
-    parseFunction("Math.sign() -> Double", "Math.sign"),
+    parseFunction("Math.abs(number:Double) -> Double", "Math.abs"),
+    parseFunction("Math.sign(number:Double) -> Double", "Math.sign"),
+    parseFunction("Math.sqrt(number:Double) -> Double", "Math.sqrt"),
+    parseFunction("Math.power(base:Double, exponent:Double) -> Double", "Math.power"),
+    parseFunction("Math.exp(exponent:Double) -> Double", "Math.exp"),
+    parseFunction("Math.log(number:Double) -> Double", "Math.log"),
+    parseFunction("Math.round(number:Double) -> Double", "Math.round"),
+    parseFunction("Math.floor(number:Double) -> Double", "Math.floor"),
+    parseFunction("Math.ceil(number:Double) -> Double", "Math.ceil"),
   ]
   
   let FUNCTION_MAP = new Map();
@@ -304,19 +321,19 @@ function getBuiltIns() {
   }`;
 
   const counter =
-`var counter = 0 
-var a = 1 
+`var a = 1 
 var b = 1 
-System.print ( "1\\n1" ) 
+var text = "1\\n1\\n"
 
-while counter < 100 { 
+for i in stride(0, 50, 1) { 
  let temp = a + b 
  a = b 
  b = temp 
  
- System.print ( temp ) 
- counter += 1 
-}`;
+ text += temp + "\\n"
+}
+
+Canvas.drawText ( 0, 0, 20, "white", text ) `;
   
   return [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP, counter];
 }

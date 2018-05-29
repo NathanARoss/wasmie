@@ -13,7 +13,6 @@ const canvas = document.getElementById("canvas");
 const editor = document.getElementById("editor_div");
 const modal = document.getElementById("modal");
 const runtime = document.getElementById("runtime");
-const consoleOutput = document.getElementById("console-output");
 const context = canvas.getContext("2d", { alpha: false });
 
 let buttonPool = [];
@@ -161,8 +160,7 @@ document.body.onhashchange = function() {
   }
   
   else {
-    consoleOutput.textContent = "";
-
+    context.clearRect(0, 0, canvas.width, canvas.height);
     editor.style.display = "none";
     runtime.style.display = "";
     
@@ -553,6 +551,16 @@ function touchCanceled(outerRow) {
 }
 
 
+function stride(start, end, by) {
+  let iterable = {start, end, by};
+  iterable[Symbol.iterator] = function* () {
+    for (let i = this.start; i != this.end; i += this.by) {
+      yield i;
+    }
+  };
+
+  return iterable;
+}
 
 function drawCircle(x, y, r, color) {
   r = Math.abs(r);
@@ -568,15 +576,19 @@ function drawRectangle(x, y, w, h, color) {
   context.fillRect(x, y, w, h);
 }
 
-function draw(timestamp) {
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  
-  eventHandlers.ondraw(timestamp);
-  
-  renderLoop = window.requestAnimationFrame(draw);
+function drawText(x, y, size, color, text) {
+  context.textBaseline = "top";
+  context.font = size + "px Monospace";
+  context.fillStyle = color;
+  const lines = text.split("\n");
+
+  for (let i = 0; i < lines.length; ++i) {
+    context.fillText(lines[i], x, y + i * size); 
+  }
 }
 
-function print(output) {
-  consoleOutput.textContent += output + "\n";
-  consoleOutput.scrollTop = consoleOutput.scrollHeight;
+function draw(timestamp) {
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  eventHandlers.ondraw(timestamp);
+  renderLoop = window.requestAnimationFrame(draw);
 }
