@@ -570,7 +570,7 @@ class Script {
         let id = this.variables.length;
         this.variables.push({name: "i", type: 0, scope: 0});
 
-        this.data[row].push(payload, Script.makeItemWithMeta(Script.VARIABLE_REFERENCE, 0, id), this.ITEMS.IN,
+        this.data[row].push(payload, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, 0, id), this.ITEMS.IN,
           Script.makeItem(Script.FUNCTION_REFERENCE, this.functionMap.get("stride")),
           this.ITEMS.START_PARENTHESIS,
           Script.makeItemWithMeta(Script.ARGUMENT_HINT, 0, this.functionMap.get("stride")),
