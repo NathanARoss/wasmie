@@ -74,8 +74,9 @@ class Script {
     this.PAYLOADS.REMOVE_PARENTHESIS_PAIR = payloads--;
 
 
-    function includes(i) {
-      return i >= this.start && i < this.end;
+    function has(item) {
+      const data = item & 0xFFFFFF;
+      return item >>> 28 === Script.SYMBOL && data >= this.start && data < this.end;
     }
 
     function getMenuItems() {
@@ -94,10 +95,10 @@ class Script {
       return options;
     }
 
-    this.ASSIGNMENT_OPERATORS = {start: 0, end: 9, includes, getMenuItems};
-    this.COMPARISON_OPERATORS = {start: 9, end: 17, includes, getMenuItems};
-    this.BINARY_OPERATORS = {start: 9, end: 27, includes, getMenuItems};
-    this.UNARY_OPERATORS = {start: 27, end: 30, includes, getMenuItems: getMenuItemsUnary};
+    this.ASSIGNMENT_OPERATORS = {start: 0, end: 9, has, getMenuItems};
+    this.COMPARISON_OPERATORS = {start: 9, end: 17, has, getMenuItems};
+    this.BINARY_OPERATORS = {start: 9, end: 27, has, getMenuItems};
+    this.UNARY_OPERATORS = {start: 27, end: 30, has, getMenuItems: getMenuItemsUnary};
     
     if (SAMPLE_SCRIPT)
       this.loadScript(SAMPLE_SCRIPT);
@@ -307,7 +308,7 @@ class Script {
       }
     }
 
-    if (format === Script.SYMBOL && this.ASSIGNMENT_OPERATORS.includes(data)) {
+    if (this.ASSIGNMENT_OPERATORS.has(item)) {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
@@ -344,7 +345,8 @@ class Script {
         ];
       }
 
-      options.push(...this.BINARY_OPERATORS.getMenuItems());
+      if (item === this.ITEMS.END_PARENTHESIS)
+        options.push(...this.BINARY_OPERATORS.getMenuItems());
       return options;
     }
 
@@ -363,8 +365,7 @@ class Script {
     } else {
       //don't allow the user to delete the item if it is a binary operator followed by anything meaningful
       if (format !== Script.VARIABLE_DEFINITION && format !== Script.FUNCTION_DEFINITION) {
-        if (format !== Script.SYMBOL
-        || !this.BINARY_OPERATORS.includes(data)
+        if (!this.BINARY_OPERATORS.has(item)
         || (this.data[row][col + 1] === undefined || this.data[row][col + 1] === this.HINTS.EXPRESSION))
           options.push( {text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM} );
       }
@@ -404,10 +405,10 @@ class Script {
         options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
-      if (prevFormat === Script.SYMBOL && (this.BINARY_OPERATORS.includes(prevData) || this.UNARY_OPERATORS.includes(prevData) || this.ASSIGNMENT_OPERATORS.includes(prevData))
-      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.IN
+      if (this.BINARY_OPERATORS.has(prevItem) || this.UNARY_OPERATORS.has(prevItem) || this.ASSIGNMENT_OPERATORS.has(prevItem)
+      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.IN || prevItem === this.ITEMS.RETURN
       || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE) {
-        if (prevFormat !== Script.SYMBOL || !this.UNARY_OPERATORS.includes(prevData)) {
+        if (!this.UNARY_OPERATORS.has(prevItem)) {
           options.push(...this.UNARY_OPERATORS.getMenuItems());
         }
 
@@ -613,6 +614,23 @@ class Script {
         return options;
       }
 
+      case this.ITEMS.EQUALS:
+        this.data[row].push(this.ITEMS.EQUALS, this.HINTS.EXPRESSION);
+        return Script.RESPONSE.ROW_UPDATED;
+
+      case this.ITEMS.COMMA: {
+        let varId = this.variables.length;
+        const name = prompt("Enter variable name:", `var${varId}`);
+        if (name) {
+          let type = (this.data[row].peek() >>> 16) & 0x0FFF;
+          this.variables.push({name, type, scope: 0});
+          this.data[row].push(this.ITEMS.COMMA, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
+          return Script.RESPONSE.ROW_UPDATED;
+        } else {
+          return Script.RESPONSE.NO_CHANGE;
+        }
+      }
+
       case this.PAYLOADS.LITERAL_INPUT: {
         let hint = "";
 
@@ -687,13 +705,14 @@ class Script {
         const format = item >>> 28;
         const data = item & 0xFFFFFF;
 
-        if (format === Script.SYMBOL) {
-          if (this.UNARY_OPERATORS.includes(data)) {
-            this.data[row].splice(col, 1);
-          }
-          if (this.BINARY_OPERATORS.includes(data)) {
-            this.data[row].splice(col, 2);
-          }
+        if (this.UNARY_OPERATORS.has(item)) {
+          this.data[row].splice(col, 1);
+        }
+        if (this.BINARY_OPERATORS.has(item)) {
+          this.data[row].splice(col, 2);
+        }
+        if (item === this.HINTS.EXPRESSION && this.BINARY_OPERATORS.has(this.data[row][col - 1])) {
+          this.data[row].splice(col - 1, 2);
         }
 
         if (format === Script.VARIABLE_REFERENCE
@@ -778,48 +797,8 @@ class Script {
         return this.getFunctionList(requireReturn);
       }
 
-      case this.ITEMS.EQUALS:
-        this.data[row].push(this.ITEMS.EQUALS, this.HINTS.EXPRESSION);
-        return Script.RESPONSE.ROW_UPDATED;
-
-      case this.ITEMS.COMMA: {
-        let varId = this.variables.length;
-        const name = prompt("Enter variable name:", `var${varId}`);
-        if (name) {
-          let type = (this.data[row].peek() >>> 16) & 0x0FFF;
-          this.variables.push({name, type, scope: 0});
-          this.data[row].push(this.ITEMS.COMMA, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
-          return Script.RESPONSE.ROW_UPDATED;
-        } else {
-          return Script.RESPONSE.NO_CHANGE;
-        }
-      }
-
       case this.PAYLOADS.PARENTHESIS_PAIR: {
-        let start = col;
-        let end = col;
-
-        if (this.data[row][col - 1] >>> 28 === Script.SYMBOL && this.UNARY_OPERATORS.includes(this.data[row][col - 1] & 0xFFFFFF)) {
-          --start;
-        }
-
-        if (this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
-          end = col + 1;
-          let depth = 0;
-          while (end < this.data[row].length) {
-            if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
-              --depth;
-            }
-
-            if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
-              ++depth;
-              if (depth === 0)
-                break;
-            }
-
-            ++end;
-          }
-        }
+        const [start, end] = this.getExpressionBounds(row, col);
 
         this.data[row].splice(end + 1, 0, this.ITEMS.END_PARENTHESIS);
         this.data[row].splice(start, 0, this.ITEMS.START_PARENTHESIS);
@@ -846,7 +825,9 @@ class Script {
         return Script.RESPONSE.ROW_UPDATED;
       }
 
-      this.data[row][col] = payload;
+      const [start, end] = this.getExpressionBounds(row, col);
+      this.data[row].splice(start, end - start + 1, payload);
+
       return Script.RESPONSE.ROW_UPDATED;
     }
 
@@ -893,25 +874,9 @@ class Script {
       replacementItems[1] = this.ITEMS.START_PARENTHESIS;
       replacementItems.push(this.ITEMS.END_PARENTHESIS);
 
-      let end = col;
-      if (this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
-        let depth = 0;
-        while (end < this.data[row].length) {
-          if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
-            --depth;
-          }
-
-          if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
-            ++depth;
-            if (depth === 0)
-              break;
-          }
-
-          ++end;
-        }
-      }
-
-      this.data[row].splice(col, end - col + 1, ...replacementItems);
+      const [start, end] = this.getExpressionBounds(row, col);
+      this.data[row].splice(start, end - start + 1, ...replacementItems);
+      
       return Script.RESPONSE.ROW_UPDATED;
     }
 
@@ -938,7 +903,7 @@ class Script {
     //user chose a symbol to insert into the script
     if (format === Script.SYMBOL) {
       if (isValue || this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
-        if (this.UNARY_OPERATORS.includes(payload & 0xFFFFFF))
+        if (this.UNARY_OPERATORS.has(payload))
           this.data[row].splice(col, 0, payload);
         else
           this.data[row].splice(col + 1, 0, payload, this.HINTS.EXPRESSION);
@@ -951,6 +916,27 @@ class Script {
     //user updated the type annotation of a variable or function
     if (format === Script.COMMENT) {
       this.data[row][col] = (this.data[row][col] & 0xF000FFFF) | meta << 16;
+
+      if (this.data[row][col] >>> 28 === Script.FUNCTION_DEFINITION) {
+        const hasReturn = meta !== 0;
+
+        let indentation = this.getIndentation(row);
+        for (let r = row + 1; r < this.data.length; ++r) {
+          if (this.getIndentation(r) === indentation)
+            break;
+          
+          if (this.data[r][1] === this.ITEMS.RETURN) {
+            if (hasReturn) {
+              this.data[r] = [this.data[r][0], this.ITEMS.RETURN, this.HINTS.EXPRESSION];
+            } else {
+              this.data[r].length = 2;
+            }
+          }
+        }
+
+        return Script.RESPONSE.SCRIPT_CHANGED;
+      }
+      
       return Script.RESPONSE.ROW_UPDATED;
     }
 
@@ -1001,6 +987,35 @@ class Script {
     }
 
     return options;
+  }
+
+  //return an array marking the first and last item that belongs to the selected expression
+  getExpressionBounds(row, col) {
+    let start = col;
+    let end = col;
+
+    if (this.UNARY_OPERATORS.has(this.data[row][col - 1])) {
+      --start;
+    }
+
+    if (this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
+      let depth = 0;
+      while (end < this.data[row].length) {
+        if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
+          ++depth;
+        }
+
+        if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
+          --depth;
+          if (depth === 0)
+            break;
+        }
+
+        ++end;
+      }
+    }
+
+    return [start, end];
   }
 
   insertRow(row) {
