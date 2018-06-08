@@ -1232,9 +1232,7 @@ class Script {
         js += "}".repeat(lastIndentation);
     }
 
-    console.log(js);
-
-    return new Function(js);
+    return js;
   }
 }
 

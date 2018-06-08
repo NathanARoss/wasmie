@@ -200,7 +200,9 @@ button {
 }
 
 #debug {
+  position: fixed;
   left: 50%;
+  z-index: 1;
   bottom: 0;
   transform: translateX(-50%);
   padding: 0.5em;
@@ -215,31 +217,65 @@ button {
   }
 }
 
-#run-button {
-  bottom: 20px;
+
+
+#FAB-menu {
+  display: flex;
+  flex-direction: column-reverse;
+  position: fixed;
   right: 20px;
+  bottom: 20px;
   width: 50px;
+  height: 50px;
+  transition: height 0.5s;
+  overflow: hidden;
+}
+
+#FAB-menu:hover {
+  height: 255px;
+}
+
+.FAB {
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   background-color: var(--secondary-color);
-  
-  font-family: Monospace;
-  font-size: 32px;
-  text-decoration: none;
-  text-align: center;
-  line-height: 50px;
-  color: white;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
-#debug, #run-button {
-  position: fixed;
-  z-index: 1;
+.FAB-small {
+  width: 40px;
+  height: 40px;
+  background-color: var(--primary-color);
+  margin: 5px;
 }
 
-#run-button:hover, #run-button:active {
+.FAB:hover  {
   background-color: #888888;
 }
 
-.selected #run-button, .selected #debug {
+#menu-button {
+  margin-top: 5px;
+  background-image: url(baseline-more_vert-24px.svg);
+}
+#FAB-menu:hover > #menu-button {
+  background-image: url(baseline-play_arrow-24px.svg);
+}
+#view-code-button {
+  background-image: url(baseline-code-24px.svg);
+}
+#save-button {
+  background-image: url(baseline-save-24px.svg);
+}
+#load-button {
+  background-image: url(baseline-folder-24px.svg);
+}
+#new-button {
+  background-image: url(baseline-add-24px.svg);
+}
+
+.selected .FAB, .selected #debug, .selected #FAB-menu {
   display: none;
 }
 

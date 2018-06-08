@@ -12,6 +12,9 @@ const debug = document.getElementById("debug");
 const canvas = document.getElementById("canvas");
 const editor = document.getElementById("editor_div");
 const modal = document.getElementById("modal");
+const menuButton = document.getElementById("menu-button");
+const viewCodeButton = document.getElementById("view-code-button");
+const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
 const context = canvas.getContext("2d", { alpha: false });
 
@@ -23,7 +26,16 @@ let eventHandlers = new Object(null);
 
 const script = new Script();
 
+menuButton.addEventListener("click", function(event) {
+  console.log(this);
+  if (fabMenu.offsetHeight > 60) {
+    window.location.hash = "#run";
+  }
+}, {passive: true});
 
+viewCodeButton.addEventListener("click", function(event) {
+  window.location.hash = "#debug";
+}, {passive: true});
 
 modal.addEventListener("click", modalContainerClicked);
 
@@ -158,6 +170,11 @@ document.body.onhashchange = function() {
     eventHandlers = new Object(null);
     document.body.style.height = getRowCount() * rowHeight + "px";
   }
+  else if (window.location.hash === "#debug") {
+    const js = script.getJavaScript();
+    alert(js);
+    window.location.hash = "";
+  }
   
   else {
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -165,7 +182,8 @@ document.body.onhashchange = function() {
     runtime.style.display = "";
     
     try {
-      script.getJavaScript() ();
+      const js = script.getJavaScript();
+      (new Function(js)) ();
     } catch (e) {
       //error = e;
       console.log(e);
@@ -452,27 +470,29 @@ function slideMenuClickHandler(event) {
 }
 
 function rowClickHandler(event) {
-  let row = this.position|0;
-  let col = event.target.position|0;
-  let options = script.itemClicked(row, col);
+  if (fabMenu.offsetHeight < 200) {
+    let row = this.position|0;
+    let col = event.target.position|0;
+    let options = script.itemClicked(row, col);
 
-  if (Array.isArray(options)) {
-    // if (options.length === 1) {
-    //   modal.row = row;
-    //   modal.col = col;
-    //   menuItemClicked(options[0].payload);
-    // } else if (options.length > 1) {
-      modal.row = row;
-      modal.col = col;
-      configureModal(options);
-      document.body.classList.add("selected");
-      this.parentElement.classList.add("selected");
-      event.target.classList.add("selected");
-    //}
-  }
-  else {
-    event.target.firstChild.nodeValue = options.text;
-    event.target.className = "item " + options.style;
+    if (Array.isArray(options)) {
+      // if (options.length === 1) {
+      //   modal.row = row;
+      //   modal.col = col;
+      //   menuItemClicked(options[0].payload);
+      // } else if (options.length > 1) {
+        modal.row = row;
+        modal.col = col;
+        configureModal(options);
+        document.body.classList.add("selected");
+        this.parentElement.classList.add("selected");
+        event.target.classList.add("selected");
+      //}
+    }
+    else {
+      event.target.firstChild.nodeValue = options.text;
+      event.target.className = "item " + options.style;
+    }
   }
 }
 
