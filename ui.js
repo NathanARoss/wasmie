@@ -13,6 +13,9 @@ const canvas = document.getElementById("canvas");
 const editor = document.getElementById("editor_div");
 const modal = document.getElementById("modal");
 const menuButton = document.getElementById("menu-button");
+const createButton = document.getElementById("new-button");
+const saveButton = document.getElementById("save-button");
+const loadButton = document.getElementById("load-button");
 const viewCodeButton = document.getElementById("view-code-button");
 const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
@@ -27,14 +30,33 @@ let eventHandlers = new Object(null);
 const script = new Script();
 
 menuButton.addEventListener("click", function(event) {
-  if (fabMenu.offsetHeight > 100) {
+  console.log(menuButton.toggled);
+
+  if (menuButton.toggled) {
     window.location.hash = "#run";
   }
+
+  fabMenu.classList.toggle("expanded");
+  menuButton.toggled = !menuButton.toggled;
+});
+
+createButton.addEventListener("click", function(event) {
+  alert("create");
+});
+
+saveButton.addEventListener("click", function(event) {
+  alert("save");
+});
+
+loadButton.addEventListener("click", function(event) {
+  alert("load");
 });
 
 viewCodeButton.addEventListener("click", function(event) {
-  window.location.hash = "#debug";
+  alert(script.getJavaScript());
 });
+
+
 
 modal.addEventListener("click", modalContainerClicked);
 
@@ -169,12 +191,6 @@ document.body.onhashchange = function() {
     eventHandlers = new Object(null);
     document.body.style.height = getRowCount() * rowHeight + "px";
   }
-  else if (window.location.hash === "#debug") {
-    const js = script.getJavaScript();
-    alert(js);
-    window.location.hash = "";
-  }
-  
   else {
     context.clearRect(0, 0, canvas.width, canvas.height);
     editor.style.display = "none";
@@ -469,29 +485,33 @@ function slideMenuClickHandler(event) {
 }
 
 function rowClickHandler(event) {
-  if (fabMenu.offsetHeight < 200) {
-    let row = this.position|0;
-    let col = event.target.position|0;
-    let options = script.itemClicked(row, col);
+  if (menuButton.toggled) {
+    menuButton.toggled = false;
+    fabMenu.classList.remove("expanded");
+    return;
+  }
 
-    if (Array.isArray(options)) {
-      // if (options.length === 1) {
-      //   modal.row = row;
-      //   modal.col = col;
-      //   menuItemClicked(options[0].payload);
-      // } else if (options.length > 1) {
-        modal.row = row;
-        modal.col = col;
-        configureModal(options);
-        document.body.classList.add("selected");
-        this.parentElement.classList.add("selected");
-        event.target.classList.add("selected");
-      //}
-    }
-    else {
-      event.target.firstChild.nodeValue = options.text;
-      event.target.className = "item " + options.style;
-    }
+  let row = this.position|0;
+  let col = event.target.position|0;
+  let options = script.itemClicked(row, col);
+
+  if (Array.isArray(options)) {
+    // if (options.length === 1) {
+    //   modal.row = row;
+    //   modal.col = col;
+    //   menuItemClicked(options[0].payload);
+    // } else if (options.length > 1) {
+      modal.row = row;
+      modal.col = col;
+      configureModal(options);
+      document.body.classList.add("selected");
+      this.parentElement.classList.add("selected");
+      event.target.classList.add("selected");
+    //}
+  }
+  else {
+    event.target.firstChild.nodeValue = options.text;
+    event.target.className = "item " + options.style;
   }
 }
 

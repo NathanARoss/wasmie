@@ -231,7 +231,7 @@ button {
   overflow: hidden;
 }
 
-#FAB-menu:hover {
+#FAB-menu.expanded {
   height: 255px;
 }
 
@@ -251,15 +251,11 @@ button {
   margin: 5px;
 }
 
-.FAB:hover  {
-  background-color: #888888;
-}
-
 #menu-button {
   margin-top: 5px;
   background-image: url(baseline-more_vert-24px.svg);
 }
-#FAB-menu:hover > #menu-button {
+#FAB-menu.expanded > #menu-button {
   background-image: url(baseline-play_arrow-24px.svg);
 }
 #view-code-button {
