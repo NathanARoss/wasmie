@@ -27,15 +27,14 @@ let eventHandlers = new Object(null);
 const script = new Script();
 
 menuButton.addEventListener("click", function(event) {
-  console.log(this);
-  if (fabMenu.offsetHeight > 60) {
+  if (fabMenu.offsetHeight > 100) {
     window.location.hash = "#run";
   }
-}, {passive: true});
+});
 
 viewCodeButton.addEventListener("click", function(event) {
   window.location.hash = "#debug";
-}, {passive: true});
+});
 
 modal.addEventListener("click", modalContainerClicked);
 
