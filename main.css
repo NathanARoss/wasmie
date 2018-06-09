@@ -304,3 +304,24 @@ canvas, #modal, #console-output {
   box-sizing: content-box;
   align-self: flex-start;
 }
+
+.project-list-entry {
+  position: relative;
+  background-color: var(--primary-color);
+  padding: 1em;
+  border-radius: 1em;
+  margin: 1em;
+}
+
+#no-projects-message {
+  display: none;
+}
+
+#no-projects-message:first-child:last-child {
+  display: block;
+  text-align: center;
+}
+
+.delete-project-button {
+  width: var(--line-height);
+}
