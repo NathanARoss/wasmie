@@ -3,16 +3,14 @@ Array.prototype.peek = function() {
 }
 
 class Script {
-  constructor() {
-    this.nextNumericLiteral = 0;
-    this.numericLiterals = new Map();
-    this.nextStringLiteral = 0;
-    this.stringLiterals = new Map();
-    this.nextComment = 0;
-    this.comments = new Map();
+  constructor(projectID) {
+    this.numericLiterals = [];
+    this.stringLiterals = [];
+    this.comments = [];
     this.data = [];
+    this.projectID = projectID;
 
-    const [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP, SAMPLE_SCRIPT] = getBuiltIns();
+    const [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP] = getBuiltIns();
     this.classes = CLASSES;
     this.classMap = CLASS_MAP;
     this.variables = VARIABLES;
@@ -22,8 +20,20 @@ class Script {
     this.symbolMap = SYMBOL_MAP;
     this.keywords = KEYWORDS;
     this.keywordMap = KEYWORD_MAP;
-
     this.EXTERNAL_VARIABLE_COUNT = this.variables.length;
+
+    // performDatabaseOp(function(db) {
+    //   let transaction = db.transaction(["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"]);
+
+    //   readEntriesFrom(transaction, "variables", this.variables);
+    //   readEntriesFrom(transaction, "functions", this.functions);
+    //   readEntriesFrom(transaction, "classes", this.classes);
+    //   readEntriesFrom(transaction, "numeric-literals", this.numericLiterals);
+    //   readEntriesFrom(transaction, "string-literals", this.stringLiterals);
+    //   readEntriesFrom(transaction, "comments", this.comments);
+    // });
+
+    
 
     this.ITEMS = {};
     this.ITEMS.FUNC     = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("func"));
@@ -99,9 +109,18 @@ class Script {
     this.COMPARISON_OPERATORS = {start: 9, end: 17, has, getMenuItems};
     this.BINARY_OPERATORS = {start: 9, end: 27, has, getMenuItems};
     this.UNARY_OPERATORS = {start: 27, end: 30, has, getMenuItems: getMenuItemsUnary};
-    
-    if (SAMPLE_SCRIPT)
-      this.loadScript(SAMPLE_SCRIPT);
+  }
+
+  static readEntriesFrom(transaction, objStoreName, arr) {
+    let objectStore = transaction.objectStore(objStoreName);
+    let request = objectStore.openCursor();
+    request.onsuccess = function(event) {
+      let cursor = event.target.result;
+      if (cursor) {
+        arr[cursor.key] = cursor.value;
+        cursor.continue();
+      }
+    };
   }
 
   static makeItemWithMeta(format, meta, value) {
@@ -120,164 +139,6 @@ class Script {
   makeCommentItem(text) {
     this.comments.set(this.nextComment, text);
     return Script.makeItem(Script.COMMENT, this.nextComment++);
-  }
-
-  loadScript(sampleScript) {
-    let line = [0];
-    let indentation = 0;
-    let isFuncDef = false;
-    let hasEndBracket = false;
-    let parenthesisCount = 0;
-    let tokens = sampleScript.match(/(?:\/\*(?:[^*]|(?:\*+(?:[^*\/])))*\*+\/)|(?:\/\/.*)|(?:[^\s(,)=+\-*\/"]+|"[^"]*")+|[\n,()]|[=+\-\*\/]+/g);
-
-    for (let i = 0; i < tokens.length; ++i) {
-      let token = tokens[i];
-      
-      //figure out what this token refers to
-      if (token === "\n") {
-        if (hasEndBracket)
-          hasEndBracket = false;
-        else {
-          this.data.push(line);
-          line = [indentation];
-          isFuncDef = false;
-        }
-      }
-      else if (token === "{") {
-        ++indentation;
-        line[0] |= 1 << 31;
-      }
-      else if (token === "}") {
-        --indentation;
-        hasEndBracket = true;
-        line[0] = (line[0] & 0xFFFF0000) | indentation;
-      }
-      else if (token.startsWith('"')) {
-        this.stringLiterals.set(this.nextStringLiteral, token.substring(1, token.length - 1));
-        line.push(Script.makeItem(Script.STRING_LITERAL, this.nextStringLiteral++));
-      }
-      else if (token.startsWith("//")) {
-        line.push(makeCommentItemtoken.substring(2));
-      }
-      else if (token.startsWith("/*")) {
-        line.push(makeCommentItemtoken.substring(2, token.length - 2));
-      }
-      else if (!isNaN(token)) {
-        this.numericLiterals.set(this.nextNumericLiteral, token);
-        line.push(Script.makeItem(Script.NUMERIC_LITERAL, this.nextNumericLiteral++));
-      }
-      else if (this.symbolMap.has(token)) {
-        line.push(Script.makeItem(Script.SYMBOL, this.symbolMap.get(token)));
-        let last = line.peek();
-        if (last === this.ITEMS.START_PARENTHESIS)
-          ++parenthesisCount;
-        else if (last === this.ITEMS.END_PARENTHESIS)
-          --parenthesisCount;
-      }
-      else if (this.keywordMap.has(token)) {
-        line.push(Script.makeItem(Script.KEYWORD, this.keywordMap.get(token)));
-      }
-      else if (this.functionMap.has(token)) {
-        let funcId = this.functionMap.get(token);
-        line.push(Script.makeItemWithMeta(Script.FUNCTION_REFERENCE, this.functions[funcId].scope, funcId));
-      }
-      else if (this.classMap.has(token)) {
-        line.push(Script.makeItem(Script.KEYWORD, this.keywordMap.get(token)));
-      }
-      
-      //this token represents a function definition
-      else if (line.peek() === this.ITEMS.FUNC) {
-        isFuncDef = true;
-
-        let newFunc = {};
-        newFunc.scope = 0;
-        
-        let indexOf = token.indexOf(":");
-        if (indexOf !== -1) {
-          newFunc.name = token.substring(0, indexOf);
-          newFunc.returnType = this.classMap.get(token.substring(indexOf + 1));
-        }
-        else {
-          newFunc.name = token;
-          newFunc.returnType = 0;
-        }
-        
-        //console.log("new function. name: " + newFunc.name + " returnType: " + this.classes[newFunc.returnType].name + " js: " + newFunc.js);
-        //the remaining tokens are parameters
-        newFunc.parameters = [];
-        for (let j = i + 1; tokens[j] !== "\n"; ++j) {
-          let indexOf = tokens[j].indexOf(":");
-          let parameter = {};
-          parameter.name = tokens[j].substring(0, indexOf);
-          parameter.type = this.classMap.get(tokens[j].substring(indexOf + 1));
-          newFunc.parameters.push(parameter);
-        }
-        
-        let funcId = this.functions.length;
-        this.functions.push(newFunc);
-        let key = newFunc.scope ? `${this.classes[newFunc.scope].name}.${newFunc.name}` : newFunc.name;
-        this.functionMap.set(key, funcId);
-        
-        line.push(Script.makeItemWithMeta(Script.FUNCTION_DEFINITION, newFunc.returnType, funcId));
-      }
-      
-      //this token represents a variable declaration or parameter
-      else if (isFuncDef || line.peek() === this.ITEMS.FOR || line.peek() === this.ITEMS.LET || line.peek() === this.ITEMS.VAR || (parenthesisCount === 0 && line.peek() === this.ITEMS.COMMA)) {
-        let variable = {};
-        
-        let indexOf = token.indexOf(":");
-        if (indexOf >= 0) {
-          variable.name = token.substring(0, indexOf);
-          variable.type = this.classMap.get(token.substring(indexOf + 1));
-        } else {
-          variable.name = token;
-          variable.type = 0;
-        }
-        
-        variable.scope = 0;
-        
-        let id = this.variables.length;
-        this.variables.push(variable);
-        
-        ++this.nextVariable;
-        
-        line.push(Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, variable.type, id));
-      }
-      
-      //assume token is a variable reference of some form
-      else {
-        let name, scope;
-        
-        let indexOf = token.lastIndexOf(".");
-        if (indexOf === -1) {
-          name = token;
-          scope = 0;
-        } else {
-          name = token.substring(indexOf + 1);
-          scope = this.classMap.get(token.substring(0, indexOf));
-        }
-        
-        let id = -1;
-        for (let i = 0; i < this.variables.length; ++i) {
-          const variable = this.variables[i];
-          if (name === variable.name && scope === variable.scope) {
-            id = i;
-            break;
-          }
-        }
-        
-        if (id === -1) {
-          this.comments.set(this.nextComment, `unrecognized token\n${token}`);
-          line.push(Script.makeItem(Script.COMMENT, this.nextComment++));
-        } else {
-          let variable = this.variables[id];
-          line.push(Script.makeItemWithMeta(Script.VARIABLE_REFERENCE, scope, id));
-        }
-      }
-    }
-    
-    if (line.length > 1)
-      this.data.push(line);
   }
 
   itemClicked(row, col) {
@@ -1102,6 +963,101 @@ class Script {
       default:
         return [`format\n${format}`, "error"];
     }
+  }
+
+  //checks if there are any modifications since the last save
+  //if so, saves modified data to database
+  save() {
+    const scriptInstance = this;
+    let projectID = this.projectID;
+
+    function createProject(objStore, transaction) {
+      const now = new Date();
+      const newProject = {name: getDateString(now), created: now, lastModified: now};
+
+      objStore.add(newProject).onsuccess = function(event) {
+        projectID = event.target.result;
+        console.log("Successfully created new project listing.  ID is " + projectID);
+        scriptInstance.projectID = projectID;
+        localStorage.setItem("open-project-id", projectID);
+        scriptInstance.saveProjectData(projectID, transaction);
+      }
+    }
+
+    if (!projectID) {
+      performActionOnProjectListDatabase("readwrite", createProject);
+    }
+    else {
+      performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
+        objStore.get(projectID).onsuccess = function(event) {
+          console.log("Successfully read project listing " + projectID);
+
+          if (!event.target.result) {
+            console.log("Attempted to modify project " + projectID + ", but it did not exist.");
+            performActionOnProjectListDatabase("readwrite", createProject);
+          }
+          else {
+            let projectListing = event.target.result;
+            projectListing.lastModified = new Date();
+  
+            objStore.put(projectListing).onsuccess = function(event) {
+              console.log("Successfully updated project last edit date.  ID is " + event.target.result);
+              scriptInstance.saveProjectData(projectID, transaction);
+            }
+          }
+        }
+      });
+    }
+  }
+
+  saveProjectData(projectID, projectListTransaction) {
+    const scriptInstance = this;
+    performDatabaseOp(function(db) {
+      let transaction = db.transaction(["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"], "readwrite");
+
+      let linesStore = transaction.objectStore("lines");
+      for (let i = 0; i < scriptInstance.data.length; ++i) {
+        let key = (new Uint8Array([i])).buffer;
+        linesStore.put(scriptInstance.data[i], key);
+      }
+      
+      transaction.onsuccess = function(event) {
+        console.log("Saved script successfully");
+      }
+      transaction.onerror = function(event) {
+        projectListTransaction.abort();
+        console.log("Error saving project data.  Aborting project listing update");
+      }
+    });
+  }
+
+  static performDatabaseOp(action) {
+    let openRequest = indexedDB.open(projectID, 1);
+  
+    openRequest.onerror = function(event) {
+      alert("Failed to open project data database. Error code " + event.errorCode);
+    };
+    openRequest.onupgradeneeded = function(event) {
+      console.log("upgrading project data database");
+      let db = event.target.result;
+      db.createObjectStore("variables");
+      db.createObjectStore("functions");
+      db.createObjectStore("classes");
+      db.createObjectStore("numeric-literals");
+      db.createObjectStore("string-literals");
+      db.createObjectStore("comments");
+      db.createObjectStore("lines");
+    };
+    openRequest.onsuccess = function(event) {
+      console.log("Successfully opened project data database");
+      let db = event.target.result;
+  
+      db.onerror = function(event) {
+        alert("Database error: " + event.target.errorCode);
+      };
+  
+      action(db);
+    };
   }
 
   /*

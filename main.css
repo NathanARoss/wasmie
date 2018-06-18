@@ -307,10 +307,11 @@ canvas, #modal, #console-output {
 
 .project-list-entry {
   position: relative;
-  background-color: var(--primary-color);
-  padding: 1em;
-  border-radius: 1em;
-  margin: 1em;
+  padding: 2em 0.5em;
+}
+
+.project-list-entry p {
+  margin: 8px 0 0 0;
 }
 
 #no-projects-message {
@@ -324,4 +325,5 @@ canvas, #modal, #console-output {
 
 .delete-project-button {
   width: var(--line-height);
+  float: right;
 }
