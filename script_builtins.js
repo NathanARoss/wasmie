@@ -17,28 +17,35 @@ function getBuiltIns() {
     {name: "System", size: 0},
     {name: "Math", size: 0},
     {name: "Canvas", size: 0},
-    {name: "Function", size: 0},
   ];
-  
-  let CLASS_MAP = new Map();
-  for (let i = 0; i < CLASSES.length; ++i) {
-    CLASS_MAP.set(CLASSES[i].name, i);
+
+  let classes = new Map();
+  classes.set(0, CLASSES[0]);
+  let classNameMap = new Map();
+  for (let i = 1; i < CLASSES.length; ++i) {
+    const ID = 0xFFF - i + 1;
+    classes.set(ID, CLASSES[i]);
+    classNameMap.set(CLASSES[i].name, ID);
   }
-  
   
   //static variables of classes only.  no instance variables
   let VARIABLES = [
-    {name: "width", type: CLASS_MAP.get("Int32"), scope: CLASS_MAP.get("Canvas"), js: "canvas.width"},
-    {name: "height", type: CLASS_MAP.get("Int32"), scope: CLASS_MAP.get("Canvas"), js: "canvas.height"},
-    {name: "E", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.E"},
-    {name: "PI", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.PI"},
-    {name: "SQRT(2)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.SQRT2"},
-    {name: "SQRT(1/2)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.SQRT1_2"},
-    {name: "LN(2)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LN2"},
-    {name: "LN(10)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LN10"},
-    {name: "LOG₂(E)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LOG2E"},
-    {name: "LOG₁₀(E)", type: CLASS_MAP.get("Double"), scope: CLASS_MAP.get("Math"), js: "Math.LOG10E"},
+    {name: "width", type: classNameMap.get("Int32"), scope: classNameMap.get("Canvas"), js: "canvas.width"},
+    {name: "height", type: classNameMap.get("Int32"), scope: classNameMap.get("Canvas"), js: "canvas.height"},
+    {name: "E", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.E"},
+    {name: "PI", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.PI"},
+    {name: "SQRT 2", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.SQRT2"},
+    {name: "SQRT 1/2", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.SQRT1_2"},
+    {name: "LN 2", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LN2"},
+    {name: "LN 10", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LN10"},
+    {name: "LOG₂E", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LOG2E"},
+    {name: "LOG₁₀E", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LOG10E"},
   ];
+
+  let variables = new Map();
+  for (let i = 0; i < VARIABLES.length; ++i) {
+    variables.set(0xFFFF - i, VARIABLES[i]);
+  }
   
   
   function parseFunction(source, js) {
@@ -53,11 +60,11 @@ function getBuiltIns() {
       tokens.unshift(0);
       newFunc.scope = 0;
     } else {
-      newFunc.scope = CLASS_MAP.get(tokens[0]);
+      newFunc.scope = classNameMap.get(tokens[0]);
     }
     
     newFunc.name = tokens[1];
-    newFunc.returnType = CLASS_MAP.get(tokens[tokens.length - 1]);
+    newFunc.returnType = classNameMap.get(tokens[tokens.length - 1]);
     
     if (js)
       newFunc.js = js;
@@ -65,7 +72,7 @@ function getBuiltIns() {
     newFunc.parameters = [];
     
     for (let i = 2; i < tokens.length - 1; i += 2) {
-      newFunc.parameters.push({name: tokens[i], type: CLASS_MAP.get(tokens[i + 1])});
+      newFunc.parameters.push({name: tokens[i], type: classNameMap.get(tokens[i + 1])});
     }
     
     return newFunc;
@@ -107,14 +114,9 @@ function getBuiltIns() {
     parseFunction("Math.ceil(number:Double) -> Double", "Math.ceil"),
   ]
   
-  let FUNCTION_MAP = new Map();
+  let functions = new Map();
   for (let i = 0; i < FUNCTIONS.length; ++i) {
-    let scope = CLASSES[FUNCTIONS[i].scope].name;
-    let key = FUNCTIONS[i].name;
-    if (scope)
-      key = `${scope}.${key}`;
-    
-    FUNCTION_MAP.set(key, i);
+    functions.set(0xFFFF - i, FUNCTIONS[i]);
   }
   
   
@@ -191,5 +193,5 @@ function getBuiltIns() {
   }
   
   
-  return [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP];
+  return {classes, variables, functions, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP};
 }

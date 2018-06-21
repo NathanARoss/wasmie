@@ -499,6 +499,14 @@ function loadRow(position, rowDiv, movedPosition = true) {
   }
 }
 
+function reloadAllRowsInPlace() {
+  for (const outerRow of list.childNodes) {
+    loadRow(outerRow.childNodes[1].position, outerRow, false);
+  }
+
+  console.log("reloaded all rows in place");
+}
+
 
 
 function getItem(text) {
@@ -571,9 +579,7 @@ function menuItemClicked(payload) {
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
-      for (const outerRow of list.childNodes) {
-        loadRow(outerRow.childNodes[1].position, outerRow, false);
-      }
+      reloadAllRowsInPlace();
     }
 
     document.body.style.height = getRowCount() * rowHeight + "px";
