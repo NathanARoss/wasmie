@@ -1,7 +1,7 @@
 "use strict";
 
 function getBuiltIns() {
-  let CLASSES = [
+  let classes = [
     {name: "", size: 0},
     {name: "Any", size: 0},
     {name: "Int8", size: 1},
@@ -19,34 +19,24 @@ function getBuiltIns() {
     {name: "Canvas", size: 0},
   ];
 
-  let classes = new Map();
-  classes.set(0, CLASSES[0]);
-  let classNameMap = new Map();
-  for (let i = 1; i < CLASSES.length; ++i) {
-    const ID = 0xFFF - i + 1;
-    classes.set(ID, CLASSES[i]);
-    classNameMap.set(CLASSES[i].name, ID);
+  let classMap = new Map();
+  for (let i = 1; i < classes.length; ++i) {
+    classMap.set(classes[i].name, i);
   }
   
   //static variables of classes only.  no instance variables
-  let VARIABLES = [
-    {name: "width", type: classNameMap.get("Int32"), scope: classNameMap.get("Canvas"), js: "canvas.width"},
-    {name: "height", type: classNameMap.get("Int32"), scope: classNameMap.get("Canvas"), js: "canvas.height"},
-    {name: "E", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.E"},
-    {name: "PI", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.PI"},
-    {name: "SQRT 2", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.SQRT2"},
-    {name: "SQRT 1/2", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.SQRT1_2"},
-    {name: "LN 2", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LN2"},
-    {name: "LN 10", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LN10"},
-    {name: "LOG₂E", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LOG2E"},
-    {name: "LOG₁₀E", type: classNameMap.get("Double"), scope: classNameMap.get("Math"), js: "Math.LOG10E"},
+  let variables = [
+    {name: "width",    type: classMap.get("Int32"),  scope: classMap.get("Canvas"), js: "canvas.width"},
+    {name: "height",   type: classMap.get("Int32"),  scope: classMap.get("Canvas"), js: "canvas.height"},
+    {name: "E",        type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.E"},
+    {name: "PI",       type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.PI"},
+    {name: "SQRT 2",   type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.SQRT2"},
+    {name: "SQRT 1/2", type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.SQRT1_2"},
+    {name: "LN 2",     type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LN2"},
+    {name: "LN 10",    type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LN10"},
+    {name: "LOG₂E",    type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LOG2E"},
+    {name: "LOG₁₀E",   type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LOG10E"},
   ];
-
-  let variables = new Map();
-  for (let i = 0; i < VARIABLES.length; ++i) {
-    variables.set(0xFFFF - i, VARIABLES[i]);
-  }
-  
   
   function parseFunction(source, js) {
     if (!source.includes("->")) {
@@ -60,11 +50,11 @@ function getBuiltIns() {
       tokens.unshift(0);
       newFunc.scope = 0;
     } else {
-      newFunc.scope = classNameMap.get(tokens[0]);
+      newFunc.scope = classMap.get(tokens[0]);
     }
     
     newFunc.name = tokens[1];
-    newFunc.returnType = classNameMap.get(tokens[tokens.length - 1]);
+    newFunc.returnType = classMap.get(tokens[tokens.length - 1]);
     
     if (js)
       newFunc.js = js;
@@ -72,14 +62,14 @@ function getBuiltIns() {
     newFunc.parameters = [];
     
     for (let i = 2; i < tokens.length - 1; i += 2) {
-      newFunc.parameters.push({name: tokens[i], type: classNameMap.get(tokens[i + 1])});
+      newFunc.parameters.push({name: tokens[i], type: classMap.get(tokens[i + 1])});
     }
     
     return newFunc;
   }
   
   /* The .js property prepresents the equivalent javascript function to use when translating. */
-  let FUNCTIONS = [
+  let functions = [
     // parseFunction("Int8.Int8(toConvert:Any) -> Int8", "Number"),
     // parseFunction("UInt8.UInt8(toConvert:Any) -> UInt8", "Number"),
     // parseFunction("Int16.Int16(toConvert:Any) -> Int16", "Number"),
@@ -90,7 +80,7 @@ function getBuiltIns() {
     // parseFunction("UInt64.UInt64(toConvert:Any) -> UInt64", "Number"),
       
     parseFunction("stride(start:Int32, end:Int32, by:Int32)", "stride"),
-    parseFunction("Canvas.drawText(x:Double, y:Double, size:Double, item:Any)", "drawText"),
+    parseFunction("Canvas.drawText(x:Double, y:Double, size:Double, color:String, item:Any)", "drawText"),
     parseFunction("Canvas.drawCircle(x:Double, y:Double, r:Double, color:String)", "drawCircle"),
     parseFunction("Canvas.drawRect(x:Double, y:Double, w:Double, h:Double, color:String)", "drawRectangle"),
     parseFunction("Math.cos(angle:Double) -> Double", "Math.cos"),
@@ -112,13 +102,7 @@ function getBuiltIns() {
     parseFunction("Math.round(number:Double) -> Double", "Math.round"),
     parseFunction("Math.floor(number:Double) -> Double", "Math.floor"),
     parseFunction("Math.ceil(number:Double) -> Double", "Math.ceil"),
-  ]
-  
-  let functions = new Map();
-  for (let i = 0; i < FUNCTIONS.length; ++i) {
-    functions.set(0xFFFF - i, FUNCTIONS[i]);
-  }
-  
+  ];
   
   
   

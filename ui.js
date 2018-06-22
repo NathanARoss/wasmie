@@ -225,6 +225,7 @@ window.onpopstate = function(event) {
       //alert(e);
       console.log(e);
       history.back();
+      return;
     }
     
     if (renderLoop === 0 && eventHandlers.ondraw)
