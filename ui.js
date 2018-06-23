@@ -756,7 +756,7 @@ function drawText(x, y, size, color, text) {
   const lines = text.split("\n");
 
   for (let i = 0; i < lines.length; ++i) {
-    context.fillText(lines[i], x, y + i * size); 
+    context.fillText(lines[i], x, y + i * size);
   }
 }
 

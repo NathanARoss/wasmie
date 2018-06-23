@@ -26,51 +26,53 @@ class Script {
     this.HINTS.EXPRESSION = this.makeCommentItem("expression");
     this.HINTS.CONTROL_EXPRESSION = this.makeCommentItem("control expression");
 
+    this.builtinVariableCount = this.variables.length;
+    this.builtinFunctionCount = this.functions.length;
+    this.builtinClassCount = this.classes.length;
+    this.builtinComments = this.comments.length;
+
     let remainingStores = {count: 7};
-    Script.performDatabaseOp((db) => {
-      this.builtinVariableCount = this.variables.length;
-      this.builtinFunctionCount = this.functions.length;
-      this.builtinClassCount = this.classes.length;
-      this.builtinComments = this.comments.length;
+    if (this.projectID) {
+      Script.performDatabaseOp(this.projectID, (db) => {
+        let transaction = db.transaction(["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"]);
 
-      let transaction = db.transaction(["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"]);
+        Script.readEntriesFrom(transaction, "variables",        this.variables,       remainingStores);
+        Script.readEntriesFrom(transaction, "functions",        this.functions,       remainingStores);
+        Script.readEntriesFrom(transaction, "classes",          this.classes,         remainingStores);
+        Script.readEntriesFrom(transaction, "numeric-literals", this.numericLiterals, remainingStores);
+        Script.readEntriesFrom(transaction, "string-literals",  this.stringLiterals,  remainingStores);
+        Script.readEntriesFrom(transaction, "comments",         this.comments,        remainingStores);
 
-      Script.readEntriesFrom(transaction, "variables",        this.variables,       remainingStores);
-      Script.readEntriesFrom(transaction, "functions",        this.functions,       remainingStores);
-      Script.readEntriesFrom(transaction, "classes",          this.classes,         remainingStores);
-      Script.readEntriesFrom(transaction, "numeric-literals", this.numericLiterals, remainingStores);
-      Script.readEntriesFrom(transaction, "string-literals",  this.stringLiterals,  remainingStores);
-      Script.readEntriesFrom(transaction, "comments",         this.comments,        remainingStores);
+        let request = transaction.objectStore("lines").openCursor();
+        request.onsuccess = (event) => {
+          let cursor = event.target.result;
+          if (cursor) {
+            let line = cursor.value;
+            for (let i = 1; i < line.length; ++i) {
+              switch (line[i] >>> 28) {
+                case Script.VARIABLE_DEFINITION:
+                case Script.VARIABLE_REFERENCE:
+                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[i] + this.builtinVariableCount) & 0x0000FFFF);
+                  break;
 
-      let request = transaction.objectStore("lines").openCursor();
-      request.onsuccess = (event) => {
-        let cursor = event.target.result;
-        if (cursor) {
-          let line = cursor.value;
-          for (let i = 1; i < line.length; ++i) {
-            switch (line[i] >>> 28) {
-              case Script.VARIABLE_DEFINITION:
-              case Script.VARIABLE_REFERENCE:
-                line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[i] + this.builtinVariableCount) & 0x0000FFFF);
-                break;
+                case Script.FUNCTION_DEFINITION:
+                case Script.FUNCTION_REFERENCE:
+                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[i] + this.builtinFunctionCount) & 0x0000FFFF);
+                  break;
+              }
+            }
 
-              case Script.FUNCTION_DEFINITION:
-              case Script.FUNCTION_REFERENCE:
-                line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[i] + this.builtinFunctionCount) & 0x0000FFFF);
-                break;
+            this.data.push(line);
+            cursor.continue();
+          } else {
+            remainingStores.count--;
+            if (remainingStores.count === 0) {
+              reloadAllRowsInPlace();
             }
           }
-
-          this.data.push(line);
-          cursor.continue();
-        } else {
-          remainingStores.count--;
-          if (remainingStores.count === 0) {
-            reloadAllRowsInPlace();
-          }
-        }
-      };
-    });
+        };
+      });
+    }
 
     
 
@@ -1023,7 +1025,7 @@ class Script {
         console.log("Successfully created new project listing.  ID is " + projectID);
         scriptInstance.projectID = projectID;
         localStorage.setItem("open-project-id", projectID);
-        scriptInstance.saveProjectData(transaction);
+        scriptInstance.saveProjectData(projectID, transaction);
       }
     }
 
@@ -1045,7 +1047,7 @@ class Script {
   
             objStore.put(projectListing).onsuccess = function(event) {
               console.log("Successfully updated project last edit date.  ID is " + event.target.result);
-              scriptInstance.saveProjectData(transaction);
+              scriptInstance.saveProjectData(projectID, transaction);
             }
           }
         }
@@ -1053,8 +1055,8 @@ class Script {
     }
   }
 
-  saveProjectData(projectListTransaction) {
-    Script.performDatabaseOp((db) => {
+  saveProjectData(projectID, projectListTransaction) {
+    Script.performDatabaseOp(projectID, (db) => {
       let transaction = db.transaction(["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"], "readwrite");
 
       let linesStore = transaction.objectStore("lines");
@@ -1105,7 +1107,8 @@ class Script {
     });
   }
 
-  static performDatabaseOp(action) {
+  static performDatabaseOp(projectID, action) {
+    console.log("performDatabaseOp called.  projectID === " + projectID);
     let openRequest = indexedDB.open(projectID, 1);
   
     openRequest.onerror = function(event) {
