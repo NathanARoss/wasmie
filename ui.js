@@ -416,6 +416,8 @@ function createRow() {
 
 function insertRow(position) {
   position = script.insertRow(position);
+  if (position === -1)
+    return;
 
   let rowIndex = position - firstLoadedPosition;
   if (rowIndex >= 0 && rowIndex < list.childNodes.length) {

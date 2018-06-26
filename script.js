@@ -936,16 +936,27 @@ class Script {
   }
 
   insertRow(row) {
-    let items = [this.getIndentation(row - 1) + this.isStartingScope(row - 1)];
+    const items = [this.getIndentation(row - 1) + this.isStartingScope(row - 1)];
     let key;
-    let lowKey = this.data[row - 1].key;
 
     if (row >= this.data.length) {
-      key = Script.incrementKey(lowKey);
+      return -1;
     } else {
       //find the best place to insert a row to minimize key size
       //moving the row insertion higher or lower within the same indentation level is unnoticable
       const indentation = items[0];
+
+      let endScope = row;
+      while (true) {
+        if (endScope >= this.getRowCount())
+          return -1;
+        
+        if (this.getIndentation(endScope) === indentation && this.getItemCount(endScope) === 1) {
+          ++endScope;
+        } else {
+          break;
+        }
+      }
 
       let startScope = row;
       while (startScope > 0) {
@@ -956,26 +967,13 @@ class Script {
         }
       }
 
-      let endScope = row;
-      while (endScope < this.getRowCount()) {
-        if (this.getIndentation(endScope) === indentation && this.getItemCount(endScope) === 1) {
-          ++endScope;
-        } else {
-          break;
-        }
-      }
-
       let bestScore = 0xFFFFFFF;
       for (let i = startScope; i <= endScope; ++i) {
-        let lowKey = (this.data[i - 1] && this.data[i - 1].key) || new Uint8Array(1);
-        let highKey = this.data[i].key;
-        let testKey = Script.averageKeys(lowKey, highKey);
-        let last = testKey.length - 1;
-
-        let spaceBelow = testKey[last] - (last < lowKey.length ? lowKey[last] : 0);
-        let spaceAbove = (last < highKey.length ? highKey[last] : 256) - testKey[last];
-        let score = last * 256 - Math.min(spaceBelow, spaceAbove);
-        console.log(i, score);
+        const lowKey = (i > 0) ? this.data[i - 1].key : new Uint8Array(1);
+        const highKey = this.data[i].key;
+        const testKey = Script.averageKeys(lowKey, highKey);
+        const last = testKey.length - 1;
+        const score = last * 256 + (lowKey[last] || 0) - testKey[last];
 
         if (score < bestScore) {
           row = i;
@@ -986,7 +984,7 @@ class Script {
     }
 
     this.data.splice(row, 0, {key, items});
-    return row; //DEBUG
+    return row;
   }
 
   deleteRow(row) {
