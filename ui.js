@@ -283,6 +283,15 @@ window.onpopstate = function(event) {
 }
 window.onpopstate();
 
+// window.onpagehide = function(event) {
+//   localStorage.setItem("onbeforeunload", "[1, 2, 3, 4]");
+// }
+
+// if (localStorage.getItem("onbeforeunload")) {
+//   alert(localStorage.getItem("onbeforeunload"));
+//   localStorage.removeItem("onbeforeunload");
+// }
+
 
 function deleteProject(event) {
   const entry = this.parentElement;
@@ -406,7 +415,7 @@ function createRow() {
 
 
 function insertRow(position) {
-  script.insertRow(position);
+  position = script.insertRow(position);
 
   let rowIndex = position - firstLoadedPosition;
   if (rowIndex >= 0 && rowIndex < list.childNodes.length) {
@@ -420,7 +429,7 @@ function insertRow(position) {
     list.insertBefore(node, list.firstChild);
   }
 
-  updateLineNumbers(Math.max(0, rowIndex + 1));
+  //updateLineNumbers(Math.max(0, rowIndex + 1));
   document.body.style.height = getRowCount() * rowHeight + "px";
 }
 
@@ -448,7 +457,8 @@ function updateLineNumbers(modifiedRow) {
     let outerRow = list.childNodes[i];
     let position = i + firstLoadedPosition;
     
-    outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
+    //outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
+    outerRow.firstChild.firstChild.firstChild.nodeValue = script.data[position] && script.data[position].key || "n/a";
     outerRow.childNodes[1].position = position;
   }
 }
@@ -460,7 +470,8 @@ function loadRow(position, rowDiv, movedPosition = true) {
   innerRow.position = position;
   
   //update the line number item of the slide menu
-  innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
+  //innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
+  innerRow.previousSibling.firstChild.firstChild.nodeValue = script.data[position] && script.data[position].key || "n/a";
   
   while (innerRow.childNodes.length > 2) {
     buttonPool.push(innerRow.lastChild);
@@ -472,7 +483,7 @@ function loadRow(position, rowDiv, movedPosition = true) {
   } else {
     let itemCount = script.getItemCount(position);
     for (let col = 1; col < itemCount; ++col) {
-      const [text, style] = script.getItem(position, col);
+      const [text, style] = script.getItemDisplay(position, col);
       
       let node = getItem(text);
       node.className = "item " + style;
@@ -501,6 +512,8 @@ function loadRow(position, rowDiv, movedPosition = true) {
 }
 
 function reloadAllRowsInPlace() {
+  document.body.style.height = getRowCount() * rowHeight + "px";
+
   for (const outerRow of list.childNodes) {
     loadRow(outerRow.childNodes[1].position, outerRow, false);
   }
