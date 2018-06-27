@@ -343,7 +343,7 @@ class Script {
 
       if (enclosingScopeType === this.ITEMS.SWITCH) {
         options = [
-          {text: "case", style: "keyword", payload: this.ITEMS.CASE}, 
+          {text: "case", style: "keyword", payload: this.ITEMS.CASE},
           {text: "default", style: "keyword", payload: this.ITEMS.DEFAULT}
         ];
       } else {
@@ -927,7 +927,7 @@ class Script {
     return [start, end];
   }
 
-  appendRowsUpTo(row) {    
+  appendRowsUpTo(row) {
     let key = this.data.length === 0 ? new Uint8Array(1) : this.data.peek().key;
     while (row >= this.getRowCount()) {
       key = Script.incrementKey(key);
@@ -993,12 +993,8 @@ class Script {
     //trim whitespace off the bottom of the script
     if (row + 1 === this.getRowCount()) {
       let startScope = row;
-      while (startScope > 0) {
-        if (this.getIndentation(startScope - 1) === 0 && this.getItemCount(startScope - 1) === 1) {
-          --startScope;
-        } else {
-          break;
-        }
+      while (startScope > 0 && this.getIndentation(startScope - 1) === 0 && this.getItemCount(startScope - 1) === 1) {
+        --startScope;
       }
 
       count = row - startScope + 1;
@@ -1009,7 +1005,7 @@ class Script {
     return [row, count];
   }
 
-  static incrementKey(key) {  
+  static incrementKey(key) {
     let arrKey = Array.from(key);
     let incremented = false;
 
