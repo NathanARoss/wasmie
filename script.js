@@ -936,35 +936,35 @@ class Script {
   }
 
   insertRow(row) {
-    const items = [this.getIndentation(row - 1) + this.isStartingScope(row - 1)];
+    const indentation = row === 0 ? 0 : this.getIndentation(row - 1) + this.isStartingScope(row - 1);
     let key;
 
-    if (row >= this.data.length) {
-      return -1;
-    } else {
-      //find the best place to insert a row to minimize key size
-      //moving the row insertion higher or lower within the same indentation level is unnoticable
-      const indentation = items[0];
-
-      let endScope = row;
-      while (true) {
-        if (endScope >= this.getRowCount())
+    //find the best place to insert a row to minimize key size
+    //moving the row insertion higher or lower within the same indentation level is unnoticable
+    let endScope = row;
+    while (true) {
+      if (endScope >= this.getRowCount()) {
+        if (indentation === 0)
           return -1;
-        
-        if (this.getIndentation(endScope) === indentation && this.getItemCount(endScope) === 1) {
-          ++endScope;
-        } else {
-          break;
-        }
-      }
 
+        //the indentation is not 0, so it's not whitespace.  Append the rows
+        const lowKey = this.data.peek().key;
+        key = Script.incrementKey(lowKey);
+        row = endScope;
+        break;
+      }
+      
+      if (this.getIndentation(endScope) === indentation && this.getItemCount(endScope) === 1) {
+        ++endScope;
+      } else {
+        break;
+      }
+    }
+
+    if (!key) {
       let startScope = row;
-      while (startScope > 0) {
-        if (this.getIndentation(startScope - 1) === indentation && this.getItemCount(startScope - 1) === 1) {
-          --startScope;
-        } else {
-          break;
-        }
+      while (startScope > 0 && this.getIndentation(startScope - 1) === indentation && this.getItemCount(startScope - 1) === 1) {
+        --startScope;
       }
 
       let bestScore = 0xFFFFFFF;
@@ -983,12 +983,30 @@ class Script {
       }
     }
 
-    this.data.splice(row, 0, {key, items});
+    this.data.splice(row, 0, {key, items: [indentation]});
     return row;
   }
 
   deleteRow(row) {
-    this.data.splice(row, 1);
+    let count = 1;
+
+    //trim whitespace off the bottom of the script
+    if (row + 1 === this.getRowCount()) {
+      let startScope = row;
+      while (startScope > 0) {
+        if (this.getIndentation(startScope - 1) === 0 && this.getItemCount(startScope - 1) === 1) {
+          --startScope;
+        } else {
+          break;
+        }
+      }
+
+      count = row - startScope + 1;
+      row = startScope;
+    }
+
+    this.data.splice(row, count);
+    return [row, count];
   }
 
   static incrementKey(key) {  

@@ -431,21 +431,22 @@ function insertRow(position) {
     list.insertBefore(node, list.firstChild);
   }
 
-  //updateLineNumbers(Math.max(0, rowIndex + 1));
+  updateLineNumbers(Math.max(0, rowIndex + 1));
   document.body.style.height = getRowCount() * rowHeight + "px";
 }
 
 
 
 function deleteRow(position) {
-  script.deleteRow(position);
+  const [pos, count] = script.deleteRow(position);
+  let rowIndex = Math.max(0, pos - firstLoadedPosition);
+  const end = Math.min(pos + count, list.childNodes.length + firstLoadedPosition);
 
-  let rowIndex = position - firstLoadedPosition;
-  let node = list.childNodes[rowIndex];
-  
-  let newPosition = firstLoadedPosition + loadedCount - 1;
-  loadRow(newPosition, node);
-  list.appendChild(node);
+  for (let newPosition = pos; newPosition < end; ++newPosition) {
+    let node = list.childNodes[rowIndex];
+    loadRow(newPosition, node);
+    list.appendChild(node);
+  }
   
   updateLineNumbers(rowIndex);
   document.body.style.height = getRowCount() * rowHeight + "px";
@@ -460,20 +461,20 @@ function updateLineNumbers(modifiedRow) {
     let position = i + firstLoadedPosition;
     
     //outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
-    outerRow.firstChild.firstChild.firstChild.nodeValue = script.data[position] && script.data[position].key || "n/a";
+    outerRow.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.data[position] && script.data[position].key || "n/a");
     outerRow.childNodes[1].position = position;
   }
 }
 
 
 
-function loadRow(position, rowDiv, movedPosition = true) {
-  let innerRow = rowDiv.childNodes[1];
+function loadRow(position, outerDiv, movedPosition = true) {
+  let innerRow = outerDiv.childNodes[1];
   innerRow.position = position;
   
   //update the line number item of the slide menu
   //innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
-  innerRow.previousSibling.firstChild.firstChild.nodeValue = script.data[position] && script.data[position].key || "n/a";
+  outerDiv.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.data[position] && script.data[position].key || "n/a");
   
   while (innerRow.childNodes.length > 2) {
     buttonPool.push(innerRow.lastChild);
@@ -502,11 +503,11 @@ function loadRow(position, rowDiv, movedPosition = true) {
     let button = innerRow.childNodes[1 + modal.col];
 
     if (modal.row === position) {
-      rowDiv.classList.add("selected");
+      outerDiv.classList.add("selected");
       button.classList.add("selected");
       innerRow.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     } else {
-      rowDiv.classList.remove("selected");
+      outerDiv.classList.remove("selected");
       if (button)
         button.classList.remove("selected");
     }
@@ -591,7 +592,7 @@ function menuItemClicked(payload) {
 
     if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
       insertRow(modal.row + 1);
-      insertRow(modal.row + 2);
+      insertRow(modal.row + 1);
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
@@ -620,14 +621,15 @@ function modalContainerClicked(event) {
 
 function slideMenuClickHandler(event) {
   let position = this.nextSibling.position;
-  if (position < script.getRowCount()) {
+  if (position <= script.getRowCount()) {
     switch (event.button) {
       case 0:
-        insertRow(position + 1);
+        insertRow(position);
         break;
       
       case 2:
-        deleteRow(position);
+        if (position < script.getRowCount())
+          deleteRow(position);
         break;
     }
   }
@@ -715,13 +717,14 @@ function touchMoved(outerRow, touch) {
 function touchEnded(outerRow, touch) {
   if (outerRow.touchCaptured) {
     const position = outerRow.childNodes[1].position;
-    if (position < script.getRowCount()) {
+    if (position <= script.getRowCount()) {
       let travel = touch.pageX - outerRow.touchStartX;
       
       if (travel > 200) {
-        deleteRow(position);
+        if (position < script.getRowCount())
+          deleteRow(position);
       } else if (travel > 80) {
-        insertRow(position + 1);
+        insertRow(position);
       }
     }
   }
