@@ -9,8 +9,6 @@ class Script {
     this.comments = [];
     this.data = [];
     this.projectID = projectID;
-    this.modifiedRows = new Set();
-    this.removedRows = new Set();
 
     const {classes, variables, functions, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP} = getBuiltIns();
     this.classes = classes;
@@ -28,16 +26,23 @@ class Script {
     this.HINTS.EXPRESSION = this.makeCommentItem("expression");
     this.HINTS.CONTROL_EXPRESSION = this.makeCommentItem("control expression");
 
-    this.builtinVariableCount = this.variables.length;
-    this.builtinFunctionCount = this.functions.length;
-    this.builtinClassCount = this.classes.length;
-    this.builtinComments = this.comments.length;
+    this.variables.builtinCount = this.variables.length;
+    this.functions.builtinCount = this.functions.length;
+    this.classes.builtinCount = this.classes.length;
+    this.numericLiterals.builtinCount = this.numericLiterals.length;
+    this.stringLiterals.builtinCount = this.stringLiterals.length;
+    this.comments.builtinCount = this.comments.length;
+    
+    this.variables.name = "variables";
+    this.functions.name = "functions";
+    this.classes.name = "classes";
+    this.numericLiterals.name = "numeric-literals";
+    this.stringLiterals.name = "string-literals";
+    this.comments.name = "comments";
 
     let remainingStores = {count: 7};
     if (this.projectID) {
-      Script.performDatabaseOp(this.projectID, (db) => {
-        let transaction = db.transaction(["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"]);
-
+      Script.performDatabaseOp(this.projectID, ["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"], "readonly", (transaction) => {
         Script.readEntriesFrom(transaction, "variables",        this.variables,       remainingStores);
         Script.readEntriesFrom(transaction, "functions",        this.functions,       remainingStores);
         Script.readEntriesFrom(transaction, "classes",          this.classes,         remainingStores);
@@ -54,12 +59,12 @@ class Script {
               switch (line[i] >>> 28) {
                 case Script.VARIABLE_DEFINITION:
                 case Script.VARIABLE_REFERENCE:
-                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[i] + this.builtinVariableCount) & 0x0000FFFF);
+                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.variables.builtinCount) & 0x0000FFFF);
                   break;
 
                 case Script.FUNCTION_DEFINITION:
                 case Script.FUNCTION_REFERENCE:
-                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[i] + this.builtinFunctionCount) & 0x0000FFFF);
+                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.functions.builtinCount) & 0x0000FFFF);
                   break;
               }
             }
@@ -433,10 +438,11 @@ class Script {
       case this.ITEMS.LET:
       case this.ITEMS.VAR: {
         const varId = this.variables.length;
-        const name = prompt("Enter variable name:", `var${varId - this.builtinVariableCount}`);
+        const name = prompt("Enter variable name:", `var${varId - this.variables.builtinCount}`);
         if (name) {
           this.appendRowsUpTo(row);
           this.variables.push({name, type: 0, scope: 0});
+          this.saveMetadata(this.variables, varId);
           this.pushItems(row, payload, Script.makeItem(Script.VARIABLE_DEFINITION, varId), this.ITEMS.EQUALS, this.HINTS.EXPRESSION);
           return Script.RESPONSE.ROW_UPDATED;
         } else {
@@ -469,6 +475,7 @@ class Script {
 
         let id = this.variables.length;
         this.variables.push({name: "i", type: 0, scope: 0});
+        this.saveMetadata(this.variables, id);
 
         this.pushItems(row, payload, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, 0, id), this.ITEMS.IN,
           Script.makeItem(Script.FUNCTION_REFERENCE, this.FUNCS.stride),
@@ -522,10 +529,11 @@ class Script {
 
       case this.ITEMS.COMMA: {
         let varId = this.variables.length;
-        const name = prompt("Enter variable name:", `var${varId - this.builtinVariableCount}`);
+        const name = prompt("Enter variable name:", `var${varId - this.variables.builtinCount}`);
         if (name) {
           let type = (this.peekRow(row) >>> 16) & 0x0FFF;
           this.variables.push({name, type, scope: 0});
+          this.saveMetadata(this.variables, varId);
           this.pushItems(row, this.ITEMS.COMMA, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
           return Script.RESPONSE.ROW_UPDATED;
         } else {
@@ -553,6 +561,7 @@ class Script {
         if (input.trim().length !== 0 && !isNaN(input)) {
           let id = this.numericLiterals.length;
           this.numericLiterals.push(input);
+          this.saveMetadata(this.numericLiterals, id);
           this.setItem(row, col, Script.makeItem(Script.NUMERIC_LITERAL, id));
         } else if (input === "true") {
           this.setItem(row, col, this.ITEMS.TRUE);
@@ -570,6 +579,7 @@ class Script {
           
           let id = this.stringLiterals.length;
           this.stringLiterals.push(input);
+          this.saveMetadata(this.stringLiterals, id);
           this.setItem(row, col, Script.makeItem(Script.STRING_LITERAL, id));
         }
 
@@ -581,26 +591,27 @@ class Script {
         const id = data & 0xFFFF;
         let format = data >>> 28;
 
-        let obj;
+        let metadataContainer;
 
         switch (format) {
           case Script.VARIABLE_DEFINITION:
           case Script.VARIABLE_REFERENCE:
-            obj = this.variables[id];
+            metadataContainer = this.variables;
             break;
 
           case Script.FUNCTION_DEFINITION:
           case Script.FUNCTION_REFERENCE:
-            obj = this.functions[id];
+            metadataContainer = this.functions;
             break;
         }
 
-        let input = prompt("Enter new name:", obj.name);
+        let input = prompt("Enter new name:", metadataContainer[id].name);
 
         if (input === null)
           return Script.RESPONSE.NO_CHANGE;
         else {
-          obj.name = input;
+          metadataContainer[id].name = input;
+          this.saveMetadata(metadataContainer, id);
           return Script.RESPONSE.SCRIPT_CHANGED;
         }
       }
@@ -719,7 +730,7 @@ class Script {
     //if a specific variable reference is provided
     if (format === Script.VARIABLE_REFERENCE) {
       let varId = payload & 0xFFFF;
-      let variable = this.variables[varId];
+      const variable = this.variables[varId];
       
       this.appendRowsUpTo(row);
       if (this.getItemCount(row) === 1) {
@@ -740,11 +751,12 @@ class Script {
     //user chose a type for a variable declaration
     if (format === Script.VARIABLE_DEFINITION) {
       const varId = this.variables.length;
-      const name = prompt("Enter variable name:", `var${varId - this.builtinVariableCount}`);
+      const name = prompt("Enter variable name:", `var${varId - this.variables.builtinCount}`);
       if (name) {
         const type = meta;
         this.appendRowsUpTo(row);
         this.variables.push({name, type, scope: 0});
+        this.saveMetadata(this.variables, varId);
         this.pushItems(row, this.ITEMS.VAR, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
         return Script.RESPONSE.ROW_UPDATED;
       } else {
@@ -756,11 +768,12 @@ class Script {
     if (format === Script.NUMERIC_LITERAL) {
       let funcId = this.functions.length;
       const returnType = meta;
-      const name = prompt(`Enter function name`, `f${funcId - this.builtinFunctionCount}`);
+      const name = prompt(`Enter function name`, `f${funcId - this.functions.builtinCount}`);
       if (name) {
         let newFunc = {name, returnType, scope: 0, parameters: []};
         this.appendRowsUpTo(row);
         this.functions.push(newFunc);
+        this.saveMetadata(this.functions, funcId);
         this.setItem(row, 0, this.getItem(row, 0) | 1 << 31);
         this.pushItems(row, this.ITEMS.FUNC, Script.makeItemWithMeta(Script.FUNCTION_DEFINITION, returnType, funcId));
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
@@ -782,7 +795,8 @@ class Script {
       replacementItems[1] = this.ITEMS.START_PARENTHESIS;
       replacementItems.push(this.ITEMS.END_PARENTHESIS);
 
-      const [start, end] = this.getExpressionBounds(row, col);
+      this.appendRowsUpTo(row);
+      const [start, end] = col === 0 ? [1,1] : this.getExpressionBounds(row, col);
       this.spliceRow(row, start, end - start + 1, ...replacementItems);
       
       return Script.RESPONSE.ROW_UPDATED;
@@ -792,15 +806,18 @@ class Script {
     if (format === Script.ARGUMENT_HINT) {
       let varId = this.variables.length;
       let type = meta;
-      const name = prompt(`Enter name for ${this.classes[type].name} parameter:`, `var${varId - this.builtinVariableCount}`);
+      const name = prompt(`Enter name for ${this.classes[type].name} parameter:`, `var${varId - this.variables.builtinCount}`);
 
       if (name) {
         this.variables.push({name, type, scope: 0});
+        this.saveMetadata(this.variables, varId);
         this.pushItems(row, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
 
         const index = this.findItem(row, this.ITEMS.FUNC);
-        const func = this.functions[this.getItem(row, index + 1) & 0xFFFF];
+        const funcId = this.getItem(row, index + 1) & 0xFFFF;
+        const func = this.functions[funcId];
         func.parameters.push({name, type})
+        this.saveMetadata(this.functions, funcId);
 
         return Script.RESPONSE.ROW_UPDATED;
       } else {
@@ -875,7 +892,7 @@ class Script {
       }
     }
 
-    for (let i = 0; i < this.builtinVariableCount; ++i) {
+    for (let i = 0; i < this.variables.builtinCount; ++i) {
       const v = this.variables[i];
       const text = this.classes[v.type].name + " " + this.classes[v.scope].name + "\n" + v.name;
       options.push({text, style: "keyword-declaration", payload: (Script.VARIABLE_REFERENCE << 28) | i});
@@ -932,6 +949,7 @@ class Script {
     while (row >= this.getRowCount()) {
       key = Script.incrementKey(key);
       this.data.push({key, items: [0]});
+      this.saveRow(this.getRowCount() - 1);
     }
   }
 
@@ -987,6 +1005,7 @@ class Script {
     }
 
     this.data.splice(row, 0, {key, items: [indentation]});
+    this.saveRow(row);
     return row;
   }
 
@@ -1003,9 +1022,51 @@ class Script {
       count = row - startScope + 1;
       row = startScope;
     }
+    
+    let keysToDelete = [];
+    for (let i = row; i < row + count; ++i) {
+      keysToDelete.push(this.data[i].key);
+    }
+
+    Script.performDatabaseOp(this.projectID, "lines", "readwrite", (transaction) => {
+      let linesStore = transaction.objectStore("lines");
+      for (const key of keysToDelete) {
+        linesStore.delete(key);
+      }
+    });
 
     this.data.splice(row, count);
     return [row, count];
+  }
+
+  saveRow(row) {
+    Script.performDatabaseOp(this.projectID, "lines", "readwrite", (transaction) => {
+      let linesStore = transaction.objectStore("lines");
+      let line = this.data[row].items.slice(); //copy array
+
+      for (let j = 1; j < line.length; ++j) {
+        switch (line[j] >>> 28) {
+          case Script.VARIABLE_DEFINITION:
+          case Script.VARIABLE_REFERENCE:
+            line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.variables.builtinCount) & 0x0000FFFF);
+            break;
+
+          case Script.FUNCTION_DEFINITION:
+          case Script.FUNCTION_REFERENCE:
+            line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.functions.builtinCount) & 0x0000FFFF);
+            break;
+        }
+      }
+
+      linesStore.put(line, this.data[row].key);
+    });
+  }
+
+  saveMetadata(arr, id) {
+    Script.performDatabaseOp(this.projectID, arr.name, "readwrite", (transaction) => {
+      let objStore = transaction.objectStore(arr.name);
+      objStore.put(arr[id], id - arr.builtinCount);
+    });
   }
 
   static incrementKey(key) {
@@ -1062,14 +1123,21 @@ class Script {
 
   setItem(row, col, val) {
     this.data[row].items[col] = val;
+    this.saveRow(row);
   }
 
   pushItems(row, ...items) {
     this.data[row].items.push(...items);
+    this.saveRow(row);
   }
 
   findItem(row, item) {
     return this.data[row].items.lastIndexOf(item);
+  }
+
+  spliceRow(row, col, count, ...items) {
+    this.data[row].items.splice(col, count, ...items);
+    this.saveRow(row);
   }
 
   getIndentation(row) {
@@ -1156,7 +1224,6 @@ class Script {
         console.log("Successfully created new project listing.  ID is " + projectID);
         scriptInstance.projectID = projectID;
         localStorage.setItem("open-project-id", projectID);
-        scriptInstance.saveProjectData(projectID, transaction);
       }
     }
 
@@ -1178,7 +1245,6 @@ class Script {
   
             objStore.put(projectListing).onsuccess = function(event) {
               console.log("Successfully updated project last edit date.  ID is " + event.target.result);
-              scriptInstance.saveProjectData(projectID, transaction);
             }
           }
         }
@@ -1186,58 +1252,8 @@ class Script {
     }
   }
 
-  saveProjectData(projectID, projectListTransaction) {
-    Script.performDatabaseOp(projectID, (db) => {
-      let transaction = db.transaction(["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"], "readwrite");
-
-      let linesStore = transaction.objectStore("lines");
-      linesStore.clear();
-      for (let i = 0; i < this.getRowCount(); ++i) {
-        let line = this.data[i].items.slice(); //copy array
-        for (let j = 1; j < line.length; ++j) {
-          switch (line[j] >>> 28) {
-            case Script.VARIABLE_DEFINITION:
-            case Script.VARIABLE_REFERENCE:
-              line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[j] - this.builtinVariableCount) & 0x0000FFFF);
-              break;
-
-            case Script.FUNCTION_DEFINITION:
-            case Script.FUNCTION_REFERENCE:
-              line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.builtinClassCount << 16)) & 0x0FFF0000) | ((line[j] - this.builtinFunctionCount) & 0x0000FFFF);
-              break;
-          }
-        }
-
-        linesStore.put(line, this.data[i].key);
-      }
-
-      function storeArr(objStoreName, arr, offset) {
-        let objStore = transaction.objectStore(objStoreName);
-        objStore.clear();
-        for (let id = offset; id < arr.length; ++id) {
-          objStore.put(arr[id], id - offset);
-        }
-      }
-
-      storeArr("variables", this.variables, this.builtinVariableCount);
-      storeArr("functions", this.functions, this.builtinFunctionCount);
-      storeArr("classes", this.classes, this.builtinClassCount);
-      storeArr("numeric-literals", this.numericLiterals, 0);
-      storeArr("string-literals", this.stringLiterals, 0);
-      storeArr("comments", this.comments, this.builtinComments);
-      
-      transaction.onsuccess = function(event) {
-        console.log("Saved script successfully");
-      }
-      transaction.onerror = function(event) {
-        projectListTransaction.abort();
-        console.log("Error saving project data.  Aborting project listing update");
-      }
-    });
-  }
-
-  static performDatabaseOp(projectID, action) {
-    console.log("performDatabaseOp called.  projectID === " + projectID);
+  static performDatabaseOp(projectID, scope, mode, action) {
+    //console.log("performDatabaseOp called.  projectID === " + projectID);
     let openRequest = indexedDB.open(projectID, 1);
   
     openRequest.onerror = function(event) {
@@ -1255,14 +1271,15 @@ class Script {
       db.createObjectStore("lines");
     };
     openRequest.onsuccess = function(event) {
-      console.log("Successfully opened project data database");
+      //console.log("Successfully opened project data database");
       let db = event.target.result;
   
       db.onerror = function(event) {
         alert("Database error: " + event.target.errorCode);
       };
-  
-      action(db);
+
+      let transaction = db.transaction(scope, mode);
+      action(transaction);
     };
   }
 

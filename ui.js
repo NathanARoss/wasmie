@@ -55,13 +55,6 @@ menuButton.addEventListener("click", function(event) {
 //   });
 // });
 
-saveButton.addEventListener("click", function(event) {
-  fabMenu.classList.remove("expanded");
-  menuButton.toggled = false;
-
-  alert("save");
-});
-
 loadButton.addEventListener("click", function(event) {
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
@@ -285,6 +278,7 @@ window.onpopstate();
 
 // window.onpagehide = function(event) {
 //   localStorage.setItem("onbeforeunload", "[1, 2, 3, 4]");
+//   script.notifyRowUpdated(-1);
 // }
 
 // if (localStorage.getItem("onbeforeunload")) {
@@ -521,7 +515,7 @@ function reloadAllRowsInPlace() {
     loadRow(outerRow.childNodes[1].position, outerRow, false);
   }
 
-  console.log("reloaded all rows in place");
+  //console.log("reloaded all rows in place");
 }
 
 

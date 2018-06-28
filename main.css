@@ -261,9 +261,6 @@ button {
 #view-code-button {
   background-image: url(baseline-code-24px.svg);
 }
-#save-button {
-  background-image: url(baseline-save-24px.svg);
-}
 #load-button {
   background-image: url(baseline-folder-24px.svg);
 }
