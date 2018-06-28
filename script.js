@@ -936,7 +936,10 @@ class Script {
   }
 
   insertRow(row) {
-    const indentation = row === 0 ? 0 : this.getIndentation(row - 1) + this.isStartingScope(row - 1);
+    let indentation = row === 0 ? 0 : this.getIndentation(row - 1) + this.isStartingScope(row - 1);
+    if (row > 0 && this.getItemCount(row - 1) === 1) {
+      indentation = Math.max(indentation - 1, row < this.getRowCount() ? this.getIndentation(row) : 0);
+    }
     let key;
 
     //find the best place to insert a row to minimize key size
