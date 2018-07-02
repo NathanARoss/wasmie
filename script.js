@@ -1157,11 +1157,13 @@ class Script {
       case Script.STRING_LITERAL:
       case Script.COMMENT: {
         let id = this.lines[row].items[col] & 0x00FFFFFF;
-        this.deleteMetadata(this.strings, id);
-        this.strings[id] = undefined;
-        this.strings.gaps.push(id);
-        console.log("pooled string id " + id);
-        console.log(this.strings);
+        if (id >= this.strings.builtinCount) {
+          this.deleteMetadata(this.strings, id);
+          this.strings[id] = undefined;
+          this.strings.gaps.push(id);
+          console.log("pooled string id " + id);
+          console.log(this.strings);
+        }
       }
     }
 
