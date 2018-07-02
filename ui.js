@@ -14,7 +14,6 @@ const editor = document.getElementById("editor_div");
 const modal = document.getElementById("modal");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
-const saveButton = document.getElementById("save-button");
 const loadButton = document.getElementById("load-button");
 const viewCodeButton = document.getElementById("view-code-button");
 const fabMenu = document.getElementById("FAB-menu");
@@ -27,13 +26,11 @@ let buttonPool = [];
 let renderLoop = 0;
 let eventHandlers = new Object(null);
 
-let projectID = Number(localStorage.getItem("open-project-id"));
-const script = new Script(projectID);
+const script = new Script();
 
 menuButton.addEventListener("click", function(event) {
   if (menuButton.toggled) {
     history.pushState({action: "run"}, "TouchScript Runtime");
-    script.save();
     window.onpopstate();
   }
 
@@ -455,7 +452,7 @@ function updateLineNumbers(modifiedRow) {
     let position = i + firstLoadedPosition;
     
     //outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
-    outerRow.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.data[position] && script.data[position].key || "n/a");
+    outerRow.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && script.lines[position].key || "n/a");
     outerRow.childNodes[1].position = position;
   }
 }
@@ -468,7 +465,7 @@ function loadRow(position, outerDiv, movedPosition = true) {
   
   //update the line number item of the slide menu
   //innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
-  outerDiv.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.data[position] && script.data[position].key || "n/a");
+  outerDiv.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && script.lines[position].key || "n/a");
   
   while (innerRow.childNodes.length > 2) {
     buttonPool.push(innerRow.lastChild);
@@ -586,7 +583,6 @@ function menuItemClicked(payload) {
 
     if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
       insertRow(modal.row + 1);
-      insertRow(modal.row + 1);
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
@@ -640,19 +636,13 @@ function rowClickHandler(event) {
   let col = event.target.position|0;
   let options = script.itemClicked(row, col);
 
-  if (Array.isArray(options)) {
-    // if (options.length === 1) {
-    //   modal.row = row;
-    //   modal.col = col;
-    //   menuItemClicked(options[0].payload);
-    // } else if (options.length > 1) {
-      modal.row = row;
-      modal.col = col;
-      configureModal(options);
-      document.body.classList.add("selected");
-      this.parentElement.classList.add("selected");
-      event.target.classList.add("selected");
-    //}
+  if (typeof options[Symbol.iterator] === 'function') {
+    modal.row = row;
+    modal.col = col;
+    configureModal(options);
+    document.body.classList.add("selected");
+    this.parentElement.classList.add("selected");
+    event.target.classList.add("selected");
   }
   else {
     event.target.firstChild.nodeValue = options.text;

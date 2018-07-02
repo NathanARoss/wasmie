@@ -4,11 +4,11 @@ Array.prototype.peek = function() {
 
 class Script {
   constructor(projectID) {
-    this.numericLiterals = [];
-    this.stringLiterals = [];
-    this.comments = [];
-    this.data = [];
-    this.projectID = projectID;
+    this.strings = [];
+    this.lines = [];
+    this.OPEN_PROJECT_KEY = "open-touchscript-project-id";
+    this.projectID = Number(localStorage.getItem(this.OPEN_PROJECT_KEY));
+    this.databaseQueue = [];
 
     const {classes, variables, functions, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP} = getBuiltIns();
     this.classes = classes;
@@ -29,57 +29,69 @@ class Script {
     this.variables.builtinCount = this.variables.length;
     this.functions.builtinCount = this.functions.length;
     this.classes.builtinCount = this.classes.length;
-    this.numericLiterals.builtinCount = this.numericLiterals.length;
-    this.stringLiterals.builtinCount = this.stringLiterals.length;
-    this.comments.builtinCount = this.comments.length;
+    this.strings.builtinCount = this.strings.length;
+
+    this.variables.gaps = [];
+    this.functions.gaps = [];
+    this.classes.gaps = [];
+    this.strings.gaps = [];
     
     this.variables.name = "variables";
     this.functions.name = "functions";
     this.classes.name = "classes";
-    this.numericLiterals.name = "numeric-literals";
-    this.stringLiterals.name = "string-literals";
-    this.comments.name = "comments";
+    this.strings.name = "strings";
 
-    let remainingStores = {count: 7};
-    if (this.projectID) {
-      Script.performDatabaseOp(this.projectID, ["variables", "functions", "classes", "numeric-literals", "string-literals", "comments", "lines"], "readonly", (transaction) => {
-        Script.readEntriesFrom(transaction, "variables",        this.variables,       remainingStores);
-        Script.readEntriesFrom(transaction, "functions",        this.functions,       remainingStores);
-        Script.readEntriesFrom(transaction, "classes",          this.classes,         remainingStores);
-        Script.readEntriesFrom(transaction, "numeric-literals", this.numericLiterals, remainingStores);
-        Script.readEntriesFrom(transaction, "string-literals",  this.stringLiterals,  remainingStores);
-        Script.readEntriesFrom(transaction, "comments",         this.comments,        remainingStores);
+    if (this.projectID)
+    performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
+      objStore.get(this.projectID).onsuccess = (event) => {
+        if (!event.target.result) {
+          console.log("The previously opened project no longer exists.  Resetting");
+          this.projectID = 0;
+          localStorage.removeItem(this.OPEN_PROJECT_KEY);
+        } else {
+          let remainingStores = {count: 5};
 
-        let request = transaction.objectStore("lines").openCursor();
-        request.onsuccess = (event) => {
-          let cursor = event.target.result;
-          if (cursor) {
-            let line = cursor.value;
-            for (let i = 1; i < line.length; ++i) {
-              switch (line[i] >>> 28) {
-                case Script.VARIABLE_DEFINITION:
-                case Script.VARIABLE_REFERENCE:
-                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.variables.builtinCount) & 0x0000FFFF);
-                  break;
-
-                case Script.FUNCTION_DEFINITION:
-                case Script.FUNCTION_REFERENCE:
-                  line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.functions.builtinCount) & 0x0000FFFF);
-                  break;
+          this.performDatabaseOp(["variables", "functions", "classes", "strings", "lines"], "readonly", (transaction) => {
+            Script.readEntriesFrom(transaction, this.variables, remainingStores);
+            Script.readEntriesFrom(transaction, this.functions, remainingStores);
+            Script.readEntriesFrom(transaction, this.classes,   remainingStores);
+            Script.readEntriesFrom(transaction, this.strings,   remainingStores);
+    
+            let request = transaction.objectStore("lines").openCursor();
+            request.onsuccess = (event) => {
+              let cursor = event.target.result;
+              if (cursor) {
+                let line = cursor.value;
+                for (let i = 1; i < line.length; ++i) {
+                  switch (line[i] >>> 28) {
+                    case Script.VARIABLE_DEFINITION:
+                    case Script.VARIABLE_REFERENCE:
+                      line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.variables.builtinCount) & 0x0000FFFF);
+                      break;
+    
+                    case Script.FUNCTION_DEFINITION:
+                    case Script.FUNCTION_REFERENCE:
+                      line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.functions.builtinCount) & 0x0000FFFF);
+                      break;
+                  }
+                }
+    
+                this.lines.push({key: new Uint8Array(cursor.key), items: line});
+                cursor.continue();
+              } else {
+                remainingStores.count--;
+                if (remainingStores.count === 0) {
+                  reloadAllRowsInPlace();
+                }
               }
+            };
+            request.onerror = function(event) {
+              console.log(event.errorCode);
             }
-
-            this.data.push({key: new Uint8Array(cursor.key), items: line});
-            cursor.continue();
-          } else {
-            remainingStores.count--;
-            if (remainingStores.count === 0) {
-              reloadAllRowsInPlace();
-            }
-          }
-        };
-      });
-    }
+          });
+        }
+      }
+    });
 
     
 
@@ -122,45 +134,47 @@ class Script {
     this.PAYLOADS.DELETE_SUBEXPRESSION = payloads--;
     this.PAYLOADS.REMOVE_PARENTHESIS_PAIR = payloads--;
 
-
-    function has(item) {
-      const data = item & 0xFFFFFF;
-      return item >>> 28 === Script.SYMBOL && data >= this.start && data < this.end;
-    }
-
-    function getMenuItems() {
-      let options = [];
-      for (let i = this.start; i < this.end; ++i) {
-        options.push({text: SYMBOLS[i], style: "", payload: Script.makeItem(Script.SYMBOL, i)});
+    class Operator {
+      constructor(start, end) {
+        this.start = Script.makeItem(Script.SYMBOL, start);
+        this.end = Script.makeItem(Script.SYMBOL, end);
+        return this;
       }
-      return options;
-    }
 
-    function getMenuItemsUnary() {
-      let options = [];
-      for (let i = this.start; i < this.end; ++i) {
-        options.push({text: SYMBOLS[i] + "\n(unary)", style: "", payload: Script.makeItem(Script.SYMBOL, i)});
+      includes(item) {
+        return item >= this.start && item < this.end;
       }
-      return options;
+
+      * getMenuItems() {
+        for (let payload = this.start; payload < this.end; ++payload) {
+          yield {text: SYMBOLS[payload & 0xFFFFFF], style: "", payload};
+        }
+      }
     }
 
-    this.ASSIGNMENT_OPERATORS = {start: 0, end: 9, has, getMenuItems};
-    this.BINARY_OPERATORS = {start: 9, end: 27, has, getMenuItems};
-    this.UNARY_OPERATORS = {start: 27, end: 30, has, getMenuItems: getMenuItemsUnary};
+    this.ASSIGNMENT_OPERATORS = new Operator(0, 9);
+    this.BINARY_OPERATORS = new Operator(9, 27);
+    this.UNARY_OPERATORS = new Operator(27, 30);
   }
 
-  static readEntriesFrom(transaction, objStoreName, arr, remainingStores) {
-    const offset = arr.length;
+  static readEntriesFrom(transaction, arr, remainingStores) {
+    const offset = arr.builtinCount;
 
-    let objectStore = transaction.objectStore(objStoreName);
+    let objectStore = transaction.objectStore(arr.name);
     let request = objectStore.openCursor();
     request.onsuccess = function(event) {
       let cursor = event.target.result;
       if (cursor) {
-        arr[cursor.key + offset] = cursor.value;
+        while (arr.length < cursor.key + offset) {
+          arr.gaps.push(arr.length);
+          arr.push(undefined);
+        }
+        arr.push(cursor.value);
         cursor.continue();
       } else {
-        remainingStores.count--
+        remainingStores.count--;
+        if (arr.gaps.length)
+          console.log(arr.name, "has gaps ", arr.gaps);
         if (remainingStores.count === 0) {
           reloadAllRowsInPlace();
         }
@@ -182,8 +196,8 @@ class Script {
   }
 
   makeCommentItem(text) {
-    let id = this.comments.length;
-    this.comments.push(text);
+    let id = this.strings.length;
+    this.strings.push(text);
     return Script.makeItem(Script.COMMENT, id);
   }
 
@@ -215,7 +229,7 @@ class Script {
       }
     }
 
-    if (this.ASSIGNMENT_OPERATORS.has(item)) {
+    if (this.ASSIGNMENT_OPERATORS.includes(item)) {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
@@ -272,7 +286,7 @@ class Script {
     } else {
       //don't allow the user to delete the item if it is a binary operator followed by anything meaningful
       if (format !== Script.VARIABLE_DEFINITION && format !== Script.FUNCTION_DEFINITION) {
-        if (!this.BINARY_OPERATORS.has(item)
+        if (!this.BINARY_OPERATORS.includes(item)
         || (this.getItem(row, col + 1) === undefined || this.getItem(row, col + 1) === this.HINTS.EXPRESSION))
           options.push( {text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM} );
       }
@@ -284,7 +298,7 @@ class Script {
       || item === this.ITEMS.TRUE
       || item === this.ITEMS.FALSE) {
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.PARENTHESIS_PAIR} );
-        //options.push(...this.BINARY_OPERATORS.getMenuItems());
+        options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
       if (format === Script.VARIABLE_DEFINITION || format === Script.FUNCTION_DEFINITION) {
@@ -310,14 +324,14 @@ class Script {
       || prevFormat === Script.NUMERIC_LITERAL
       || prevFormat === Script.STRING_LITERAL
       || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE
-      || prevItem === this.ITEMS.END_PARENTHESIS) {
+      || prevItem === this.ITEMS.END_PARENTHESIS
+      || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE) {
         options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
-      if (this.BINARY_OPERATORS.has(prevItem) || this.UNARY_OPERATORS.has(prevItem) || this.ASSIGNMENT_OPERATORS.has(prevItem)
-      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.IN || prevItem === this.ITEMS.RETURN
-      || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE) {
-        if (!this.UNARY_OPERATORS.has(prevItem)) {
+      if (this.BINARY_OPERATORS.includes(prevItem) || this.UNARY_OPERATORS.includes(prevItem) || this.ASSIGNMENT_OPERATORS.includes(prevItem)
+      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.IN || prevItem === this.ITEMS.RETURN) {
+        if (!this.UNARY_OPERATORS.includes(prevItem)) {
           options.push(...this.UNARY_OPERATORS.getMenuItems());
         }
 
@@ -547,40 +561,43 @@ class Script {
         const item = this.getItem(row, col);
         const format = item >>> 28;
         if (format === Script.NUMERIC_LITERAL) {
-          hint = this.numericLiterals[item & 0xFFFFFFF];
+          hint = this.strings[item & 0x00FFFFFF];
         } else if (format === Script.STRING_LITERAL) {
-          hint = '"' + this.stringLiterals[item & 0xFFFFFFF] + '"';
-        } else if (item === this.ITEMS.TRUE || item === this.ITEMS.FALSE) {
-          hint = this.keywords[item & 0xFFFFFFF].name;
+          hint = '"' + this.strings[item & 0x00FFFFFF] + '"';
+        } else if (format === Script.KEYWORD) {
+          hint = this.keywords[item & 0x00FFFFFF].name;
         }
 
         let input = prompt("Enter a string or a number:", hint);
         if (input === null)
           return Script.RESPONSE.NO_CHANGE;
         
-        if (input.trim().length !== 0 && !isNaN(input)) {
-          let id = this.numericLiterals.length;
-          this.numericLiterals.push(input);
-          this.saveMetadata(this.numericLiterals, id);
-          this.setItem(row, col, Script.makeItem(Script.NUMERIC_LITERAL, id));
-        } else if (input === "true") {
-          this.setItem(row, col, this.ITEMS.TRUE);
-        } else if (input === "false") {
-          this.setItem(row, col, this.ITEMS.FALSE);
-        } else {
-          if (input.startsWith('"')) {
-            if (input.endsWith('"')) {
-              input = input.substring(1, input.length - 1);
-            } else {
-              input = input.substring(1);
-            }
+        if (input === "true" || input === "false") {
+          if (input === "true") {
+            this.setItem(row, col, this.ITEMS.TRUE);
+          } else {
+            this.setItem(row, col, this.ITEMS.FALSE);
           }
+        }
+        else {
+          const id = this.strings.gaps.pop() || this.strings.length;
 
+          if (input.trim().length !== 0 && !isNaN(input)) {
+            this.setItem(row, col, Script.makeItem(Script.NUMERIC_LITERAL, id));
+          } else {
+            if (input.startsWith('"')) {
+              if (input.endsWith('"')) {
+                input = input.substring(1, input.length - 1);
+              } else {
+                input = input.substring(1);
+              }
+            }
+
+            this.setItem(row, col, Script.makeItem(Script.STRING_LITERAL, id));
+          }
           
-          let id = this.stringLiterals.length;
-          this.stringLiterals.push(input);
-          this.saveMetadata(this.stringLiterals, id);
-          this.setItem(row, col, Script.makeItem(Script.STRING_LITERAL, id));
+          this.strings[id] = input;
+          this.saveMetadata(this.strings, id);
         }
 
         return Script.RESPONSE.ROW_UPDATED;
@@ -621,13 +638,13 @@ class Script {
         const format = item >>> 28;
         const data = item & 0xFFFFFF;
 
-        if (this.UNARY_OPERATORS.has(item)) {
+        if (this.UNARY_OPERATORS.includes(item)) {
           this.spliceRow(row, col, 1);
         }
-        if (this.BINARY_OPERATORS.has(item)) {
+        if (this.BINARY_OPERATORS.includes(item)) {
           this.spliceRow(row, col, 2);
         }
-        if (item === this.HINTS.EXPRESSION && this.BINARY_OPERATORS.has(this.getItem(row, col - 1))) {
+        if (item === this.HINTS.EXPRESSION && this.BINARY_OPERATORS.includes(this.getItem(row, col - 1))) {
           this.spliceRow(row, col - 1, 2);
         }
 
@@ -828,7 +845,7 @@ class Script {
     //user chose a symbol to insert into the script
     if (format === Script.SYMBOL) {
       if (isValue || this.getItem(row, col) >>> 28 === Script.FUNCTION_REFERENCE) {
-        if (this.UNARY_OPERATORS.has(payload))
+        if (this.UNARY_OPERATORS.includes(payload))
           this.spliceRow(row, col, 0, payload);
         else
           this.spliceRow(row, col + 1, 0, payload, this.HINTS.EXPRESSION);
@@ -920,7 +937,7 @@ class Script {
     let start = col;
     let end = col;
 
-    if (this.UNARY_OPERATORS.has(this.getItem(row, col - 1))) {
+    if (this.UNARY_OPERATORS.includes(this.getItem(row, col - 1))) {
       --start;
     }
 
@@ -945,12 +962,16 @@ class Script {
   }
 
   appendRowsUpTo(row) {
-    let key = this.data.length === 0 ? new Uint8Array(1) : this.data.peek().key;
+    let oldLength = this.getRowCount();
+    let inserted = 0;
+
+    let key = this.lines.length === 0 ? new Uint8Array(1) : this.lines.peek().key;
     while (row >= this.getRowCount()) {
       key = Script.incrementKey(key);
-      this.data.push({key, items: [0]});
-      this.saveRow(this.getRowCount() - 1);
+      this.lines.push({key, items: [0]});
+      ++inserted;
     }
+    this.saveRow(oldLength, inserted);
   }
 
   insertRow(row) {
@@ -969,7 +990,7 @@ class Script {
           return -1;
 
         //the indentation is not 0, so it's not whitespace.  Append the rows
-        const lowKey = this.data.peek().key;
+        const lowKey = this.lines.peek().key;
         key = Script.incrementKey(lowKey);
         row = endScope;
         break;
@@ -990,8 +1011,8 @@ class Script {
 
       let bestScore = 0xFFFFFFF;
       for (let i = startScope; i <= endScope; ++i) {
-        const lowKey = (i > 0) ? this.data[i - 1].key : new Uint8Array(1);
-        const highKey = this.data[i].key;
+        const lowKey = (i > 0) ? this.lines[i - 1].key : new Uint8Array(1);
+        const highKey = this.lines[i].key;
         const testKey = Script.averageKeys(lowKey, highKey);
         const last = testKey.length - 1;
         const score = last * 256 + (lowKey[last] || 0) - testKey[last];
@@ -1004,7 +1025,7 @@ class Script {
       }
     }
 
-    this.data.splice(row, 0, {key, items: [indentation]});
+    this.lines.splice(row, 0, {key, items: [indentation]});
     this.saveRow(row);
     return row;
   }
@@ -1025,47 +1046,56 @@ class Script {
     
     let keysToDelete = [];
     for (let i = row; i < row + count; ++i) {
-      keysToDelete.push(this.data[i].key);
+      keysToDelete.push(this.lines[i].key);
     }
 
-    Script.performDatabaseOp(this.projectID, "lines", "readwrite", (transaction) => {
+    this.performDatabaseOp("lines", "readwrite", (transaction) => {
       let linesStore = transaction.objectStore("lines");
       for (const key of keysToDelete) {
         linesStore.delete(key);
       }
     });
 
-    this.data.splice(row, count);
+    this.lines.splice(row, count);
     return [row, count];
   }
 
-  saveRow(row) {
-    Script.performDatabaseOp(this.projectID, "lines", "readwrite", (transaction) => {
+  saveRow(row, count = 1) {
+    this.performDatabaseOp("lines", "readwrite", (transaction) => {
       let linesStore = transaction.objectStore("lines");
-      let line = this.data[row].items.slice(); //copy array
+      for (let i = row; i < row + count; ++i) {
+        let line = this.lines[i].items.slice(); //copy array
 
-      for (let j = 1; j < line.length; ++j) {
-        switch (line[j] >>> 28) {
-          case Script.VARIABLE_DEFINITION:
-          case Script.VARIABLE_REFERENCE:
-            line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.variables.builtinCount) & 0x0000FFFF);
-            break;
-
-          case Script.FUNCTION_DEFINITION:
-          case Script.FUNCTION_REFERENCE:
-            line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.functions.builtinCount) & 0x0000FFFF);
-            break;
+        for (let j = 1; j < line.length; ++j) {
+          switch (line[j] >>> 28) {
+            case Script.VARIABLE_DEFINITION:
+            case Script.VARIABLE_REFERENCE:
+              line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.variables.builtinCount) & 0x0000FFFF);
+              break;
+  
+            case Script.FUNCTION_DEFINITION:
+            case Script.FUNCTION_REFERENCE:
+              line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.functions.builtinCount) & 0x0000FFFF);
+              break;
+          }
         }
-      }
 
-      linesStore.put(line, this.data[row].key);
+        linesStore.put(line, this.lines[i].key);
+      }
     });
   }
 
   saveMetadata(arr, id) {
-    Script.performDatabaseOp(this.projectID, arr.name, "readwrite", (transaction) => {
+    this.performDatabaseOp(arr.name, "readwrite", (transaction) => {
       let objStore = transaction.objectStore(arr.name);
       objStore.put(arr[id], id - arr.builtinCount);
+    });
+  }
+
+  deleteMetadata(arr, id) {
+    this.performDatabaseOp(arr.name, "readwrite", (transaction) => {
+      let objStore = transaction.objectStore(arr.name);
+      objStore.delete(id - arr.builtinCount);
     });
   }
 
@@ -1110,33 +1140,46 @@ class Script {
   }
 
   getRowCount() {
-    return this.data.length;
+    return this.lines.length;
   }
 
   getItemCount(row) {
-    return this.data[row].items.length;
+    return this.lines[row].items.length;
   }
 
   getItem(row, col) {
-    return this.data[row].items[col];
+    return this.lines[row].items[col];
   }
 
   setItem(row, col, val) {
-    this.data[row].items[col] = val;
+    switch (this.lines[row].items[col] >>> 28) {
+      case Script.NUMERIC_LITERAL:
+      case Script.STRING_LITERAL:
+      case Script.COMMENT: {
+        let id = this.lines[row].items[col] & 0x00FFFFFF;
+        this.deleteMetadata(this.strings, id);
+        this.strings[id] = undefined;
+        this.strings.gaps.push(id);
+        console.log("pooled string id " + id);
+        console.log(this.strings);
+      }
+    }
+
+    this.lines[row].items[col] = val;
     this.saveRow(row);
   }
 
   pushItems(row, ...items) {
-    this.data[row].items.push(...items);
+    this.lines[row].items.push(...items);
     this.saveRow(row);
   }
 
   findItem(row, item) {
-    return this.data[row].items.lastIndexOf(item);
+    return this.lines[row].items.lastIndexOf(item);
   }
 
   spliceRow(row, col, count, ...items) {
-    this.data[row].items.splice(col, count, ...items);
+    this.lines[row].items.splice(col, count, ...items);
     this.saveRow(row);
   }
 
@@ -1196,65 +1239,21 @@ class Script {
         return [this.keywords[data].name, "keyword"];
 
       case Script.NUMERIC_LITERAL:
-        return [this.numericLiterals[data], "numeric"];
+        return [this.strings[data], "numeric"];
 
       case Script.STRING_LITERAL:
-        return [this.stringLiterals[data], "string"];
+        return [this.strings[data], "string"];
 
       case Script.COMMENT:
-        return [this.comments[data], "comment"];
+        return [this.strings[data], "comment"];
 
       default:
         return [`format\n${format}`, "error"];
     }
   }
 
-  //checks if there are any modifications since the last save
-  //if so, saves modified data to database
-  save() {
-    const scriptInstance = this;
-    let projectID = this.projectID;
-
-    function createProject(objStore, transaction) {
-      const now = new Date();
-      const newProject = {name: getDateString(now), created: now, lastModified: now};
-
-      objStore.add(newProject).onsuccess = function(event) {
-        projectID = event.target.result;
-        console.log("Successfully created new project listing.  ID is " + projectID);
-        scriptInstance.projectID = projectID;
-        localStorage.setItem("open-project-id", projectID);
-      }
-    }
-
-    if (!projectID) {
-      performActionOnProjectListDatabase("readwrite", createProject);
-    }
-    else {
-      performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
-        objStore.get(projectID).onsuccess = function(event) {
-          console.log("Successfully read project listing " + projectID);
-
-          if (!event.target.result) {
-            console.log("Attempted to modify project " + projectID + ", but it did not exist.");
-            performActionOnProjectListDatabase("readwrite", createProject);
-          }
-          else {
-            let projectListing = event.target.result;
-            projectListing.lastModified = new Date();
-  
-            objStore.put(projectListing).onsuccess = function(event) {
-              console.log("Successfully updated project last edit date.  ID is " + event.target.result);
-            }
-          }
-        }
-      });
-    }
-  }
-
-  static performDatabaseOp(projectID, scope, mode, action) {
-    //console.log("performDatabaseOp called.  projectID === " + projectID);
-    let openRequest = indexedDB.open(projectID, 1);
+  performTransaction(scope, mode, action) {
+    let openRequest = indexedDB.open(this.projectID, 1);
   
     openRequest.onerror = function(event) {
       alert("Failed to open project data database. Error code " + event.errorCode);
@@ -1265,13 +1264,10 @@ class Script {
       db.createObjectStore("variables");
       db.createObjectStore("functions");
       db.createObjectStore("classes");
-      db.createObjectStore("numeric-literals");
-      db.createObjectStore("string-literals");
-      db.createObjectStore("comments");
+      db.createObjectStore("strings");
       db.createObjectStore("lines");
     };
     openRequest.onsuccess = function(event) {
-      //console.log("Successfully opened project data database");
       let db = event.target.result;
   
       db.onerror = function(event) {
@@ -1281,6 +1277,59 @@ class Script {
       let transaction = db.transaction(scope, mode);
       action(transaction);
     };
+  }
+
+  /**
+   * Opens a transaction with the given scope and mode and performs the action on it.  If the project did not already exist, creates it.
+   * @param {*} scope names of object stores to read or write data
+   * @param {*} mode "readonly" or "readwrite"
+   * @param {*} action function that takes a transaction as a parameter
+   */
+  performDatabaseOp(scope, mode, action) {
+    const createProject = (objStore, transaction) => {
+      const now = new Date();
+      const newProject = {name: getDateString(now), created: now, lastModified: now};
+
+      objStore.add(newProject).onsuccess = (event) => {
+        console.log("Successfully created new project listing.  ID is " + event.target.result);
+        this.projectID = event.target.result;
+        localStorage.setItem(this.OPEN_PROJECT_KEY, event.target.result);
+
+        let queuedWrite;
+        while (queuedWrite = this.databaseQueue.pop()) {
+          this.performTransaction(...queuedWrite);
+          console.log("performing queued write");
+        }
+      }
+    }
+
+    if (this.projectID <= 0) {
+      this.databaseQueue.push([scope, mode, action]);
+    }
+
+    if (this.projectID === 0) {
+      console.log("creating a new project");
+      this.projectID = -1;
+      performActionOnProjectListDatabase("readwrite", createProject);
+    }
+
+    if (this.projectID > 0) {
+      if (mode === "readwrite")
+      performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
+        objStore.get(this.projectID).onsuccess = (event) => {
+          console.log("Successfully read project listing " + this.projectID);
+
+          let projectListing = event.target.result;
+          projectListing.lastModified = new Date();
+
+          objStore.put(projectListing).onsuccess = function(event) {
+            console.log("Successfully updated project last edit date.  ID is " + event.target.result);
+          }
+        }
+      });
+
+      this.performTransaction(scope, mode, action);
+    }
   }
 
   /*
@@ -1367,15 +1416,15 @@ class Script {
             break;
 
           case Script.NUMERIC_LITERAL:
-            js += `${this.numericLiterals[value]} `;
+            js += `${this.strings[value]} `;
             break;
 
           case Script.STRING_LITERAL:
-            js += `"${this.stringLiterals[value]}" `;
+            js += `"${this.strings[value]}" `;
             break;
 
           case Script.COMMENT:
-            js += `/*${this.comments[value]}*/ `;
+            js += `/*${this.strings[value]}*/ `;
             break;
 
           default:

@@ -125,6 +125,7 @@ function getBuiltIns() {
     "<", //comparison
     "<=", //comparison
     "+", //binary operator
+    "-", //binary operator
     "*", //binary operator
     "/", //binary operator
     "%", //binary operator
@@ -133,7 +134,6 @@ function getBuiltIns() {
     "|", //binary operator
     "&&", //binary operator
     "||", //binary operator
-    "-", //binary operator
     "-", //unary operator
     "!", //unary operator
     "~", //unary operator
