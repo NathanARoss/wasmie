@@ -41,7 +41,6 @@ class Script {
     this.classes.name = "classes";
     this.strings.name = "strings";
 
-    if (this.projectID)
     performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
       objStore.get(this.projectID).onsuccess = (event) => {
         if (!event.target.result) {
@@ -1254,7 +1253,7 @@ class Script {
     }
   }
 
-  performTransaction(scope, mode, action) {
+  performTransaction(tasks) {
     let openRequest = indexedDB.open(this.projectID, 1);
   
     openRequest.onerror = function(event) {
@@ -1276,8 +1275,11 @@ class Script {
         alert("Database error: " + event.target.errorCode);
       };
 
-      let transaction = db.transaction(scope, mode);
-      action(transaction);
+      let task;
+      while (task = tasks.pop()) {
+        console.log("performing transaction on stores ", task.scope, " in ", task.mode, " mode")
+        task.action(db.transaction(task.scope, task.mode));
+      }
     };
   }
 
@@ -1288,49 +1290,45 @@ class Script {
    * @param {*} action function that takes a transaction as a parameter
    */
   performDatabaseOp(scope, mode, action) {
-    const createProject = (objStore, transaction) => {
-      const now = new Date();
-      const newProject = {name: getDateString(now), created: now, lastModified: now};
+    this.databaseQueue.push({scope, mode, action});
 
-      objStore.add(newProject).onsuccess = (event) => {
-        console.log("Successfully created new project listing.  ID is " + event.target.result);
-        this.projectID = event.target.result;
-        localStorage.setItem(this.OPEN_PROJECT_KEY, event.target.result);
-
-        let queuedWrite;
-        while (queuedWrite = this.databaseQueue.pop()) {
-          this.performTransaction(...queuedWrite);
-          console.log("performing queued write");
-        }
-      }
-    }
-
-    if (this.projectID <= 0) {
-      this.databaseQueue.push([scope, mode, action]);
-    }
-
-    if (this.projectID === 0) {
-      console.log("creating a new project");
-      this.projectID = -1;
-      performActionOnProjectListDatabase("readwrite", createProject);
-    }
-
-    if (this.projectID > 0) {
-      if (mode === "readwrite")
-      performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
+    if (this.databaseQueue.length === 1) {
+      performActionOnProjectListDatabase(mode, (objStore, transaction) => {
         objStore.get(this.projectID).onsuccess = (event) => {
-          console.log("Successfully read project listing " + this.projectID);
+          if (event.target.result) {
+            if (mode === "readwrite") {
+              let projectListing = event.target.result;
+              projectListing.lastModified = new Date();
+              objStore.put(projectListing);
+              console.log("Updating edit date of project listing " + this.projectID);
+            }
 
-          let projectListing = event.target.result;
-          projectListing.lastModified = new Date();
-
-          objStore.put(projectListing).onsuccess = function(event) {
-            console.log("Successfully updated project last edit date.  ID is " + event.target.result);
+            this.performTransaction(this.databaseQueue);
+          } else if (mode === "readwrite") {
+            const now = new Date();
+            const newProject = {name: getDateString(now), created: now, lastModified: now};
+      
+            objStore.add(newProject).onsuccess = (event) => {
+              console.log("Successfully created new project listing.  ID is", event.target.result, ". Saving all project data");
+              this.projectID = event.target.result;
+              localStorage.setItem(this.OPEN_PROJECT_KEY, event.target.result);
+      
+              this.databaseQueue.length = 0;
+              this.saveRow(0, this.getRowCount());
+              this.performDatabaseOp(["variables", "functions", "classes", "strings"], "readwrite", (transaction) => {
+                for (let arr of [this.variables, this.classes, this.functions, this.strings]) {
+                  let objStore = transaction.objectStore(arr.name);
+                  for (let id = arr.builtinCount; id < arr.length; ++id) {
+                    if (arr[id]) {
+                      objStore.put(arr[id], id - arr.builtinCount);
+                    }
+                  }
+                }
+              });
+            }
           }
         }
       });
-
-      this.performTransaction(scope, mode, action);
     }
   }
 
