@@ -50,7 +50,7 @@ class Script {
         } else {
           let remainingStores = {count: 5};
 
-          this.performDatabaseOp(["variables", "functions", "classes", "strings", "lines"], "readonly", (transaction) => {
+          this.performTransaction([{scope: ["variables", "functions", "classes", "strings", "lines"], mode: "readonly", action: (transaction) => {
             Script.readEntriesFrom(transaction, this.variables, remainingStores);
             Script.readEntriesFrom(transaction, this.functions, remainingStores);
             Script.readEntriesFrom(transaction, this.classes,   remainingStores);
@@ -87,7 +87,7 @@ class Script {
             request.onerror = function(event) {
               console.log(event.errorCode);
             }
-          });
+          }}]);
         }
       }
     });
@@ -1048,11 +1048,12 @@ class Script {
       keysToDelete.push(this.lines[i].key);
     }
 
-    this.performDatabaseOp("lines", "readwrite", (transaction) => {
-      let linesStore = transaction.objectStore("lines");
+    this.modifyObjStore("lines", (objStore) => {
       for (const key of keysToDelete) {
-        linesStore.delete(key);
+        objStore.delete(key);
       }
+
+      //keysToDelete.forEach(objStore.delete);
     });
 
     this.lines.splice(row, count);
@@ -1060,8 +1061,7 @@ class Script {
   }
 
   saveRow(row, count = 1) {
-    this.performDatabaseOp("lines", "readwrite", (transaction) => {
-      let linesStore = transaction.objectStore("lines");
+    this.modifyObjStore("lines", (objStore) => {
       for (let i = row; i < row + count; ++i) {
         let line = this.lines[i].items.slice(); //copy array
 
@@ -1079,21 +1079,19 @@ class Script {
           }
         }
 
-        linesStore.put(line, this.lines[i].key);
+        objStore.put(line, this.lines[i].key);
       }
     });
   }
 
   saveMetadata(arr, id) {
-    this.performDatabaseOp(arr.name, "readwrite", (transaction) => {
-      let objStore = transaction.objectStore(arr.name);
+    this.modifyObjStore(arr.name, (objStore) => {
       objStore.put(arr[id], id - arr.builtinCount);
     });
   }
 
   deleteMetadata(arr, id) {
-    this.performDatabaseOp(arr.name, "readwrite", (transaction) => {
-      let objStore = transaction.objectStore(arr.name);
+    this.modifyObjStore(arr.name, "readwrite", (objStore) => {
       objStore.delete(id - arr.builtinCount);
     });
   }
@@ -1277,7 +1275,7 @@ class Script {
 
       let task;
       while (task = tasks.pop()) {
-        console.log("performing transaction on stores ", task.scope, " in ", task.mode, " mode")
+        console.log("performing transaction on store", task.scope, "in", task.mode, "mode");
         task.action(db.transaction(task.scope, task.mode));
       }
     };
@@ -1285,26 +1283,22 @@ class Script {
 
   /**
    * Opens a transaction with the given scope and mode and performs the action on it.  If the project did not already exist, creates it.
-   * @param {*} scope names of object stores to read or write data
-   * @param {*} mode "readonly" or "readwrite"
+   * @param {*} store name of object stores to modify data
    * @param {*} action function that takes a transaction as a parameter
    */
-  performDatabaseOp(scope, mode, action) {
-    this.databaseQueue.push({scope, mode, action});
+  modifyObjStore(store, action) {
+    this.databaseQueue.push({store, mode: "readwrite", action});
 
     if (this.databaseQueue.length === 1) {
-      performActionOnProjectListDatabase(mode, (objStore, transaction) => {
+      performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
         objStore.get(this.projectID).onsuccess = (event) => {
           if (event.target.result) {
-            if (mode === "readwrite") {
-              let projectListing = event.target.result;
-              projectListing.lastModified = new Date();
-              objStore.put(projectListing);
-              console.log("Updating edit date of project listing " + this.projectID);
-            }
-
+            console.log("Updating edit date of project listing " + this.projectID);
+            let projectListing = event.target.result;
+            projectListing.lastModified = new Date();
+            objStore.put(projectListing);
             this.performTransaction(this.databaseQueue);
-          } else if (mode === "readwrite") {
+          } else {
             const now = new Date();
             const newProject = {name: getDateString(now), created: now, lastModified: now};
       
@@ -1315,16 +1309,18 @@ class Script {
       
               this.databaseQueue.length = 0;
               this.saveRow(0, this.getRowCount());
-              this.performDatabaseOp(["variables", "functions", "classes", "strings"], "readwrite", (transaction) => {
-                for (let arr of [this.variables, this.classes, this.functions, this.strings]) {
-                  let objStore = transaction.objectStore(arr.name);
+
+              for (let arr of [this.variables, this.classes, this.functions, this.strings]) {
+                let op = {scope: arr.name, mode: "readwrite", action: (transaction) => {
                   for (let id = arr.builtinCount; id < arr.length; ++id) {
                     if (arr[id]) {
-                      objStore.put(arr[id], id - arr.builtinCount);
+                      transaction.objectStore(arr.name).put(arr[id], id - arr.builtinCount);
                     }
                   }
-                }
-              });
+                }};
+                this.databaseQueue.push(op);
+              }
+              this.performTransaction(this.databaseQueue);
             }
           }
         }
