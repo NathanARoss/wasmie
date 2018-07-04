@@ -8,7 +8,7 @@ class Script {
     this.lines = [];
     this.OPEN_PROJECT_KEY = "open-touchscript-project-id";
     this.projectID = Number(localStorage.getItem(this.OPEN_PROJECT_KEY));
-    this.databaseQueue = [];
+    this.queuedDBwrites = {scope: new Set(), actions: []};
 
     const {classes, variables, functions, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP} = getBuiltIns();
     this.classes = classes;
@@ -40,6 +40,7 @@ class Script {
     this.functions.name = "functions";
     this.classes.name = "classes";
     this.strings.name = "strings";
+    this.lines.name = "lines";
 
     performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
       objStore.get(this.projectID).onsuccess = (event) => {
@@ -50,32 +51,38 @@ class Script {
         } else {
           let remainingStores = {count: 5};
 
-          this.performTransaction([{scope: ["variables", "functions", "classes", "strings", "lines"], mode: "readonly", action: (transaction) => {
-            Script.readEntriesFrom(transaction, this.variables, remainingStores);
-            Script.readEntriesFrom(transaction, this.functions, remainingStores);
-            Script.readEntriesFrom(transaction, this.classes,   remainingStores);
-            Script.readEntriesFrom(transaction, this.strings,   remainingStores);
-    
-            let request = transaction.objectStore("lines").openCursor();
-            request.onsuccess = (event) => {
+          let actions = [];
+          for (const arr of [this.variables, this.functions, this.classes, this.strings]) {
+            actions.push({storeName: arr.name, function: Script.readEntries, arguments: [arr, remainingStores]});
+          }
+          actions.push({storeName: this.lines.name,
+          arguments: [this.variables, this.functions, this.classes, this.strings, this.lines, remainingStores],
+          function: function(objStore, variables, functions, classes, strings, lines, remainingStores) {
+            objStore.openCursor().onsuccess = function(event) {
               let cursor = event.target.result;
               if (cursor) {
-                let line = cursor.value;
-                for (let i = 1; i < line.length; ++i) {
-                  switch (line[i] >>> 28) {
+                let items = cursor.value;
+                for (let i = 1; i < items.length; ++i) {
+                  switch (items[i] >>> 28) {
                     case Script.VARIABLE_DEFINITION:
                     case Script.VARIABLE_REFERENCE:
-                      line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.variables.builtinCount) & 0x0000FFFF);
+                      items[i] = (items[i] & 0xF0000000) | ((items[i] + (classes.builtinCount << 16)) & 0x0FFF0000) | ((items[i] + variables.builtinCount) & 0x0000FFFF);
                       break;
-    
+
                     case Script.FUNCTION_DEFINITION:
                     case Script.FUNCTION_REFERENCE:
-                      line[i] = (line[i] & 0xF0000000) | ((line[i] + (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[i] + this.functions.builtinCount) & 0x0000FFFF);
+                      items[i] = (items[i] & 0xF0000000) | ((items[i] + (classes.builtinCount << 16)) & 0x0FFF0000) | ((items[i] + functions.builtinCount) & 0x0000FFFF);
+                      break;
+
+                    case Script.NUMERIC_LITERAL:
+                    case Script.STRING_LITERAL:
+                    case Script.COMMENT:
+                      items[i] = (items[i] & 0xF0000000) | ((items[i] + strings.builtinCount) & 0x0FFFFFFF);
                       break;
                   }
                 }
-    
-                this.lines.push({key: new Uint8Array(cursor.key), items: line});
+
+                lines.push({key: new Uint8Array(cursor.key), items});
                 cursor.continue();
               } else {
                 remainingStores.count--;
@@ -84,15 +91,12 @@ class Script {
                 }
               }
             };
-            request.onerror = function(event) {
-              console.log(event.errorCode);
-            }
-          }}]);
+          }});
+
+          this.performTransaction(new Set(["variables", "functions", "classes", "strings", "lines"]), "readonly", actions);
         }
       }
     });
-
-    
 
     this.ITEMS = {};
     this.ITEMS.FUNC     = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("func"));
@@ -156,11 +160,10 @@ class Script {
     this.UNARY_OPERATORS = new Operator(27, 30);
   }
 
-  static readEntriesFrom(transaction, arr, remainingStores) {
+  static readEntries(objStore, arr, remainingStores) {
     const offset = arr.builtinCount;
 
-    let objectStore = transaction.objectStore(arr.name);
-    let request = objectStore.openCursor();
+    let request = objStore.openCursor();
     request.onsuccess = function(event) {
       let cursor = event.target.result;
       if (cursor) {
@@ -1048,52 +1051,56 @@ class Script {
       keysToDelete.push(this.lines[i].key);
     }
 
-    this.modifyObjStore("lines", (objStore) => {
-      for (const key of keysToDelete) {
-        objStore.delete(key);
-      }
-
-      //keysToDelete.forEach(objStore.delete);
-    });
+    this.modifyObjStore(this.lines.name, function(objStore, keysToDelete){
+      keysToDelete.forEach(objStore.delete.bind(objStore));
+    }, keysToDelete);
 
     this.lines.splice(row, count);
     return [row, count];
   }
 
-  saveRow(row, count = 1) {
-    this.modifyObjStore("lines", (objStore) => {
-      for (let i = row; i < row + count; ++i) {
-        let line = this.lines[i].items.slice(); //copy array
+  static writeLines(objStore, variables, functions, classes, strings, lines, row, count) {
+    for (let i = row; i < row + count; ++i) {
+      let line = lines[i].items.slice(); //copy array
 
-        for (let j = 1; j < line.length; ++j) {
-          switch (line[j] >>> 28) {
-            case Script.VARIABLE_DEFINITION:
-            case Script.VARIABLE_REFERENCE:
-              line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.variables.builtinCount) & 0x0000FFFF);
-              break;
-  
-            case Script.FUNCTION_DEFINITION:
-            case Script.FUNCTION_REFERENCE:
-              line[j] = (line[j] & 0xF0000000) | ((line[j] - (this.classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - this.functions.builtinCount) & 0x0000FFFF);
-              break;
-          }
+      for (let j = 1; j < line.length; ++j) {
+        switch (line[j] >>> 28) {
+          case Script.VARIABLE_DEFINITION:
+          case Script.VARIABLE_REFERENCE:
+            line[j] = (line[j] & 0xF0000000) | ((line[j] - (classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - variables.builtinCount) & 0x0000FFFF);
+            break;
+
+          case Script.FUNCTION_DEFINITION:
+          case Script.FUNCTION_REFERENCE:
+            line[j] = (line[j] & 0xF0000000) | ((line[j] - (classes.builtinCount << 16)) & 0x0FFF0000) | ((line[j] - functions.builtinCount) & 0x0000FFFF);
+            break;
+            
+          case Script.NUMERIC_LITERAL:
+          case Script.STRING_LITERAL:
+          case Script.COMMENT:
+            line[j] = (line[j] & 0xF0000000) | ((line[j] - strings.builtinCount) & 0x0FFFFFFF);
+            break;
         }
-
-        objStore.put(line, this.lines[i].key);
       }
-    });
+
+      objStore.put(line, lines[i].key);
+    }
+  }
+
+  saveRow(row, count = 1) {
+    this.modifyObjStore(this.lines.name, Script.writeLines, this.variables, this.functions, this.classes, this.strings, this.lines, row, count);
   }
 
   saveMetadata(arr, id) {
-    this.modifyObjStore(arr.name, (objStore) => {
-      objStore.put(arr[id], id - arr.builtinCount);
-    });
+    this.modifyObjStore(arr.name, function(objStore, entry, key) {
+      objStore.put(entry, key);
+    }, arr[id], id - arr.builtinCount);
   }
 
   deleteMetadata(arr, id) {
-    this.modifyObjStore(arr.name, "readwrite", (objStore) => {
-      objStore.delete(id - arr.builtinCount);
-    });
+    this.modifyObjStore(arr.name, function(objStore, key) {
+      objStore.delete(key);
+    }, id - arr.builtinCount);
   }
 
   static incrementKey(key) {
@@ -1251,7 +1258,7 @@ class Script {
     }
   }
 
-  performTransaction(tasks) {
+  performTransaction(scope, mode, actions) {
     let openRequest = indexedDB.open(this.projectID, 1);
   
     openRequest.onerror = function(event) {
@@ -1273,10 +1280,13 @@ class Script {
         alert("Database error: " + event.target.errorCode);
       };
 
-      let task;
-      while (task = tasks.pop()) {
-        console.log("performing transaction on store", task.scope, "in", task.mode, "mode");
-        task.action(db.transaction(task.scope, task.mode));
+      let transaction = db.transaction(scope, mode);
+      scope.clear();
+      
+      while (actions.length) {
+        const action = actions.shift();
+        //console.log("performing", mode, "transaction on store", action.storeName);
+        action.function(transaction.objectStore(action.storeName), ...action.arguments);
       }
     };
   }
@@ -1286,18 +1296,19 @@ class Script {
    * @param {*} store name of object stores to modify data
    * @param {*} action function that takes a transaction as a parameter
    */
-  modifyObjStore(store, action) {
-    this.databaseQueue.push({store, mode: "readwrite", action});
+  modifyObjStore(storeName, action, ...args) {
+    this.queuedDBwrites.scope.add(storeName);
+    this.queuedDBwrites.actions.push({storeName, arguments: args, function: action});
 
-    if (this.databaseQueue.length === 1) {
+    if (this.queuedDBwrites.actions.length === 1) {
       performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
         objStore.get(this.projectID).onsuccess = (event) => {
           if (event.target.result) {
-            console.log("Updating edit date of project listing " + this.projectID);
+            //console.log("Updating edit date of project listing " + this.projectID);
             let projectListing = event.target.result;
             projectListing.lastModified = new Date();
             objStore.put(projectListing);
-            this.performTransaction(this.databaseQueue);
+            this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
           } else {
             const now = new Date();
             const newProject = {name: getDateString(now), created: now, lastModified: now};
@@ -1307,20 +1318,26 @@ class Script {
               this.projectID = event.target.result;
               localStorage.setItem(this.OPEN_PROJECT_KEY, event.target.result);
       
-              this.databaseQueue.length = 0;
-              this.saveRow(0, this.getRowCount());
+              this.queuedDBwrites = {scope: new Set(), actions: []};
+              //this.saveRow(0, this.getRowCount());
+
+              function saveAllMetadata(objStore, arr) {
+                for (let id = arr.builtinCount; id < arr.length; ++id) {
+                  if (arr[id]) {
+                    objStore.put(arr[id], id - arr.builtinCount);
+                  }
+                }
+              };
 
               for (let arr of [this.variables, this.classes, this.functions, this.strings]) {
-                let op = {scope: arr.name, mode: "readwrite", action: (transaction) => {
-                  for (let id = arr.builtinCount; id < arr.length; ++id) {
-                    if (arr[id]) {
-                      transaction.objectStore(arr.name).put(arr[id], id - arr.builtinCount);
-                    }
-                  }
-                }};
-                this.databaseQueue.push(op);
+                this.queuedDBwrites.scope.add(arr.name);
+                this.queuedDBwrites.actions.push({storeName: arr.name, arguments: [arr], function: saveAllMetadata});
               }
-              this.performTransaction(this.databaseQueue);
+
+              this.queuedDBwrites.scope.add(this.lines.name);
+              this.queuedDBwrites.actions.push({storeName: this.lines.name, arguments: [this.variables, this.functions, this.classes, this.strings, this.lines, 0, this.getRowCount()], function: Script.writeLines})
+
+              this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
             }
           }
         }
