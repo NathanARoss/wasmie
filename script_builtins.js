@@ -2,7 +2,6 @@
 
 function getBuiltIns() {
   let classes = [
-    {name: "", size: 0},
     {name: "Any", size: 0},
     {name: "Int8", size: 1},
     {name: "UInt8", size: 1},
@@ -17,11 +16,11 @@ function getBuiltIns() {
     {name: "System", size: 0},
     {name: "Math", size: 0},
     {name: "Canvas", size: 0},
-  ];
+  ].reverse();
 
-  let classMap = new Map();
-  for (let i = 1; i < classes.length; ++i) {
-    classMap.set(classes[i].name, i);
+  let classMap = new Map([["global", 0]]);
+  for (let i = 0; i < classes.length; ++i) {
+    classMap.set(classes[i].name, (-classes.length + i) & 0xFFF);
   }
   
   //static variables of classes only.  no instance variables
@@ -36,14 +35,14 @@ function getBuiltIns() {
     {name: "LN 10",    type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LN10"},
     {name: "LOG₂E",    type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LOG2E"},
     {name: "LOG₁₀E",   type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LOG10E"},
-  ];
+  ].reverse();
   
   function parseFunction(source, js) {
     if (!source.includes("->")) {
       source += "->global";
     }
     
-    let tokens = source.match(/[\w]+/g);
+    let tokens = source.match(/[\w\/]+/g);
     let newFunc = {};
 
     if (!source.includes(".")) {
@@ -102,7 +101,7 @@ function getBuiltIns() {
     parseFunction("Math.round(number:Double) -> Double", "Math.round"),
     parseFunction("Math.floor(number:Double) -> Double", "Math.floor"),
     parseFunction("Math.ceil(number:Double) -> Double", "Math.ceil"),
-  ];
+  ].reverse();
   
   
   
