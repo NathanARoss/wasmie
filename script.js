@@ -1048,28 +1048,39 @@ class Script {
     let count = 1;
     let startRow = row;
 
+    const indentation = this.getIndentation(row);
+    let r = row;
+    do {
+      for (let c = 1; c < this.getItemCount(r); ++c) {
+        const item = this.getItem(r, c);
+        switch (item >>> 28) {
+          case Script.VARIABLE_DEFINITION:
+            this.variables.delete(item & 0xFFFF);
+          break;
+  
+          case Script.FUNCTION_DEFINITION:
+            this.functions.delete(item & 0xFFFF);
+          break;
+          
+          case Script.NUMERIC_LITERAL:
+          case Script.STRING_LITERAL:
+          case Script.COMMENT:
+            this.strings.delete(item & 0x0FFFFFFF);
+          break;
+        }
+      }
+      ++r;
+    } while (r < this.getRowCount() && this.getIndentation(r) !== indentation);
+
+    count += r - row - 1;
+
     //trim whitespace off the bottom of the script
-    if (row + 1 === this.getRowCount()) {
+    if (row + count === this.getRowCount()) {
       while (startRow > 0 && this.getIndentation(startRow - 1) === 0 && this.getItemCount(startRow - 1) === 1) {
         --startRow;
       }
 
-      count = row - startRow + 1;
-    }
-
-    if (this.getItemCount(row) >= 3) {
-      const item = this.getItem(row, 2);
-      switch (item >>> 28) {
-        case Script.VARIABLE_DEFINITION:
-          this.variables.delete(item & 0xFFF);
-        break;
-
-        case Script.FUNCTION_DEFINITION: {
-          this.functions.delete(item & 0xFFF);
-          //TODO remove body of function
-        break;
-        }
-      }
+      count += row - startRow;
     }
 
     const keyRange = IDBKeyRange.bound(this.lines[startRow].key, this.lines[startRow + count - 1].key);
@@ -1302,9 +1313,9 @@ class Script {
               this.queuedDBwrites = {scope: new Set(), actions: []};
 
               function saveAllMetadata(container) {
-                for (let id = container.builtinCount; id < container.length; ++id) {
-                  if (container[id]) {
-                    this.put(container[id], id - container.builtinCount);
+                for (let id = container.builtinCount; id < container.data.length; ++id) {
+                  if (container.data[id]) {
+                    this.put(container.data[id], id - container.builtinCount);
                   }
                 }
               };
