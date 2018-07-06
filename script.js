@@ -21,9 +21,11 @@ class Script {
 
       delete(id) {
         //console.log(this.storeName, "delete", id);
-        this.data[id + this.builtinCount] = undefined;
-        this.gaps.push(id);
-        parent.modifyObjStore(this.storeName, IDBObjectStore.prototype.delete, id);
+        if (this.isUserDefined(id)) {
+          this.data[id + this.builtinCount] = undefined;
+          this.gaps.push(id);
+          parent.modifyObjStore(this.storeName, IDBObjectStore.prototype.delete, id);
+        }
       }
     
       get(id) {
@@ -33,7 +35,7 @@ class Script {
     
       set(id, val) {
         //console.log(this.storeName, ".set(", id, ",", val, ") ->", this.storeName, "[", (id + this.builtinCount) & this.mask, "] =", val);
-        if (id <= this.data.length - this.builtinCount) {
+        if (this.isUserDefined(id)) {
           this.data[(id + this.builtinCount) & this.mask] = val;
           parent.modifyObjStore(this.storeName, IDBObjectStore.prototype.put, val, id);
         }
@@ -50,6 +52,10 @@ class Script {
           
           yield (i - this.builtinCount) & this.mask;
         }
+      }
+
+      isUserDefined(id) {
+        return id <= this.data.length - this.builtinCount;
       }
     }
 
@@ -440,14 +446,14 @@ class Script {
 
     switch (payload) {
       case this.ITEMS.CASE:
-      this.appendRowsUpTo(row);
-        this.setItem(row, 0, this.getItem(row, 0) | 1 << 31);
+        this.appendRowsUpTo(row);
+        this.setItem(row, 0, this.getItem(row, 0) | 1 << 16);
         this.pushItems(row, payload, this.HINTS.VALUE);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
       case this.ITEMS.DEFAULT:
         this.appendRowsUpTo(row);
-        this.setItem(row, 0, this.getItem(row, 0) | 1 << 31);
+        this.setItem(row, 0, this.getItem(row, 0) | 1 << 16);
         this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
@@ -480,13 +486,13 @@ class Script {
       case this.ITEMS.IF:
       case this.ITEMS.WHILE:
         this.appendRowsUpTo(row);
-        this.setItem(row, 0, this.getItem(row, 0) | 1 << 31);
+        this.setItem(row, 0, this.getItem(row, 0) | 1 << 16);
         this.pushItems(row, payload, this.HINTS.CONDITION);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
       case this.ITEMS.FOR:
         this.appendRowsUpTo(row);
-        this.setItem(row, 0, this.getItem(row, 0) | 1 << 31);
+        this.setItem(row, 0, this.getItem(row, 0) | 1 << 16);
 
         let varId = this.variables.nextId();
         this.variables.set(varId, {name: "i", type: 0, scope: 0});
@@ -504,7 +510,7 @@ class Script {
 
       case this.ITEMS.SWITCH:
         this.appendRowsUpTo(row);
-        this.setItem(row, 0, this.getItem(row, 0) | 1 << 31);
+        this.setItem(row, 0, this.getItem(row, 0) | 1 << 16);
         this.pushItems(row, payload, this.HINTS.CONTROL_EXPRESSION);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
@@ -560,29 +566,31 @@ class Script {
         const item = this.getItem(row, col);
         const format = item >>> 28;
         if (format === Script.NUMERIC_LITERAL) {
-          hint = this.strings.get(item & 0x00FFFFFF);
+          hint = this.strings.get(item);
         } else if (format === Script.STRING_LITERAL) {
-          hint = '"' + this.strings.get(item & 0x00FFFFFF) + '"';
+          hint = '"' + this.strings.get(item) + '"';
         } else if (format === Script.KEYWORD) {
-          hint = this.keywords[item & 0x00FFFFFF].name;
+          hint = this.keywords[item & 0x0FFFFFFF].name;
         }
 
         let input = prompt("Enter a string or a number:", hint);
         if (input === null)
           return Script.RESPONSE.NO_CHANGE;
+
+        let payload;
         
         if (input === "true" || input === "false") {
           if (input === "true") {
-            this.setItem(row, col, this.ITEMS.TRUE);
+            payload = this.ITEMS.TRUE;
           } else {
-            this.setItem(row, col, this.ITEMS.FALSE);
+            payload = this.ITEMS.FALSE;
           }
         }
         else {
           const id = this.strings.nextId();
 
           if (input.trim().length !== 0 && !isNaN(input)) {
-            this.setItem(row, col, Script.makeItem(Script.NUMERIC_LITERAL, id));
+            payload = Script.makeItem(Script.NUMERIC_LITERAL, id);
           } else {
             if (input.startsWith('"')) {
               if (input.endsWith('"')) {
@@ -592,12 +600,14 @@ class Script {
               }
             }
 
-            this.setItem(row, col, Script.makeItem(Script.STRING_LITERAL, id));
+            payload = Script.makeItem(Script.STRING_LITERAL, id);
           }
           
           this.strings.set(id, input);
         }
 
+        const [start, end] = this.getExpressionBounds(row, col);
+        this.spliceRow(row, start, end - start + 1, payload);
         return Script.RESPONSE.ROW_UPDATED;
       }
 
@@ -788,7 +798,7 @@ class Script {
         let newFunc = {name, returnType, scope: 0, parameters: []};
         this.appendRowsUpTo(row);
         this.functions.set(funcId, newFunc);
-        this.setItem(row, 0, this.getItem(row, 0) | 1 << 31);
+        this.setItem(row, 0, this.getItem(row, 0) | 1 << 16);
         this.pushItems(row, this.ITEMS.FUNC, Script.makeItemWithMeta(Script.FUNCTION_DEFINITION, returnType, funcId));
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       } else {
@@ -982,7 +992,7 @@ class Script {
     let key = this.lines.length === 0 ? new Uint8Array(1) : this.lines.peek().key;
     while (row >= this.getRowCount()) {
       key = Script.incrementKey(key);
-      this.lines.push({key, items: [0]});
+      this.lines.push({key, items: [0xF << 28]});
       ++inserted;
     }
     this.saveRow(oldLength, inserted);
@@ -1039,7 +1049,7 @@ class Script {
       }
     }
 
-    this.lines.splice(row, 0, {key, items: [indentation]});
+    this.lines.splice(row, 0, {key, items: [0xF << 28 | indentation]});
     this.saveRow(row);
     return row;
   }
@@ -1051,24 +1061,7 @@ class Script {
     const indentation = this.getIndentation(row);
     let r = row;
     do {
-      for (let c = 1; c < this.getItemCount(r); ++c) {
-        const item = this.getItem(r, c);
-        switch (item >>> 28) {
-          case Script.VARIABLE_DEFINITION:
-            this.variables.delete(item & 0xFFFF);
-          break;
-  
-          case Script.FUNCTION_DEFINITION:
-            this.functions.delete(item & 0xFFFF);
-          break;
-          
-          case Script.NUMERIC_LITERAL:
-          case Script.STRING_LITERAL:
-          case Script.COMMENT:
-            this.strings.delete(item & 0x0FFFFFFF);
-          break;
-        }
-      }
+      this.lines[r].items.forEach(this.recycleItem, this);
       ++r;
     } while (r < this.getRowCount() && this.getIndentation(r) !== indentation);
 
@@ -1146,23 +1139,40 @@ class Script {
     return this.lines[row].items.length;
   }
 
+  /**
+   * Check the item for variable, function, class, or string resources to recycle before overwriting
+   * @param {Number} item 
+   */
+  recycleItem(item) {
+    switch (item >>> 28) {
+      case Script.VARIABLE_DEFINITION:
+        this.variables.delete(item & 0xFFFF);
+      break;
+
+      case Script.FUNCTION_DEFINITION:
+        this.functions.delete(item & 0xFFFF);
+      break;
+      
+      case Script.NUMERIC_LITERAL:
+      case Script.STRING_LITERAL:
+      case Script.COMMENT:
+        this.strings.delete(item & 0x0FFFFFFF);
+      break;
+    }
+  }
+
   getItem(row, col) {
     return this.lines[row].items[col];
   }
 
   setItem(row, col, val) {
-    switch (this.lines[row].items[col] >>> 28) {
-      case Script.NUMERIC_LITERAL:
-      case Script.STRING_LITERAL:
-      case Script.COMMENT: {
-        let id = this.lines[row].items[col] & this.strings.mask;
-        if (id < this.strings.mask - this.strings.builtinCount) {
-          this.strings.delete(id);
-        }
-      }
-    }
-
+    this.recycleItem(this.lines[row].items[col]);
     this.lines[row].items[col] = val;
+    this.saveRow(row);
+  }
+
+  spliceRow(row, col, count, ...items) {
+    this.lines[row].items.splice(col, count, ...items).forEach(this.recycleItem, this);
     this.saveRow(row);
   }
 
@@ -1172,12 +1182,7 @@ class Script {
   }
 
   findItem(row, item) {
-    return this.lines[row].items.lastIndexOf(item);
-  }
-
-  spliceRow(row, col, count, ...items) {
-    this.lines[row].items.splice(col, count, ...items);
-    this.saveRow(row);
+    return this.lines[row].items.indexOf(item);
   }
 
   getIndentation(row) {
@@ -1185,7 +1190,7 @@ class Script {
   }
 
   isStartingScope(row) {
-    return this.getItem(row, 0) >>> 31;
+    return this.getItem(row, 0) >>> 16 & 1;
   }
 
   getItemDisplay(row, col) {
