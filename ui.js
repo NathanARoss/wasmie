@@ -429,13 +429,13 @@ function insertRow(position) {
 
 
 function deleteRow(position) {
-  const [pos, count] = script.deleteRow(position);
+  let [pos, count] = script.deleteRow(position);
   let rowIndex = Math.max(0, pos - firstLoadedPosition);
   const end = Math.min(pos + count, list.childNodes.length + firstLoadedPosition);
 
-  for (let newPosition = pos; newPosition < end; ++newPosition) {
+  for (; pos < end; ++pos) {
     let node = list.childNodes[rowIndex];
-    loadRow(newPosition, node);
+    loadRow(firstLoadedPosition + list.childNodes.length - 1, node);
     list.appendChild(node);
   }
   
@@ -726,15 +726,10 @@ function touchCanceled(outerRow) {
 }
 
 
-function stride(start, end, by) {
-  let iterable = {start, end, by};
-  iterable[Symbol.iterator] = function* () {
-    for (let i = this.start; i != this.end; i += this.by) {
-      yield i;
-    }
-  };
-
-  return iterable;
+function* stride(start, end, by) {
+  for (let i = start; i != end; i += by) {
+    yield i;
+  }
 }
 
 function drawCircle(x, y, r, color) {

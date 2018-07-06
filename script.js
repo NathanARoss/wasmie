@@ -20,6 +20,7 @@ class Script {
       }
 
       delete(id) {
+        //console.log(this.storeName, "delete", id);
         this.data[id + this.builtinCount] = undefined;
         this.gaps.push(id);
         parent.modifyObjStore(this.storeName, IDBObjectStore.prototype.delete, id);
@@ -95,9 +96,9 @@ class Script {
               request.onsuccess = function(event) {
                 let cursor = event.target.result;
                 if (cursor) {
-                  while (container.length - container.builtinCount < cursor.key) {
-                    container.gaps.push(container.length - container.builtinCount);
-                    container.push(undefined);
+                  while (container.data.length - container.builtinCount < cursor.key) {
+                    container.gaps.push(container.data.length - container.builtinCount);
+                    container.data.push(undefined);
                   }
                   container.data.push(cursor.value);
                   cursor.continue();
