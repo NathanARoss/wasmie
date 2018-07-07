@@ -122,7 +122,7 @@ class Script {
             this.openCursor().onsuccess = function(event) {
               let cursor = event.target.result;
               if (cursor) {
-                lines.push({key: new Uint8Array(cursor.key), items: cursor.value});
+                lines.push({key: new Uint8Array(cursor.key), items: Array.from(new Uint32Array(cursor.value))});
                 cursor.continue();
               } else {
                 if (--remainingStores.count === 0) {
@@ -1086,7 +1086,7 @@ class Script {
   saveRow(row, count = 1) {
     this.modifyObjStore(this.lines.storeName, function(lines, row, count) {
       for (let i = row; i < row + count; ++i) {
-        this.put(lines[i].items, lines[i].key);
+        this.put(Uint32Array.from(lines[i].items).buffer, lines[i].key);
       }
     }, this.lines, row, count);
   }
@@ -1333,7 +1333,7 @@ class Script {
               this.queuedDBwrites.scope.add(this.lines.storeName);
               this.queuedDBwrites.actions.push({storeName: this.lines.storeName, arguments: [this.lines], function: function(lines) {
                 for (const line of lines) {
-                  this.put(line.items, line.key);
+                  this.put(Uint32Array.from(line.items).buffer, line.key);
                 }
               }});
 
