@@ -122,7 +122,7 @@ class Script {
             this.openCursor().onsuccess = function(event) {
               let cursor = event.target.result;
               if (cursor) {
-                lines.push({key: new Uint8Array(cursor.key), items: Array.from(new Uint32Array(cursor.value))});
+                lines.push({key: cursor.key, items: Array.from(new Uint32Array(cursor.value))});
                 cursor.continue();
               } else {
                 if (--remainingStores.count === 0) {
@@ -989,7 +989,7 @@ class Script {
     let oldLength = this.getRowCount();
     let inserted = 0;
 
-    let key = this.lines.length === 0 ? new Uint8Array(1) : this.lines.peek().key;
+    let key = this.lines.length === 0 ? new ArrayBuffer(1) : this.lines.peek().key;
     while (row >= this.getRowCount()) {
       key = Script.incrementKey(key);
       this.lines.push({key, items: [0xF << 28]});
@@ -1035,11 +1035,11 @@ class Script {
 
       let bestScore = 0xFFFFFFF;
       for (let i = startScope; i <= endScope; ++i) {
-        const lowKey = (i > 0) ? this.lines[i - 1].key : new Uint8Array(1);
+        const lowKey = (i > 0) ? this.lines[i - 1].key : new ArrayBuffer(1);
         const highKey = this.lines[i].key;
         const testKey = Script.averageKeys(lowKey, highKey);
-        const last = testKey.length - 1;
-        const score = last * 256 + (lowKey[last] || 0) - testKey[last];
+        const last = testKey.byteLength - 1;
+        const score = last * 256 + (new Uint8Array(lowKey)[last] || 0) - new Uint8Array(testKey)[last];
 
         if (score < bestScore) {
           row = i;
@@ -1086,16 +1086,21 @@ class Script {
   saveRow(row, count = 1) {
     this.modifyObjStore(this.lines.storeName, function(lines, row, count) {
       for (let i = row; i < row + count; ++i) {
-        this.put(Uint32Array.from(lines[i].items).buffer, lines[i].key);
+        this.put(Uint32Array.from(lines[i].items), lines[i].key);
       }
     }, this.lines, row, count);
   }
 
+  /**
+   * creates a new key that sorts after key
+   * @param {ArrayBuffer} key 
+   * @returns {ArrayBuffer} succeeding key
+   */
   static incrementKey(key) {
-    let arrKey = Array.from(key);
+    let arrKey = Array.from(new Uint8Array(key));
     let incremented = false;
 
-    for (let i = 0; i < key.length; ++i) {
+    for (let i = 0; i < arrKey.length; ++i) {
       if (arrKey[i] < 255) {
         arrKey[i]++;
         arrKey.length = i + 1;
@@ -1108,16 +1113,23 @@ class Script {
       arrKey.push(1);
     }
     
-    let newKey = new Uint8Array(arrKey);
-    return newKey;
+    return (new Uint8Array(arrKey)).buffer;
   }
 
+  /**
+   * creates a new key that sorts between lowKey and highKey
+   * @param {ArrayBuffer} lowKey 
+   * @param {ArrayBuffer} highKey
+   * @return {ArrayBuffer} midway key
+   */
   static averageKeys(lowKey, highKey) {
     let arrKey = [];
+    const lowKeyArr = new Uint8Array(lowKey);
+    const highKeyArr = new Uint8Array(highKey);
 
-    for (let i = 0, end = Math.max(lowKey.length, highKey.length) + 1; i < end; ++i) {
-      let low = (i < lowKey.length) ? lowKey[i] : 0;
-      let high = (i < highKey.length) ? highKey[i] : 256;
+    for (let i = 0, end = Math.max(lowKeyArr.length, highKeyArr.length) + 1; i < end; ++i) {
+      let low = (i < lowKeyArr.length) ? lowKeyArr[i] : 0;
+      let high = (i < highKeyArr.length) ? highKeyArr[i] : 256;
 
       if (low + 1 < high) {
         arrKey[i] = (low + high) >>> 1;
@@ -1128,7 +1140,7 @@ class Script {
       }
     }
 
-    return new Uint8Array(arrKey);
+    return (new Uint8Array(arrKey)).buffer;
   }
 
   getRowCount() {
@@ -1311,7 +1323,7 @@ class Script {
             const newProject = {name: getDateString(now), created: now, lastModified: now};
       
             objStore.add(newProject).onsuccess = (event) => {
-              console.log("Successfully created new project listing.  ID is", event.target.result, ". Saving all project data");
+              console.log("Successfully created new project listing.  ID is", event.target.result);
               this.projectID = event.target.result;
               localStorage.setItem(this.OPEN_PROJECT_KEY, event.target.result);
       
