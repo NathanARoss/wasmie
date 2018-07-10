@@ -2,6 +2,7 @@
 
 function getBuiltIns() {
   let classes = [
+    {name: "void", size: 0},
     {name: "Any", size: 0},
     {name: "Int8", size: 1},
     {name: "UInt8", size: 1},
@@ -16,11 +17,12 @@ function getBuiltIns() {
     {name: "System", size: 0},
     {name: "Math", size: 0},
     {name: "Canvas", size: 0},
+    {name: "Iterable", size: 0},
   ].reverse();
 
-  let classMap = new Map([["global", 0]]);
+  const classMap = new Map();
   for (let i = 0; i < classes.length; ++i) {
-    classMap.set(classes[i].name, (-classes.length + i) & 0xFFF);
+    classMap.set(classes[i].name, (-classes.length + i) & 0x7FF);
   }
   
   //static variables of classes only.  no instance variables
@@ -39,7 +41,7 @@ function getBuiltIns() {
   
   function parseFunction(source, js) {
     if (!source.includes("->")) {
-      source += "->global";
+      source += "->void";
     }
     
     let tokens = source.match(/[\w\/]+/g);
@@ -47,7 +49,7 @@ function getBuiltIns() {
 
     if (!source.includes(".")) {
       tokens.unshift(0);
-      newFunc.scope = 0;
+      newFunc.scope = -1 & 0x7FF;
     } else {
       newFunc.scope = classMap.get(tokens[0]);
     }
@@ -78,7 +80,7 @@ function getBuiltIns() {
     // parseFunction("Int64.Int64(toConvert:Any) -> Int64", "Number"),
     // parseFunction("UInt64.UInt64(toConvert:Any) -> UInt64", "Number"),
       
-    parseFunction("stride(start:Int32, end:Int32, by:Int32)", "stride"),
+    parseFunction("Iterable.stride(start:Int32, end:Int32, by:Int32)->Iterable", "stride"),
     parseFunction("Canvas.drawText(x:Double, y:Double, size:Double, color:String, item:Any)", "drawText"),
     parseFunction("Canvas.drawCircle(x:Double, y:Double, r:Double, color:String)", "drawCircle"),
     parseFunction("Canvas.drawRect(x:Double, y:Double, w:Double, h:Double, color:String)", "drawRectangle"),
@@ -105,7 +107,7 @@ function getBuiltIns() {
   
   
   
-  const SYMBOLS = [
+  const symbols = [
     "=", //asignment
     "+=", //asignment
     "-=", //asignment
@@ -144,14 +146,9 @@ function getBuiltIns() {
     ",",
   ];
   
-  const SYMBOL_MAP = new Map();
-  for (let i = 0; i < SYMBOLS.length; ++i) {
-    SYMBOL_MAP.set(SYMBOLS[i], i);
-  }
   
   
-  
-  const KEYWORDS = [
+  const keywords = [
     {name: "func",     js: ""},
     {name: "let",      js: "const"},
     {name: "var",      js: "let"},
@@ -170,11 +167,6 @@ function getBuiltIns() {
     {name: "false",    js: "false"}
   ]
   
-  const KEYWORD_MAP = new Map();
-  for (let i = 0; i < KEYWORDS.length; ++i) {
-    KEYWORD_MAP.set(KEYWORDS[i].name, i);
-  }
   
-  
-  return {classes, variables, functions, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP};
+  return {classes, variables, functions, symbols, keywords};
 }

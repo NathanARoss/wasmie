@@ -584,6 +584,10 @@ function menuItemClicked(payload) {
     if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
       insertRow(modal.row + 1);
     }
+    
+    if (response === Script.RESPONSE.ROW_DELETED) {
+      deleteRow(modal.row);
+    }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
       reloadAllRowsInPlace();
