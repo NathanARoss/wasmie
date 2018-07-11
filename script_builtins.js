@@ -22,7 +22,7 @@ function getBuiltIns() {
 
   const classMap = new Map();
   for (let i = 0; i < classes.length; ++i) {
-    classMap.set(classes[i].name, (-classes.length + i) & 0x7FF);
+    classMap.set(classes[i].name, (-classes.length + i) & 0x3FF);
   }
   
   //static variables of classes only.  no instance variables
@@ -144,6 +144,7 @@ function getBuiltIns() {
     "]",
     ".",
     ",",
+    "_____",
   ];
   
   
