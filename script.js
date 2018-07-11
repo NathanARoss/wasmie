@@ -2,7 +2,7 @@ class Script {
   constructor() {
     this.lines = [];
     this.OPEN_PROJECT_KEY = "open-touchscript-project-id";
-    this.projectID = Number(localStorage.getItem(this.OPEN_PROJECT_KEY));
+    this.projectID = localStorage.getItem(this.OPEN_PROJECT_KEY) | 0;
     this.queuedDBwrites = {scope: new Set(), actions: []};
 
     const parent = this;
@@ -96,7 +96,7 @@ class Script {
     this.ITEMS.START_PARENTHESIS = makeSymbol("(");
     this.ITEMS.END_PARENTHESIS   = makeSymbol(")");
     this.ITEMS.COMMA             = makeSymbol(",");
-    this.ITEMS.BLANK       = makeSymbol("_____");
+    this.ITEMS.BLANK             = makeSymbol("_____");
 
     this.variables = new MetadataContainer("variables", variables, 0xFFFF);
     this.functions = new MetadataContainer("functions", functions, 0xFFFF);
@@ -110,7 +110,7 @@ class Script {
     performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
       objStore.get(this.projectID).onsuccess = (event) => {
         if (!event.target.result) {
-          console.log("The previously opened project no longer exists.  Resetting");
+          console.log("The previously opened project no longer exists");
           this.projectID = 0;
           localStorage.removeItem(this.OPEN_PROJECT_KEY);
         } else {
@@ -298,10 +298,14 @@ class Script {
       let options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM}];
       if (this.getData(row, beginParenthesis - 1).format !== Script.FUNCTION_REFERENCE) {
         options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.REMOVE_PARENTHESIS_PAIR});
+
+        if (item === this.ITEMS.START_PARENTHESIS)
+          options.push(...this.UNARY_OPERATORS.getMenuItems());
       }
 
       if (item === this.ITEMS.END_PARENTHESIS)
         options.push(...this.BINARY_OPERATORS.getMenuItems());
+
       return options;
     }
 
@@ -332,7 +336,9 @@ class Script {
       || item === this.ITEMS.TRUE
       || item === this.ITEMS.FALSE) {
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.PARENTHESIS_PAIR} );
-        options.push(...this.BINARY_OPERATORS.getMenuItems());
+
+        if (data.format !== Script.FUNCTION_REFERENCE)
+          options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
       if (data.format === Script.VARIABLE_DEFINITION || data.format === Script.FUNCTION_DEFINITION) {
@@ -805,7 +811,8 @@ class Script {
 
     //user chose a symbol to insert into the script
     if (payloadData.format === Script.SYMBOL) {
-      if (this.getData(row, col).format === Script.SYMBOL) {
+      const item = this.getItem(row, col);
+      if (this.UNARY_OPERATORS.includes(item) || this.BINARY_OPERATORS.includes(item)) {
         this.setItem(row, col, payload);
       } else {
         if (this.UNARY_OPERATORS.includes(payload))
