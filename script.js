@@ -30,7 +30,7 @@ class Script {
         const output = this.data[index];
 
         if (output === undefined) {
-          console.log(this.storeName, ".get(", id, ") === ", this.storeName, "[", index, "] === undefined");
+          return {name: "id " + id};
         }
         
         return output;
@@ -232,12 +232,9 @@ class Script {
         const id = (index - container.builtinCount) & container.mask;
         if (container.data[index] === undefined) {
           container.gaps.push(id);
-          if (container.initialNames.has(id)) {
-            console.log("removing '", container.initialNames.get(id), "' from ", container.storeName);
-            this.modifyObjStore(container.storeName, IDBObjectStore.prototype.delete, id);
-          }
         } else {
           const name = container.initialNames.get(id);
+          container.initialNames.delete(id)
           if (container === this.literals) {
             container.data[index] = name;
           } else {
@@ -245,6 +242,12 @@ class Script {
           }
         }
       }
+
+      for (const [id, name] of container.initialNames) {
+        console.log("removing '", name, "' from ", container.storeName);
+        this.modifyObjStore(container.storeName, IDBObjectStore.prototype.delete, id);
+      }
+
       delete container.initialNames;
 
       if (container.gaps.length) {
@@ -819,7 +822,7 @@ class Script {
       const {format, value} = this.getData(row, col);
       const {flag, meta} = payloadData;
       const newItem = Script.makeItem({format, flag, meta, value});
-      this.setItem(row, col, newItem);
+      this.setItem(row, col, newItem, true);
 
       if (format === Script.FUNCTION_DEFINITION) {
         const hasReturn = payloadData.meta !== this.CLASSES.VOID;
@@ -1134,24 +1137,21 @@ class Script {
    * @param {Number} oldItem item that is being discarded
    * @param {Number} newItem replacement item, if it exists
    */
-  recycleItem(oldItem, newItem = 0xFFFFFFFF) {
+  recycleItem(oldItem) {
     const oldData = Script.getItemData(oldItem);
-    const newData = Script.getItemData(newItem);
 
-    if (newData.format !== oldData.format || newData.value !== oldData.value) {
-      switch (oldData.format) {
-        case Script.VARIABLE_DEFINITION:
-          this.variables.delete(oldData.value);
-        break;
-  
-        case Script.FUNCTION_DEFINITION:
-          this.functions.delete(oldData.value);
-        break;
-        
-        case Script.LITERAL:
-          this.literals.delete(oldData.value);
-        break;
-      }
+    switch (oldData.format) {
+      case Script.VARIABLE_DEFINITION:
+        this.variables.delete(oldData.value);
+      break;
+
+      case Script.FUNCTION_DEFINITION:
+        this.functions.delete(oldData.value);
+      break;
+      
+      case Script.LITERAL:
+        this.literals.delete(oldData.value);
+      break;
     }
   }
 
@@ -1163,8 +1163,10 @@ class Script {
     return Script.getItemData(this.getItem(row, col));
   }
 
-  setItem(row, col, val) {
-    this.recycleItem(this.lines[row].items[col], val);
+  setItem(row, col, val, skipRecycling = false) {
+    if (!skipRecycling) {
+      this.recycleItem(this.lines[row].items[col]);
+    }
     this.lines[row].items[col] = val;
     this.saveRow(row);
   }
@@ -1195,7 +1197,7 @@ class Script {
     const header = this.getData(row, 0);
     header.flag = isStartingScope & 1;
     const item = Script.makeItem(header);
-    this.setItem(row, 0, item);
+    this.setItem(row, 0, item, true);
   }
 
   getItemDisplay(row, col) {
