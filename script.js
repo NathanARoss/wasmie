@@ -67,12 +67,16 @@ class Script {
     this.symbols = symbols;
     this.keywords = keywords;
 
-    const makeKeyword = (text) => {
-      return Script.makeItem({format: Script.KEYWORD, value: this.keywords.findIndex(element => element.name === text)});
-    }
+    const makeKeyword = text => 
+      Script.makeItem({format: Script.KEYWORD, value: this.keywords.findIndex(element => element.name === text)});
 
-    const makeSymbol = (text) => {
-      return Script.makeItem({format: Script.SYMBOL, value: this.symbols.indexOf(text)});
+    const makeSymbol = text => 
+      Script.makeItem({format: Script.SYMBOL, value: this.symbols.indexOf(text)});
+
+    const literals = [];
+    const makeLiteral = (text, type) => {
+      literals.unshift(text);
+      return Script.makeItem({format: Script.LITERAL, meta: type, value: -literals.length});
     }
 
     this.ITEMS = {};
@@ -88,8 +92,6 @@ class Script {
     this.ITEMS.WHILE    = makeKeyword("while");
     this.ITEMS.UNTIL    = makeKeyword("until");
     this.ITEMS.RETURN   = makeKeyword("return");
-    this.ITEMS.TRUE     = makeKeyword("true");
-    this.ITEMS.FALSE    = makeKeyword("false");
     this.toggles = [this.ITEMS.VAR, this.ITEMS.LET, this.ITEMS.WHILE, this.ITEMS.UNTIL, makeKeyword("continue"), makeKeyword("break")];
 
     this.ITEMS.EQUALS            = makeSymbol("=");
@@ -98,10 +100,13 @@ class Script {
     this.ITEMS.COMMA             = makeSymbol(",");
     this.ITEMS.BLANK             = makeSymbol("_____");
 
+    this.ITEMS.FALSE = makeLiteral("false", 0);
+    this.ITEMS.TRUE  = makeLiteral("true", 0);
+
     this.variables = new MetadataContainer("variables", variables, 0xFFFF);
     this.functions = new MetadataContainer("functions", functions, 0xFFFF);
     this.classes = new MetadataContainer("classes", classes, 0x3FF);
-    this.strings = new MetadataContainer("strings", [], 0xFFFF);
+    this.literals = new MetadataContainer("literals", literals, 0xFFFF);
     this.lines.storeName = "lines";
 
     this.FUNCS = {STRIDE: -1 & this.functions.mask};
@@ -117,7 +122,7 @@ class Script {
           let remainingStores = {count: 5};
 
           let actions = [];
-          for (const container of [this.variables, this.functions, this.classes, this.strings]) {
+          for (const container of [this.variables, this.functions, this.classes, this.literals]) {
             actions.push({storeName: container.storeName, arguments: [container, remainingStores], function: function(container, remainingStores) {
               let request = this.openCursor();
               request.onsuccess = function(event) {
@@ -131,8 +136,8 @@ class Script {
               };
             }});
           }
-          actions.push({storeName: this.lines.storeName, arguments: [this.lines, this.variables, this.functions, this.classes, this.strings, this.ITEMS.FUNC, remainingStores],
-          function: function(lines, variables, functions, classes, strings, FUNC_ITEM, remainingStores) {
+          actions.push({storeName: this.lines.storeName, arguments: [this.lines, this.variables, this.functions, this.classes, this.literals, remainingStores],
+          function: function(lines, variables, functions, classes, literals, remainingStores) {
             this.openCursor().onsuccess = function(event) {
               let cursor = event.target.result;
               if (cursor) {
@@ -159,9 +164,11 @@ class Script {
                     }
                     break;
 
-                    case Script.NUMERIC_LITERAL:
-                    case Script.STRING_LITERAL:
-                      strings.data[data.value] = null;
+                    case Script.LITERAL:
+                      if (literals.isUserDefined(data.value)) {
+                        const index = (data.value + literals.builtinCount) & literals.mask;
+                        literals.data[index] = null;
+                      }
                     break;
                   }
                 }
@@ -172,7 +179,7 @@ class Script {
             };
           }});
 
-          this.performTransaction(new Set(["variables", "functions", "classes", "strings", "lines"]), "readonly", actions);
+          this.performTransaction(new Set(["variables", "functions", "classes", "literals", "lines"]), "readonly", actions);
         }
       }
     });
@@ -220,7 +227,7 @@ class Script {
   }
 
   bindMetadata() {
-    for (const container of [this.variables, this.functions, this.classes, this.strings]) {
+    for (const container of [this.variables, this.functions, this.classes, this.literals]) {
       for (let index = container.builtinCount; index < container.data.length; ++index) {
         const id = (index - container.builtinCount) & container.mask;
         if (container.data[index] === undefined) {
@@ -231,7 +238,7 @@ class Script {
           }
         } else {
           const name = container.initialNames.get(id);
-          if (container === this.strings) {
+          if (container === this.literals) {
             container.data[index] = name;
           } else {
             container.data[index].name = name;
@@ -331,10 +338,7 @@ class Script {
 
       if (data.format === Script.VARIABLE_REFERENCE
       || data.format === Script.FUNCTION_REFERENCE
-      || data.format === Script.NUMERIC_LITERAL
-      || data.format === Script.STRING_LITERAL
-      || item === this.ITEMS.TRUE
-      || item === this.ITEMS.FALSE) {
+      || data.format === Script.LITERAL) {
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.PARENTHESIS_PAIR} );
 
         if (data.format !== Script.FUNCTION_REFERENCE)
@@ -360,9 +364,7 @@ class Script {
       const prevData = this.getData(row, col - 1);
 
       if (prevData.format === Script.VARIABLE_REFERENCE
-      || prevData.format === Script.NUMERIC_LITERAL
-      || prevData.format === Script.STRING_LITERAL
-      || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE
+      || prevData.format === Script.LITERAL
       || prevItem === this.ITEMS.END_PARENTHESIS) {
         options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
@@ -549,12 +551,12 @@ class Script {
       }
 
       case this.ITEMS.FUNC: {
-        let options = [{text: "none", style: "comment", payload: Script.makeItem({format: Script.NUMERIC_LITERAL, meta: 0})}];
+        let options = [{text: "none", style: "comment", payload: Script.makeItem({format: Script.LITERAL, meta: 0})}];
 
         for (const id of this.classes.getIDs()) {
           const c = this.classes.get(id);
           if (c.size > 0)
-            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.NUMERIC_LITERAL, meta: id})});
+            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.LITERAL, meta: id})});
         }
 
         return options;
@@ -581,16 +583,8 @@ class Script {
         let hint = "";
 
         const data = this.getData(row, col);
-        switch (data.format) {
-          case Script.NUMERIC_LITERAL:
-            hint = this.strings.get(data.value);
-          break;
-          case Script.STRING_LITERAL:
-            hint = '"' + this.strings.get(data.value) + '"';
-          break;
-          case Script.KEYWORD:
-            hint = this.keywords[data.value].name;
-          break;
+        if (data.format == Script.LITERAL) {
+          hint = this.literals.get(data.value);
         }
 
         let input = prompt("Enter a string or a number:", hint);
@@ -599,31 +593,27 @@ class Script {
 
         let payload;
         
-        if (input === "true" || input === "false") {
-          if (input === "true") {
-            payload = this.ITEMS.TRUE;
-          } else {
-            payload = this.ITEMS.FALSE;
-          }
-        }
-        else {
-          const id = this.strings.nextId();
+        if (input === "true") {
+          payload = this.ITEMS.TRUE;
+        } else if (input === "false") {
+          payload = this.ITEMS.FALSE;
+        } else {
+          const id = this.literals.nextId();
 
           if (input.trim().length !== 0 && !isNaN(input)) {
-            payload = Script.makeItem({format: Script.NUMERIC_LITERAL, value: id});
+            input = input.trim();
+            payload = Script.makeItem({format: Script.LITERAL, meta: 2, value: id});
           } else {
-            if (input.startsWith('"')) {
-              if (input.endsWith('"')) {
-                input = input.substring(1, input.length - 1);
-              } else {
-                input = input.substring(1);
-              }
-            }
+            if (!input.startsWith('"'))
+              input = '"' + input;
+            
+            if (!input.endsWith('"'))
+              input = input + '"';
 
-            payload = Script.makeItem({format: Script.STRING_LITERAL, value: id});
+            payload = Script.makeItem({format: Script.LITERAL, meta: 1, value: id});
           }
           
-          this.strings.set(id, input);
+          this.literals.set(id, input);
         }
 
         const [start, end] = this.getExpressionBounds(row, col);
@@ -751,7 +741,7 @@ class Script {
     }
 
     //user chose a type for a function declaration
-    if (payloadData.format === Script.NUMERIC_LITERAL) {
+    if (payloadData.format === Script.LITERAL) {
       let funcId = this.functions.nextId();
       const returnType = payloadData.meta;
       const name = prompt(`Enter function name`, `f${funcId}`);
@@ -1074,7 +1064,7 @@ class Script {
   saveRow(row, count = 1) {
     this.modifyObjStore(this.lines.storeName, function(lines, row, count) {
       for (let i = row; i < row + count; ++i) {
-        this.put(Uint32Array.from(lines[i].items), lines[i].key);
+        this.put(Uint32Array.from(lines[i].items).buffer, lines[i].key);
       }
     }, this.lines, row, count);
   }
@@ -1158,9 +1148,8 @@ class Script {
           this.functions.delete(oldData.value);
         break;
         
-        case Script.NUMERIC_LITERAL:
-        case Script.STRING_LITERAL:
-          this.strings.delete(oldData.value);
+        case Script.LITERAL:
+          this.literals.delete(oldData.value);
         break;
       }
     }
@@ -1252,11 +1241,8 @@ class Script {
       case Script.KEYWORD:
         return [this.keywords[value].name, "keyword"];
 
-      case Script.NUMERIC_LITERAL:
-        return [this.strings.get(value), "numeric"];
-
-      case Script.STRING_LITERAL:
-        return [this.strings.get(value), "string"];
+      case Script.LITERAL:
+        return [this.literals.get(value), "literal"];
 
       default:
         return [`format\n${format}`, "error"];
@@ -1275,7 +1261,7 @@ class Script {
       db.createObjectStore("variables");
       db.createObjectStore("functions");
       db.createObjectStore("classes");
-      db.createObjectStore("strings");
+      db.createObjectStore("literals");
       db.createObjectStore("lines");
       db.createObjectStore("save-data");
     };
@@ -1336,7 +1322,7 @@ class Script {
                 }
               };
 
-              for (let container of [this.variables, this.classes, this.functions, this.strings]) {
+              for (let container of [this.variables, this.classes, this.functions, this.literals]) {
                 this.queuedDBwrites.scope.add(container.storeName);
                 this.queuedDBwrites.actions.push({storeName: container.storeName, arguments: [container], function: saveAllMetadata});
               }
@@ -1438,12 +1424,8 @@ class Script {
             js += `${this.keywords[value].js} `;
             break;
 
-          case Script.NUMERIC_LITERAL:
-            js += `${this.strings.get(value)} `;
-            break;
-
-          case Script.STRING_LITERAL:
-            js += `"${this.strings.get(value)}" `;
+          case Script.LITERAL:
+            js += `${this.literals.get(value)} `;
             break;
 
           default:
@@ -1484,15 +1466,14 @@ class Script {
 /* Static constants  */
 {
   let i = 0;
-  Script.VARIABLE_DEFINITION  = i++;
-  Script.VARIABLE_REFERENCE   = i++;
-  Script.FUNCTION_DEFINITION  = i++;
-  Script.FUNCTION_REFERENCE   = i++;
-  Script.ARGUMENT_HINT        = i++;
-  Script.SYMBOL               = i++;
-  Script.KEYWORD              = i++;
-  Script.NUMERIC_LITERAL      = i++;
-  Script.STRING_LITERAL       = i++;
+  Script.VARIABLE_DEFINITION = i++;
+  Script.VARIABLE_REFERENCE  = i++;
+  Script.FUNCTION_DEFINITION = i++;
+  Script.FUNCTION_REFERENCE  = i++;
+  Script.ARGUMENT_HINT       = i++;
+  Script.SYMBOL              = i++;
+  Script.KEYWORD             = i++;
+  Script.LITERAL             = i++;
 }
 
 Script.RESPONSE = {};

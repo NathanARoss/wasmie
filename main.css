@@ -161,14 +161,8 @@ button {
 .keyword::first-line, .keyword-call::first-line, .keyword-def::first-line, .keyword-declaration::first-line {
   color: #CC7832;
 }
-.numeric {
+.literal {
   color: #6897BB;
-}
-.string {
-  color: #A5C25C;
-}
-.string:before, .string:after {
-  content: '"';
 }
 .comment {
   color: #808080;
