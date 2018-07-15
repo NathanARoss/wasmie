@@ -164,8 +164,6 @@ function getBuiltIns() {
     {name: "return",   js: "return"},
     {name: "break",    js: "break"},
     {name: "continue", js: "continue"},
-    {name: "true",     js: "true"},
-    {name: "false",    js: "false"}
   ]
   
   

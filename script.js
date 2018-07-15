@@ -1,7 +1,6 @@
 class Script {
   constructor() {
-    this.lines = [];
-    this.OPEN_PROJECT_KEY = "open-touchscript-project-id";
+    this.OPEN_PROJECT_KEY = "TouchScript-active-project-id";
     this.projectID = localStorage.getItem(this.OPEN_PROJECT_KEY) | 0;
     this.queuedDBwrites = {scope: new Set(), actions: []};
 
@@ -13,7 +12,7 @@ class Script {
         this.builtinCount = builtIns.length;
         this.mask = mask;
         this.gaps = [];
-        this.initialNames = new Map();
+        this.dbMap = new Map();
       }
 
       delete(id) {
@@ -107,10 +106,12 @@ class Script {
     this.functions = new MetadataContainer("functions", functions, 0xFFFF);
     this.classes = new MetadataContainer("classes", classes, 0x3FF);
     this.literals = new MetadataContainer("literals", literals, 0xFFFF);
-    this.lines.storeName = "lines";
 
     this.FUNCS = {STRIDE: -1 & this.functions.mask};
     this.CLASSES = {VOID: -1 & this.classes.mask};
+
+    this.lines = [];
+    this.lineKeys = [];
 
     performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
       objStore.get(this.projectID).onsuccess = (event) => {
@@ -119,62 +120,35 @@ class Script {
           this.projectID = 0;
           localStorage.removeItem(this.OPEN_PROJECT_KEY);
         } else {
-          let remainingStores = {count: 5};
-
+          let remainingStores = {count: 6};
           let actions = [];
+
           for (const container of [this.variables, this.functions, this.classes, this.literals]) {
             actions.push({storeName: container.storeName, arguments: [container, remainingStores], function: function(container, remainingStores) {
-              let request = this.openCursor();
-              request.onsuccess = function(event) {
+              this.openCursor().onsuccess = function(event) {
                 let cursor = event.target.result;
                 if (cursor) {
-                  container.initialNames.set(cursor.key, cursor.value);
+                  container.dbMap.set(cursor.key, cursor.value);
                   cursor.continue();
                 } else if (--remainingStores.count === 0) {
-                  parent.bindMetadata();
+                  parent.assembleMetadata();
                 }
               };
             }});
           }
-          actions.push({storeName: this.lines.storeName, arguments: [this.lines, this.variables, this.functions, this.classes, this.literals, remainingStores],
-          function: function(lines, variables, functions, classes, literals, remainingStores) {
-            this.openCursor().onsuccess = function(event) {
-              let cursor = event.target.result;
-              if (cursor) {
-                let func;
 
-                const items = Array.from(new Uint32Array(cursor.value));
-                lines.push({key: cursor.key, items});
-                for (const item of items) {
-                  const data = Script.getItemData(item);
-                  switch (data.format) {
-                    case Script.VARIABLE_DEFINITION: {
-                      const index = (data.value + variables.builtinCount) & variables.mask;
-                      variables.data[index] = {name: "", type: data.meta, scope: parent.CLASSES.VOID};
-                      if (func) {
-                        func.parameters.push(variables.data[index]);
-                      }
-                    }
-                    break;
+          actions.push({storeName: "lines", arguments: [this, remainingStores], function: function(script, remainingStores) {
+            this.getAllKeys().onsuccess = function(event) {
+              script.lineKeys = event.target.result;
+              if (--remainingStores.count === 0) {
+                script.assembleMetadata();
+              }
+            };
 
-                    case Script.FUNCTION_DEFINITION: {
-                      const index = (data.value + functions.builtinCount) & functions.mask;
-                      functions.data[index] = {name: "", returnType: data.meta, scope: parent.CLASSES.VOID, parameters: []};
-                      func = functions.data[index];
-                    }
-                    break;
-
-                    case Script.LITERAL:
-                      if (literals.isUserDefined(data.value)) {
-                        const index = (data.value + literals.builtinCount) & literals.mask;
-                        literals.data[index] = null;
-                      }
-                    break;
-                  }
-                }
-                cursor.continue();
-              } else if (--remainingStores.count === 0) {
-                parent.bindMetadata();
+            this.getAll().onsuccess = function(event) {
+              script.lines = event.target.result;
+              if (--remainingStores.count === 0) {
+                script.assembleMetadata();
               }
             };
           }});
@@ -226,29 +200,63 @@ class Script {
     return {format: item >>> 28, flag: item >>> 27 & 1, flag2: item >>> 26 & 1, meta: item >>> 16 & 0x3FF, value: item & 0xFFFF};
   }
 
-  bindMetadata() {
+  assembleMetadata() {
+    function getAndRemove(container, id) {
+      const entry = container.dbMap.get(id);
+      container.dbMap.delete(id);
+      const [name = id + " not found"] = [entry];
+
+      return name;
+    }
+
+    for (const line of this.lines) {
+      let func;
+      for (const item of line) {
+        const data = Script.getItemData(item);
+        switch (data.format) {
+          case Script.VARIABLE_DEFINITION: {
+            const index = (data.value + this.variables.builtinCount) & this.variables.mask;
+            const name = getAndRemove(this.variables, data.value);
+            this.variables.data[index] = {name, type: data.meta, scope: this.CLASSES.VOID};
+            if (func) {
+              func.parameters.push(this.variables.data[index]);
+            }
+          }
+          break;
+
+          case Script.FUNCTION_DEFINITION: {
+            const index = (data.value + this.functions.builtinCount) & this.functions.mask;
+            const name = getAndRemove(this.functions, data.value);
+            this.functions.data[index] = {name, returnType: data.meta, scope: this.CLASSES.VOID, parameters: []};
+            func = functions.data[index];
+          }
+          break;
+
+          case Script.LITERAL:
+            if (this.literals.isUserDefined(data.value)) {
+              const index = (data.value + this.literals.builtinCount) & this.literals.mask;
+              const name = getAndRemove(this.literals, data.value);
+              this.literals.data[index] = name;
+            }
+          break;
+        }
+      }
+    }
+
     for (const container of [this.variables, this.functions, this.classes, this.literals]) {
       for (let index = container.builtinCount; index < container.data.length; ++index) {
-        const id = (index - container.builtinCount) & container.mask;
         if (container.data[index] === undefined) {
+          const id = (index - container.builtinCount) & container.mask;
           container.gaps.push(id);
-        } else {
-          const name = container.initialNames.get(id);
-          container.initialNames.delete(id)
-          if (container === this.literals) {
-            container.data[index] = name;
-          } else {
-            container.data[index].name = name;
-          }
         }
       }
 
-      for (const [id, name] of container.initialNames) {
-        console.log("removing '", name, "' from ", container.storeName);
+      for (const [id, name] of container.dbMap) {
+        console.log(`removing ${container.storeName}[${id}] === ${name}`);
         this.modifyObjStore(container.storeName, IDBObjectStore.prototype.delete, id);
       }
 
-      delete container.initialNames;
+      delete container.dbMap;
 
       if (container.gaps.length) {
         console.log(container.storeName, "has gaps", container.gaps);
@@ -968,11 +976,12 @@ class Script {
     let oldLength = this.getRowCount();
     let inserted = 0;
 
-    let key = this.lines.length === 0 ? new ArrayBuffer(1) : this.lines[this.lines.length - 1].key;
+    let key = this.lines.length === 0 ? new ArrayBuffer(1) : this.lineKeys[this.lines.length - 1];
     const header = Script.makeItem({format: 0xF});
     while (row >= this.getRowCount()) {
       key = Script.incrementKey(key);
-      this.lines.push({key, items: [header]});
+      this.lines.push([header]);
+      this.lineKeys.push(key);
       ++inserted;
     }
     this.saveRow(oldLength, inserted);
@@ -994,7 +1003,7 @@ class Script {
           return -1;
 
         //the indentation is not 0, so it's not whitespace.  Append the rows
-        const lowKey = this.lines[this.lines.length - 1].key;
+        const lowKey = this.lineKeys[this.lines.length - 1];
         key = Script.incrementKey(lowKey);
         row = endScope;
         break;
@@ -1015,8 +1024,8 @@ class Script {
 
       let bestScore = 0xFFFFFFF;
       for (let i = startScope; i <= endScope; ++i) {
-        const lowKey = (i > 0) ? this.lines[i - 1].key : new ArrayBuffer(1);
-        const highKey = this.lines[i].key;
+        const lowKey = (i > 0) ? this.lineKeys[i - 1] : new ArrayBuffer(1);
+        const highKey = this.lineKeys[i];
         const testKey = Script.averageKeys(lowKey, highKey);
         const last = testKey.byteLength - 1;
         const score = last * 256 + (new Uint8Array(lowKey)[last] || 0) - new Uint8Array(testKey)[last];
@@ -1030,7 +1039,8 @@ class Script {
     }
 
     const header = Script.makeItem({format: 0xF, value: indentation});
-    this.lines.splice(row, 0, {key, items: [header]});
+    this.lines.splice(row, 0, [header]);
+    this.lineKeys.splice(row, 0, key);
     this.saveRow(row);
     return row;
   }
@@ -1042,7 +1052,7 @@ class Script {
     const indentation = this.getIndentation(row);
     let r = row;
     do {
-      this.lines[r].items.forEach(this.recycleItem, this);
+      this.lines[r].forEach(this.recycleItem, this);
       ++r;
     } while (r < this.getRowCount() && this.getIndentation(r) !== indentation);
 
@@ -1057,19 +1067,20 @@ class Script {
       count += row - startRow;
     }
 
-    const keyRange = IDBKeyRange.bound(this.lines[startRow].key, this.lines[startRow + count - 1].key);
-    this.modifyObjStore(this.lines.storeName, IDBObjectStore.prototype.delete, keyRange);
+    const keyRange = IDBKeyRange.bound(this.lineKeys[startRow], this.lineKeys[startRow + count - 1]);
+    this.modifyObjStore("lines", IDBObjectStore.prototype.delete, keyRange);
 
     this.lines.splice(startRow, count);
+    this.lineKeys.splice(startRow, count);
     return [startRow, count];
   }
 
   saveRow(row, count = 1) {
-    this.modifyObjStore(this.lines.storeName, function(lines, row, count) {
+    this.modifyObjStore("lines", function(lines, lineKeys, row, count) {
       for (let i = row; i < row + count; ++i) {
-        this.put(Uint32Array.from(lines[i].items).buffer, lines[i].key);
+        this.put(lines[i], lineKeys[i]);
       }
-    }, this.lines, row, count);
+    }, this.lines, this.lineKeys, row, count);
   }
 
   /**
@@ -1129,7 +1140,7 @@ class Script {
   }
 
   getItemCount(row) {
-    return this.lines[row].items.length;
+    return this.lines[row].length;
   }
 
   /**
@@ -1156,7 +1167,7 @@ class Script {
   }
 
   getItem(row, col) {
-    return this.lines[row].items[col];
+    return this.lines[row][col];
   }
 
   getData(row, col) {
@@ -1165,24 +1176,24 @@ class Script {
 
   setItem(row, col, val, skipRecycling = false) {
     if (!skipRecycling) {
-      this.recycleItem(this.lines[row].items[col]);
+      this.recycleItem(this.lines[row][col]);
     }
-    this.lines[row].items[col] = val;
+    this.lines[row][col] = val;
     this.saveRow(row);
   }
 
   spliceRow(row, col, count, ...items) {
-    this.lines[row].items.splice(col, count, ...items).forEach(this.recycleItem, this);
+    this.lines[row].splice(col, count, ...items).forEach(this.recycleItem, this);
     this.saveRow(row);
   }
 
   pushItems(row, ...items) {
-    this.lines[row].items.push(...items);
+    this.lines[row].push(...items);
     this.saveRow(row);
   }
 
   findItem(row, item) {
-    return this.lines[row].items.indexOf(item);
+    return this.lines[row].indexOf(item);
   }
 
   getIndentation(row) {
@@ -1252,7 +1263,7 @@ class Script {
   }
 
   performTransaction(scope, mode, actions) {
-    let openRequest = indexedDB.open(this.projectID, 1);
+    let openRequest = indexedDB.open("TouchScript-" + this.projectID, 1);
   
     openRequest.onerror = function(event) {
       alert("Failed to open project data database. Error code " + event.errorCode);
@@ -1329,10 +1340,10 @@ class Script {
                 this.queuedDBwrites.actions.push({storeName: container.storeName, arguments: [container], function: saveAllMetadata});
               }
 
-              this.queuedDBwrites.scope.add(this.lines.storeName);
-              this.queuedDBwrites.actions.push({storeName: this.lines.storeName, arguments: [this.lines], function: function(lines) {
-                for (const line of lines) {
-                  this.put(Uint32Array.from(line.items).buffer, line.key);
+              this.queuedDBwrites.scope.add("lines");
+              this.queuedDBwrites.actions.push({storeName: "lines", arguments: [this.lines, this.lineKeys], function: function(lines, lineKeys) {
+                for (let i = 0; i < lines.length; ++i) {
+                  this.put(lines[i], lineKeys[i]);
                 }
               }});
 

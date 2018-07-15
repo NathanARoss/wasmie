@@ -273,16 +273,6 @@ window.onpopstate = function(event) {
 }
 window.onpopstate();
 
-// window.onpagehide = function(event) {
-//   localStorage.setItem("onbeforeunload", "[1, 2, 3, 4]");
-//   script.notifyRowUpdated(-1);
-// }
-
-// if (localStorage.getItem("onbeforeunload")) {
-//   alert(localStorage.getItem("onbeforeunload"));
-//   localStorage.removeItem("onbeforeunload");
-// }
-
 
 function deleteProject(event) {
   const entry = this.parentElement;
@@ -313,7 +303,7 @@ function renameProject(event) {
 }
 
 function performActionOnProjectListDatabase(mode, action) {
-  let openRequest = indexedDB.open("project-list", 1);
+  let openRequest = indexedDB.open("TouchScript-project-list", 1);
   
   openRequest.onerror = function(event) {
     alert("Failed to open project list database. Error code " + event.errorCode);
@@ -452,7 +442,7 @@ function updateLineNumbers(modifiedRow) {
     let position = i + firstLoadedPosition;
     
     //outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
-    outerRow.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && new Uint8Array(script.lines[position].key) || "n/a");
+    outerRow.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && new Uint8Array(script.lineKeys[position]) || "n/a");
     outerRow.childNodes[1].position = position;
   }
 }
@@ -465,7 +455,7 @@ function loadRow(position, outerDiv, movedPosition = true) {
   
   //update the line number item of the slide menu
   //innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
-  outerDiv.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && new Uint8Array(script.lines[position].key) || "n/a");
+  outerDiv.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && new Uint8Array(script.lineKeys[position]) || "n/a");
   
   while (innerRow.childNodes.length > 2) {
     buttonPool.push(innerRow.lastChild);
