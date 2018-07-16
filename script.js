@@ -1,7 +1,6 @@
 class Script {
   constructor() {
-    this.OPEN_PROJECT_KEY = "TouchScript-active-project-id";
-    this.projectID = localStorage.getItem(this.OPEN_PROJECT_KEY) | 0;
+    this.projectID = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
     this.queuedDBwrites = {scope: new Set(), actions: []};
 
     const parent = this;
@@ -57,7 +56,7 @@ class Script {
       }
 
       isUserDefined(id) {
-        return id <= this.data.length - this.builtinCount;
+        return id < (-this.builtinCount & this.mask);
       }
     }
 
@@ -119,7 +118,7 @@ class Script {
         if (!event.target.result) {
           console.log("The previously opened project no longer exists");
           this.projectID = 0;
-          localStorage.removeItem(this.OPEN_PROJECT_KEY);
+          localStorage.removeItem(ACTIVE_PROJECT_KEY);
         } else {
           let remainingStores = {count: 6};
           let actions = [];
@@ -232,7 +231,7 @@ class Script {
             const index = (data.value + this.functions.builtinCount) & this.functions.mask;
             const name = getAndRemove(this.functions, data.value);
             this.functions.data[index] = {name, returnType: data.meta, scope: this.CLASSES.VOID, parameters: []};
-            func = functions.data[index];
+            func = this.functions.data[index];
           }
           break;
 
@@ -509,7 +508,7 @@ class Script {
         ];
       }
 
-      if (this.getItem(row, 3) === this.ITEMS.COMMA) {
+      if (itemCount > 3) {
         return [
           {text: ",", style: "", payload: this.ITEMS.COMMA}
         ];
@@ -606,22 +605,48 @@ class Script {
         this.spliceRow(row, col, 0, this.ITEMS.ELSE);
         return Script.RESPONSE.ROW_UPDATED;
 
-      case this.ITEMS.FOR:
-        this.appendRowsUpTo(row);
-        this.setIsStartingScope(row, true);
-        let varId = this.variables.nextId();
-        this.variables.set(varId, {name: "i", type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
+      case this.ITEMS.FOR: {
 
-        this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.IN,
-          Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.CLASSES.VOID, value: this.FUNCS.STRIDE}),
-          this.ITEMS.START_PARENTHESIS,
-          Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.STRIDE}),
-          this.ITEMS.COMMA,
-          Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.STRIDE}),
-          this.ITEMS.COMMA,
-          Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.STRIDE}),
-          this.ITEMS.END_PARENTHESIS);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        let name = "index";
+
+        if (row < this.getRowCount()) {
+          let indentation = this.getIndentation(row) - 1;
+          for (let r = row - 1; r >= 0, indentation >= 0; --r) {
+            if (this.getIndentation(r) === indentation && this.isStartingScope(r)) {
+              --indentation;
+
+              if (this.getItem(r, 1) === this.ITEMS.FOR) {
+                const loopingVar = this.variables.get(this.getData(r, 2).value);
+                const nestingDepth = (loopingVar.name.match(/\d+$/) || [""]).pop();
+                name = loopingVar.name.substring(0, loopingVar.name.length - nestingDepth.length) + (Number(nestingDepth) + 1);
+                break;
+              }
+            }
+          }
+        }
+
+        name = prompt("Enter for loop variable name:", name);
+        if (name) {
+          this.appendRowsUpTo(row);
+          this.setIsStartingScope(row, true);
+          let varId = this.variables.nextId();
+  
+          this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
+  
+          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.IN,
+            Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.CLASSES.VOID, value: this.FUNCS.STRIDE}),
+            this.ITEMS.START_PARENTHESIS,
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.STRIDE}),
+            this.ITEMS.COMMA,
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.STRIDE}),
+            this.ITEMS.COMMA,
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.STRIDE}),
+            this.ITEMS.END_PARENTHESIS);
+          return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        }
+
+        return Script.RESPONSE.NO_CHANGE;
+      }
 
       case this.ITEMS.SWITCH:
         this.appendRowsUpTo(row);
@@ -668,7 +693,7 @@ class Script {
         if (name) {
           let type = this.getData(row, this.getItemCount(row) - 1).meta;
           this.variables.set(varId, {name, type, scope: this.CLASSES.VOID});
-          this.pushItems(row, this.ITEMS.COMMA, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: type, value: varId}));
+          this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
           return Script.RESPONSE.ROW_UPDATED;
         } else {
           return Script.RESPONSE.NO_CHANGE;
@@ -703,7 +728,7 @@ class Script {
             if (!input.startsWith('"'))
               input = '"' + input;
             
-            if (!input.endsWith('"'))
+            if (!input.endsWith('"' || input.length < 2))
               input = input + '"';
 
             payload = Script.makeItem({format: Script.LITERAL, meta: 1, value: id});
@@ -780,8 +805,12 @@ class Script {
 
       case this.PAYLOADS.UNWRAP_PARENTHESIS: {
         const [start, end] = this.getExpressionBounds(row, col);
+        let removeFromBeginning = 1;
+        if (this.UNARY_OPERATORS.includes(this.getItem(row, start)))
+          ++removeFromBeginning;
+        
         this.spliceRow(row, end, 1);
-        this.spliceRow(row, start, 1);
+        this.spliceRow(row, start, removeFromBeginning);
         return Script.RESPONSE.ROW_UPDATED;
       }
 
@@ -1139,7 +1168,7 @@ class Script {
     do {
       this.lines[r].forEach(this.recycleItem, this);
       ++r;
-    } while (r < this.getRowCount() && this.getIndentation(r) !== indentation);
+    } while (r < this.getRowCount() && this.getIndentation(r) > indentation);
     let count = r - row;
 
     //manage orphaned else and else if structures
@@ -1157,9 +1186,9 @@ class Script {
           else if (this.getItem(r, 1) === this.ITEMS.ELSE) {
             this.spliceRow(r, 1, 1, this.ITEMS.IF, this.ITEMS.TRUE);
           }
-        }
 
-        modifiedRows.push(r - count);
+          modifiedRows.push(r - count);
+        }
       }
     }
 
@@ -1427,7 +1456,7 @@ class Script {
             objStore.add(newProject).onsuccess = (event) => {
               console.log("Successfully created new project listing.  ID is", event.target.result);
               this.projectID = event.target.result;
-              localStorage.setItem(this.OPEN_PROJECT_KEY, event.target.result);
+              localStorage.setItem(ACTIVE_PROJECT_KEY, event.target.result);
       
               this.queuedDBwrites = {scope: new Set(), actions: []};
 

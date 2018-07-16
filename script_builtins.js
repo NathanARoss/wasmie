@@ -31,12 +31,6 @@ function getBuiltIns() {
     {name: "height",   type: classMap.get("Int32"),  scope: classMap.get("Canvas"), js: "canvas.height"},
     {name: "E",        type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.E"},
     {name: "PI",       type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.PI"},
-    {name: "SQRT 2",   type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.SQRT2"},
-    {name: "SQRT 1/2", type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.SQRT1_2"},
-    {name: "LN 2",     type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LN2"},
-    {name: "LN 10",    type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LN10"},
-    {name: "LOG₂E",    type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LOG2E"},
-    {name: "LOG₁₀E",   type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.LOG10E"},
   ].reverse();
   
   function parseFunction(source, js) {
@@ -81,9 +75,6 @@ function getBuiltIns() {
     // parseFunction("UInt64.UInt64(toConvert:Any) -> UInt64", "Number"),
       
     parseFunction("Iterable.stride(start:Int32, end:Int32, by:Int32)->Iterable", "stride"),
-    parseFunction("Canvas.drawText(x:Double, y:Double, size:Double, color:String, item:Any)", "drawText"),
-    parseFunction("Canvas.drawCircle(x:Double, y:Double, r:Double, color:String)", "drawCircle"),
-    parseFunction("Canvas.drawRect(x:Double, y:Double, w:Double, h:Double, color:String)", "drawRectangle"),
     parseFunction("Math.cos(angle:Double) -> Double", "Math.cos"),
     parseFunction("Math.sin(angle:Double) -> Double", "Math.sin"),
     parseFunction("Math.tan(angle:Double) -> Double", "Math.tan"),
@@ -103,6 +94,9 @@ function getBuiltIns() {
     parseFunction("Math.round(number:Double) -> Double", "Math.round"),
     parseFunction("Math.floor(number:Double) -> Double", "Math.floor"),
     parseFunction("Math.ceil(number:Double) -> Double", "Math.ceil"),
+    parseFunction("Canvas.drawText(x:Double, y:Double, size:Double, color:String, item:Any)", "drawText"),
+    // parseFunction("Canvas.drawCircle(x:Double, y:Double, r:Double, color:String)", "drawCircle"),
+    // parseFunction("Canvas.drawRect(x:Double, y:Double, w:Double, h:Double, color:String)", "drawRectangle"),
   ].reverse();
   
   

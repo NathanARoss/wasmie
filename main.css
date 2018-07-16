@@ -301,6 +301,10 @@ canvas, #modal, #console-output {
   padding: 2em 0.5em;
 }
 
+.project-list-entry:hover {
+  background-color: var(--hover-color);
+}
+
 .project-list-entry p {
   margin: 8px 0 0 0;
 }

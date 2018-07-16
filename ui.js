@@ -26,7 +26,8 @@ let buttonPool = [];
 let renderLoop = 0;
 let eventHandlers = new Object(null);
 
-const script = new Script();
+const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
+let script = new Script();
 
 menuButton.addEventListener("click", function(event) {
   if (menuButton.toggled) {
@@ -38,19 +39,14 @@ menuButton.addEventListener("click", function(event) {
   menuButton.toggled = !menuButton.toggled;
 });
 
-// createButton.addEventListener("click", function(event) {
-//   fabMenu.classList.remove("expanded");
-//   menuButton.toggled = false;
-
-//   const now = new Date();
-//   const newProject = {name: getDateString(now), created: now, lastModified: now};
-
-//   performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
-//     objStore.add(newProject).onsuccess = function(event) {
-//       console.log("Successfully added new project.  ID is " + event.target.result);
-//     }
-//   });
-// });
+createButton.addEventListener("click", function(event) {
+  fabMenu.classList.remove("expanded");
+  menuButton.toggled = false;
+  
+  localStorage.removeItem(ACTIVE_PROJECT_KEY);
+  script = new Script();
+  reloadAllRowsInPlace();
+});
 
 loadButton.addEventListener("click", function(event) {
   fabMenu.classList.remove("expanded");
@@ -235,6 +231,17 @@ window.onpopstate = function(event) {
     document.title = "TouchScript Project Manager"
 
     performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
+      function projectClicked(event) {
+        const projectID = event.currentTarget.projectId;
+        const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+        if (projectID !== oldActiveProject) {
+          localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
+          script = new Script();
+          reloadAllRowsInPlace();
+        }
+        window.history.back();
+      }
+
       objStore.getAll().onsuccess = function(event) {
         for (const project of event.target.result) {
           const label = document.createElement("span");
@@ -254,7 +261,7 @@ window.onpopstate = function(event) {
           const deleteButton = document.createElement("button");
           deleteButton.classList.add("delete");
           deleteButton.classList.add("delete-project-button");
-          deleteButton.addEventListener("click", deleteProject);
+          deleteButton.addEventListener("click", deleteProject, {passive: false});
 
           const entry = document.createElement("div");
           entry.classList.add("project-list-entry");
@@ -263,6 +270,7 @@ window.onpopstate = function(event) {
           entry.appendChild(projectName);
           entry.appendChild(dateCreated);
           entry.appendChild(dateLastModified);
+          entry.addEventListener("click", projectClicked);
 
           entry.projectId = project.id;
           programList.appendChild(entry);
@@ -275,6 +283,8 @@ window.onpopstate();
 
 
 function deleteProject(event) {
+  event.stopPropagation();
+  
   const entry = this.parentElement;
   const id = entry.projectId;
   
@@ -752,7 +762,7 @@ function drawText(x, y, size, color, text) {
   context.textBaseline = "top";
   context.font = size + "px Monospace";
   context.fillStyle = color;
-  const lines = text.split("\n");
+  const lines = String(text).split("\n");
 
   for (let i = 0; i < lines.length; ++i) {
     context.fillText(lines[i], x, y + i * size);
