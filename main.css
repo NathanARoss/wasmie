@@ -161,14 +161,8 @@ button {
 .keyword::first-line, .keyword-call::first-line, .keyword-def::first-line, .keyword-declaration::first-line {
   color: #CC7832;
 }
-.numeric {
+.literal {
   color: #6897BB;
-}
-.string {
-  color: #A5C25C;
-}
-.string:before, .string:after {
-  content: '"';
 }
 .comment {
   color: #808080;
@@ -261,9 +255,6 @@ button {
 #view-code-button {
   background-image: url(baseline-code-24px.svg);
 }
-#save-button {
-  background-image: url(baseline-save-24px.svg);
-}
 #load-button {
   background-image: url(baseline-folder-24px.svg);
 }
@@ -307,10 +298,15 @@ canvas, #modal, #console-output {
 
 .project-list-entry {
   position: relative;
-  background-color: var(--primary-color);
-  padding: 1em;
-  border-radius: 1em;
-  margin: 1em;
+  padding: 2em 0.5em;
+}
+
+.project-list-entry:hover {
+  background-color: var(--hover-color);
+}
+
+.project-list-entry p {
+  margin: 8px 0 0 0;
 }
 
 #no-projects-message {
@@ -324,4 +320,5 @@ canvas, #modal, #console-output {
 
 .delete-project-button {
   width: var(--line-height);
+  float: right;
 }

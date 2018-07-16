@@ -14,7 +14,6 @@ const editor = document.getElementById("editor_div");
 const modal = document.getElementById("modal");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
-const saveButton = document.getElementById("save-button");
 const loadButton = document.getElementById("load-button");
 const viewCodeButton = document.getElementById("view-code-button");
 const fabMenu = document.getElementById("FAB-menu");
@@ -25,10 +24,10 @@ const context = canvas.getContext("2d", { alpha: false });
 let buttonPool = [];
 
 let renderLoop = 0;
-let error = null;
 let eventHandlers = new Object(null);
 
-const script = new Script();
+const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
+let script = new Script();
 
 menuButton.addEventListener("click", function(event) {
   if (menuButton.toggled) {
@@ -43,35 +42,10 @@ menuButton.addEventListener("click", function(event) {
 createButton.addEventListener("click", function(event) {
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
-
-  // re-open the project list database each time rather than keeping it open so the
-  // user can have multiple TouchScript tabs and load projects from any of them
-  let db; 
-
-  let openRequest = indexedDB.open("project-list", 1);
-  openRequest.onerror = function(event) {
-    alert("Failed to open project database. Error code " + event.errorCode);
-  }
-  openRequest.onupgradeneeded = upgradeProjectList;
-  openRequest.onsuccess = function(event) {
-    console.log("Successfully opened project list database");
-    db = event.target.result;
-    db.onerror = genericDatabaseErrorHandler;
-
-    const now = new Date();
-    const newProject = {name: getDateString(now), created: now, lastModified: now};
-
-    db.transaction("project-list", "readwrite").objectStore("project-list").add(newProject).onsuccess = function(event) {
-      console.log("Successfully added new project.  ID is " + event.target.result);
-    }
-  }
-});
-
-saveButton.addEventListener("click", function(event) {
-  fabMenu.classList.remove("expanded");
-  menuButton.toggled = false;
-
-  alert("save");
+  
+  localStorage.removeItem(ACTIVE_PROJECT_KEY);
+  script = new Script();
+  reloadAllRowsInPlace();
 });
 
 loadButton.addEventListener("click", function(event) {
@@ -209,24 +183,18 @@ window.onpopstate = function(event) {
     event = {state: history.state};
   }
 
-  if (event.state === null) {
+  if (!event.state) {
     editor.style.display = "";
     runtime.style.display = "none";
     programList.style.display = "none";
 
     while (programList.childNodes.length > 1) {
-      console.log(programList.lastChild);
       programList.removeChild(programList.lastChild);
     }
 
     if (renderLoop !== 0) {
       window.cancelAnimationFrame(renderLoop)
       renderLoop = 0;
-    }
-
-    if (error !== null) {
-      alert(error);
-      error = null;
     }
     
     eventHandlers = new Object(null);
@@ -240,9 +208,10 @@ window.onpopstate = function(event) {
       const js = script.getJavaScript();
       (new Function(js)) ();
     } catch (e) {
-      //error = e;
+      //alert(e);
       console.log(e);
       history.back();
+      return;
     }
     
     if (renderLoop === 0 && eventHandlers.ondraw)
@@ -250,30 +219,30 @@ window.onpopstate = function(event) {
     
     editor.style.display = "none";
     runtime.style.display = "";
+    programList.style.display = "none";
     document.body.style.height = "auto";
     document.title = "TouchScript Runtime"
   }
   else if (event.state.action === "load") {
     editor.style.display = "none";
+    runtime.style.display = "none";
     programList.style.display = "";
+    document.body.style.height = "auto";
     document.title = "TouchScript Project Manager"
 
-    // re-open the project list database each time rather than keeping it open so the
-    // user can have multiple TouchScript tabs and load projects from any of them
-    let db; 
+    performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
+      function projectClicked(event) {
+        const projectID = event.currentTarget.projectId;
+        const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+        if (projectID !== oldActiveProject) {
+          localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
+          script = new Script();
+          reloadAllRowsInPlace();
+        }
+        window.history.back();
+      }
 
-    let openRequest = indexedDB.open("project-list", 1);
-    openRequest.onerror = function(event) {
-      alert("Failed to open project database. Error code " + event.errorCode);
-      history.back();
-    }
-    openRequest.onupgradeneeded = upgradeProjectList;
-    openRequest.onsuccess = function(event) {
-      console.log("Successfully opened project list database");
-      db = event.target.result;
-      db.onerror = genericDatabaseErrorHandler;
-
-      db.transaction("project-list").objectStore("project-list").getAll().onsuccess = function(event) {
+      objStore.getAll().onsuccess = function(event) {
         for (const project of event.target.result) {
           const label = document.createElement("span");
           label.textContent = "Project name: ";
@@ -292,95 +261,84 @@ window.onpopstate = function(event) {
           const deleteButton = document.createElement("button");
           deleteButton.classList.add("delete");
           deleteButton.classList.add("delete-project-button");
-          deleteButton.addEventListener("click", deleteProject);
+          deleteButton.addEventListener("click", deleteProject, {passive: false});
 
           const entry = document.createElement("div");
           entry.classList.add("project-list-entry");
+          entry.appendChild(deleteButton);
           entry.appendChild(label);
           entry.appendChild(projectName);
           entry.appendChild(dateCreated);
           entry.appendChild(dateLastModified);
-          entry.appendChild(deleteButton);
+          entry.addEventListener("click", projectClicked);
 
           entry.projectId = project.id;
           programList.appendChild(entry);
         }
       }
-    }
+    });
   }
 }
 window.onpopstate();
 
-function genericDatabaseErrorHandler(event) {
-  alert("Database error: " + event.target.errorCode);
-}
-function upgradeProjectList(event) {
-  console.log("upgrading project list database");
-  let db = event.target.result;
-  db.createObjectStore("project-list", {keyPath: "id", autoIncrement: true});
-}
+
 function deleteProject(event) {
+  event.stopPropagation();
+  
   const entry = this.parentElement;
   const id = entry.projectId;
-
-  // re-open the project list database each time rather than keeping it open so the
-  // user can have multiple TouchScript tabs and load projects from any of them
-  let db; 
-
-  let openRequest = indexedDB.open("project-list", 1);
-  openRequest.onerror = function(event) {
-    alert("Failed to open project database. Error code " + event.errorCode);
-  }
-  openRequest.onupgradeneeded = upgradeProjectList;
-  openRequest.onsuccess = function(event) {
-    console.log("Successfully opened project list database");
-    db = event.target.result;
-    db.onerror = genericDatabaseErrorHandler;
-
-    let deleteRequest = db.transaction("project-list", "readwrite").objectStore("project-list").delete(id).onsuccess = function(event) {
+  
+  performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
+    objStore.delete(id).onsuccess = function(event) {
       console.log("Successfully deleted project ID " + id);
       entry.parentElement.removeChild(entry);
     }
-  }
+  });
 }
+
 function renameProject(event) {
-  const entry = this.parentElement;
-  const id = entry.projectId;
+  const id = this.parentElement.projectId;
   const newName = this.value;
 
-  // re-open the project list database each time rather than keeping it open so the
-  // user can have multiple TouchScript tabs and load projects from any of them
-  let db; 
-
-  let openRequest = indexedDB.open("project-list", 1);
-  openRequest.onerror = function(event) {
-    alert("Failed to open project database. Error code " + event.errorCode);
-  }
-  openRequest.onupgradeneeded = upgradeProjectList;
-  openRequest.onsuccess = function(event) {
-    console.log("Successfully opened project list database");
-    db = event.target.result;
-    db.onerror = genericDatabaseErrorHandler;
-
-    let projectList = db.transaction("project-list", "readwrite").objectStore("project-list");
-    let deleteRequest = projectList.get(id).onsuccess = function(event) {
-      console.log("Successfully read project ID " + id);
-
+  performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
+    objStore.get(id).onsuccess = function(event) {
       let projectData = event.target.result;
       projectData.name = newName;
 
-      projectList.put(projectData).onsuccess = function(event) {
+      objStore.put(projectData).onsuccess = function(event) {
         console.log("Successfully saved modified project ID " + id);
       }
     }
-  }
+  });
+}
+
+function performActionOnProjectListDatabase(mode, action) {
+  let openRequest = indexedDB.open("TouchScript-project-list", 1);
+  
+  openRequest.onerror = function(event) {
+    alert("Failed to open project list database. Error code " + event.errorCode);
+  };
+  openRequest.onupgradeneeded = function(event) {
+    console.log("upgrading project list database");
+    let db = event.target.result;
+    db.createObjectStore("project-list", {keyPath: "id", autoIncrement: true});
+  };
+  openRequest.onsuccess = function(event) {
+    //console.log("Successfully opened project list database in " + mode + " mode");
+    let db = event.target.result;
+
+    db.onerror = function(event) {
+      alert("Database error: " + event.target.errorCode);
+    };
+
+    let transaction = db.transaction("project-list", mode);
+    let objStore = transaction.objectStore("project-list");
+    action(objStore, transaction);
+  };
 }
 
 function getDateString(date) {
-  var options = {  
-    year: "numeric", month: "numeric",  
-    day: "numeric", hour: "numeric", minute: "2-digit"
-  };
+  var options = {year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit"};
   return date.toLocaleDateString("en-US", options);
 }
 
@@ -448,7 +406,9 @@ function createRow() {
 
 
 function insertRow(position) {
-  script.insertRow(position);
+  position = script.insertRow(position);
+  if (position === -1)
+    return;
 
   let rowIndex = position - firstLoadedPosition;
   if (rowIndex >= 0 && rowIndex < list.childNodes.length) {
@@ -469,14 +429,23 @@ function insertRow(position) {
 
 
 function deleteRow(position) {
-  script.deleteRow(position);
+  let [pos, count, modifiedRows] = script.deleteRow(position);
 
-  let rowIndex = position - firstLoadedPosition;
-  let node = list.childNodes[rowIndex];
-  
-  let newPosition = firstLoadedPosition + loadedCount - 1;
-  loadRow(newPosition, node);
-  list.appendChild(node);
+  let rowIndex = Math.max(0, pos - firstLoadedPosition);
+  const end = Math.min(pos + count, list.childNodes.length + firstLoadedPosition);
+
+  for (; pos < end; ++pos) {
+    let node = list.childNodes[rowIndex];
+    loadRow(firstLoadedPosition + list.childNodes.length - 1, node);
+    list.appendChild(node);
+  }
+
+  for (const position of modifiedRows) {
+    let index = position - firstLoadedPosition;
+    if (index >= 0 && index < list.childNodes.length) {
+      loadRow(position, list.childNodes[index], false);
+    }
+  }
   
   updateLineNumbers(rowIndex);
   document.body.style.height = getRowCount() * rowHeight + "px";
@@ -497,8 +466,8 @@ function updateLineNumbers(modifiedRow) {
 
 
 
-function loadRow(position, rowDiv, movedPosition = true) {
-  let innerRow = rowDiv.childNodes[1];
+function loadRow(position, outerDiv, movedPosition = true) {
+  let innerRow = outerDiv.childNodes[1];
   innerRow.position = position;
   
   //update the line number item of the slide menu
@@ -514,7 +483,7 @@ function loadRow(position, rowDiv, movedPosition = true) {
   } else {
     let itemCount = script.getItemCount(position);
     for (let col = 1; col < itemCount; ++col) {
-      const [text, style] = script.getItem(position, col);
+      const [text, style] = script.getItemDisplay(position, col);
       
       let node = getItem(text);
       node.className = "item " + style;
@@ -531,15 +500,25 @@ function loadRow(position, rowDiv, movedPosition = true) {
     let button = innerRow.childNodes[1 + modal.col];
 
     if (modal.row === position) {
-      rowDiv.classList.add("selected");
+      outerDiv.classList.add("selected");
       button.classList.add("selected");
       innerRow.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     } else {
-      rowDiv.classList.remove("selected");
+      outerDiv.classList.remove("selected");
       if (button)
         button.classList.remove("selected");
     }
   }
+}
+
+function reloadAllRowsInPlace() {
+  document.body.style.height = getRowCount() * rowHeight + "px";
+
+  for (const outerRow of list.childNodes) {
+    loadRow(outerRow.childNodes[1].position, outerRow, false);
+  }
+
+  //console.log("reloaded all rows in place");
 }
 
 
@@ -610,13 +589,14 @@ function menuItemClicked(payload) {
 
     if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
       insertRow(modal.row + 1);
-      insertRow(modal.row + 2);
+    }
+    
+    if (response === Script.RESPONSE.ROW_DELETED) {
+      deleteRow(modal.row);
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
-      for (const outerRow of list.childNodes) {
-        loadRow(outerRow.childNodes[1].position, outerRow, false);
-      }
+      reloadAllRowsInPlace();
     }
 
     document.body.style.height = getRowCount() * rowHeight + "px";
@@ -641,14 +621,15 @@ function modalContainerClicked(event) {
 
 function slideMenuClickHandler(event) {
   let position = this.nextSibling.position;
-  if (position < script.getRowCount()) {
+  if (position <= script.getRowCount()) {
     switch (event.button) {
       case 0:
-        insertRow(position + 1);
+        insertRow(position);
         break;
       
       case 2:
-        deleteRow(position);
+        if (position < script.getRowCount())
+          deleteRow(position);
         break;
     }
   }
@@ -665,19 +646,13 @@ function rowClickHandler(event) {
   let col = event.target.position|0;
   let options = script.itemClicked(row, col);
 
-  if (Array.isArray(options)) {
-    // if (options.length === 1) {
-    //   modal.row = row;
-    //   modal.col = col;
-    //   menuItemClicked(options[0].payload);
-    // } else if (options.length > 1) {
-      modal.row = row;
-      modal.col = col;
-      configureModal(options);
-      document.body.classList.add("selected");
-      this.parentElement.classList.add("selected");
-      event.target.classList.add("selected");
-    //}
+  if (typeof options[Symbol.iterator] === 'function') {
+    modal.row = row;
+    modal.col = col;
+    configureModal(options);
+    document.body.classList.add("selected");
+    this.parentElement.classList.add("selected");
+    event.target.classList.add("selected");
   }
   else {
     event.target.firstChild.nodeValue = options.text;
@@ -736,13 +711,14 @@ function touchMoved(outerRow, touch) {
 function touchEnded(outerRow, touch) {
   if (outerRow.touchCaptured) {
     const position = outerRow.childNodes[1].position;
-    if (position < script.getRowCount()) {
+    if (position <= script.getRowCount()) {
       let travel = touch.pageX - outerRow.touchStartX;
       
       if (travel > 200) {
-        deleteRow(position);
+        if (position < script.getRowCount())
+          deleteRow(position);
       } else if (travel > 80) {
-        insertRow(position + 1);
+        insertRow(position);
       }
     }
   }
@@ -760,15 +736,10 @@ function touchCanceled(outerRow) {
 }
 
 
-function stride(start, end, by) {
-  let iterable = {start, end, by};
-  iterable[Symbol.iterator] = function* () {
-    for (let i = this.start; i != this.end; i += this.by) {
-      yield i;
-    }
-  };
-
-  return iterable;
+function* stride(start, end, by) {
+  for (let i = start; i != end; i += by) {
+    yield i;
+  }
 }
 
 function drawCircle(x, y, r, color) {
@@ -789,10 +760,10 @@ function drawText(x, y, size, color, text) {
   context.textBaseline = "top";
   context.font = size + "px Monospace";
   context.fillStyle = color;
-  const lines = text.split("\n");
+  const lines = String(text).split("\n");
 
   for (let i = 0; i < lines.length; ++i) {
-    context.fillText(lines[i], x, y + i * size); 
+    context.fillText(lines[i], x, y + i * size);
   }
 }
 
@@ -801,3 +772,56 @@ function draw(timestamp) {
   eventHandlers.ondraw(timestamp);
   renderLoop = window.requestAnimationFrame(draw);
 }
+
+// let httpRequest = new XMLHttpRequest();
+// httpRequest.open("GET", "https://api.github.com/gists/2e3aa951f6c3bc5e25f62055075fd67b");
+// httpRequest.onreadystatechange = function() {
+//   if (httpRequest.readyState === XMLHttpRequest.DONE) {
+//       if (httpRequest.status === 200) {
+//         console.log(httpRequest.responseText);
+//       } else {
+//           // There was a problem with the request.
+//           // For example, the response may have a 404 (Not Found)
+//           // or 500 (Internal Server Error) response code.
+//       }
+//   } else {
+//       // Not ready yet.
+//   }
+// }
+// httpRequest.send();
+
+
+
+// let postData = {};
+// postData.description = "New test gist";
+// postData.files = {};
+// postData.files["Jeff"] = {content: "A new challenger"};
+
+// let token = localStorage.getItem("access-token");
+// if (!token) {
+//   token = prompt("Enter GitHub authorization token with gist permission");
+// }
+
+// let httpRequest = new XMLHttpRequest();
+// httpRequest.open("POST", "https://api.github.com/gists");
+// httpRequest.setRequestHeader('Authorization', 'token ' + token);
+// httpRequest.onreadystatechange = function() {
+//   console.log("readyState: " + httpRequest.readyState);
+
+//   if (httpRequest.readyState === XMLHttpRequest.DONE) {
+//     if (httpRequest.status === 200 || httpRequest.status === 201) {
+//       console.log("status: " + httpRequest.status + "\n" + JSON.parse(httpRequest.responseText));
+//       localStorage.setItem("access-token", token);
+//     }
+
+//     else if (httpRequest.status === 401) {
+//       localStorage.removeItem("access-token");
+//       alert("Acces token is no longer valid.  Forgetting token.");
+//     }
+
+//     else {
+//       alert("status: " + httpRequest.status + "\n" + httpRequest.responseText);
+//     }
+//   }
+// }
+// httpRequest.send(JSON.stringify(postData));

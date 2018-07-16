@@ -1,283 +1,272 @@
-Array.prototype.peek = function() {
-  return this[this.length - 1];
-}
-
 class Script {
   constructor() {
-    this.nextNumericLiteral = 0;
-    this.numericLiterals = new Map();
-    this.nextStringLiteral = 0;
-    this.stringLiterals = new Map();
-    this.nextComment = 0;
-    this.comments = new Map();
-    this.data = [];
+    this.projectID = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+    this.queuedDBwrites = {scope: new Set(), actions: []};
 
-    const [CLASSES, CLASS_MAP, VARIABLES, FUNCTIONS, FUNCTION_MAP, SYMBOLS, SYMBOL_MAP, KEYWORDS, KEYWORD_MAP, SAMPLE_SCRIPT] = getBuiltIns();
-    this.classes = CLASSES;
-    this.classMap = CLASS_MAP;
-    this.variables = VARIABLES;
-    this.functions = FUNCTIONS;
-    this.functionMap = FUNCTION_MAP;
-    this.symbols = SYMBOLS;
-    this.symbolMap = SYMBOL_MAP;
-    this.keywords = KEYWORDS;
-    this.keywordMap = KEYWORD_MAP;
+    const parent = this;
+    class MetadataContainer {
+      constructor(storeName, builtIns, mask) {
+        this.storeName = storeName;
+        this.data = builtIns;
+        this.builtinCount = builtIns.length;
+        this.mask = mask;
+        this.gaps = [];
+        this.dbMap = new Map();
+      }
 
-    this.EXTERNAL_VARIABLE_COUNT = this.variables.length;
+      delete(id) {
+        //console.log(this.storeName, "delete", id);
+        if (this.isUserDefined(id)) {
+          this.data[id + this.builtinCount] = undefined;
+          this.gaps.push(id);
+          parent.modifyObjStore(this.storeName, IDBObjectStore.prototype.delete, id);
+        }
+      }
+    
+      get(id) {
+        const index = (id + this.builtinCount) & this.mask;
+        const output = this.data[index];
+
+        if (output === undefined) {
+          return {name: "id " + id};
+        }
+        
+        return output;
+      }
+    
+      set(id, val) {
+        //console.log(this.storeName, ".set(", id, ",", val, ") ->", this.storeName, "[", (id + this.builtinCount) & this.mask, "] =", val);
+        if (this.isUserDefined(id)) {
+          this.data[(id + this.builtinCount) & this.mask] = val;
+          parent.modifyObjStore(this.storeName, IDBObjectStore.prototype.put, typeof val === "string" ? val : val.name, id);
+        }
+      }
+    
+      nextId() {
+        return (this.gaps.length > 0) ? this.gaps.shift() : this.data.length - this.builtinCount;
+      }
+    
+      *getIDs() {
+        for (let i = 0; i < this.data.length; ++i) {
+          if (!this.data[i])
+            continue;
+          
+          yield (i - this.builtinCount) & this.mask;
+        }
+      }
+
+      isUserDefined(id) {
+        return id < (-this.builtinCount & this.mask);
+      }
+    }
+
+
+    const {classes, variables, functions, symbols, keywords} = getBuiltIns();
+    this.symbols = symbols;
+    this.keywords = keywords;
+
+    const makeKeyword = text => 
+      Script.makeItem({format: Script.KEYWORD, value: this.keywords.findIndex(element => element.name === text)});
+
+    const makeSymbol = text => 
+      Script.makeItem({format: Script.SYMBOL, value: this.symbols.indexOf(text)});
+
+    const literals = [];
+    const makeLiteral = (text, type) => {
+      literals.unshift(text);
+      return Script.makeItem({format: Script.LITERAL, meta: type, value: -literals.length});
+    }
 
     this.ITEMS = {};
-    this.ITEMS.FUNC     = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("func"));
-    this.ITEMS.LET      = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("let"));
-    this.ITEMS.VAR      = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("var"));
-    this.ITEMS.SWITCH   = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("switch"));
-    this.ITEMS.CASE     = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("case"));
-    this.ITEMS.DEFAULT  = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("default"));
-    this.ITEMS.BREAK    = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("break"));
-    this.ITEMS.CONTINUE = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("continue"));
-    this.ITEMS.IF       = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("if"));
-    this.ITEMS.FOR      = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("for"));
-    this.ITEMS.IN       = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("in"));
-    this.ITEMS.WHILE    = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("while"));
-    this.ITEMS.UNTIL    = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("until"));
-    this.ITEMS.RETURN   = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("return"));
-    this.ITEMS.TRUE     = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("true"));
-    this.ITEMS.FALSE    = Script.makeItem(Script.KEYWORD, KEYWORD_MAP.get("false"));
-    this.toggles = [this.ITEMS.VAR, this.ITEMS.LET, this.ITEMS.WHILE, this.ITEMS.UNTIL, this.ITEMS.CONTINUE, this.ITEMS.BREAK];
+    this.ITEMS.FUNC     = makeKeyword("func");
+    this.ITEMS.LET      = makeKeyword("let");
+    this.ITEMS.VAR      = makeKeyword("var");
+    this.ITEMS.SWITCH   = makeKeyword("switch");
+    this.ITEMS.CASE     = makeKeyword("case");
+    this.ITEMS.DEFAULT  = makeKeyword("default");
+    this.ITEMS.IF       = makeKeyword("if");
+    this.ITEMS.ELSE     = makeKeyword("else");
+    this.ITEMS.FOR      = makeKeyword("for");
+    this.ITEMS.IN       = makeKeyword("in");
+    this.ITEMS.WHILE    = makeKeyword("while");
+    this.ITEMS.DO_WHILE = makeKeyword("do while");
+    this.ITEMS.RETURN   = makeKeyword("return");
+    this.toggles = [this.ITEMS.VAR, this.ITEMS.LET, this.ITEMS.WHILE, this.ITEMS.DO_WHILE, makeKeyword("continue"), makeKeyword("break")];
 
-    this.ITEMS.EQUALS            = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get("="));
-    this.ITEMS.START_PARENTHESIS = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get("("));
-    this.ITEMS.END_PARENTHESIS   = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get(")"));
-    this.ITEMS.START_BRACKET     = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get("["));
-    this.ITEMS.END_BRACKET       = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get("]"));
-    this.ITEMS.DOT               = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get("."));
-    this.ITEMS.COMMA             = Script.makeItem(Script.SYMBOL, SYMBOL_MAP.get(","));
+    this.ITEMS.EQUALS            = makeSymbol("=");
+    this.ITEMS.START_PARENTHESIS = makeSymbol("(");
+    this.ITEMS.END_PARENTHESIS   = makeSymbol(")");
+    this.ITEMS.COMMA             = makeSymbol(",");
+    this.ITEMS.BLANK             = makeSymbol("_____");
 
-    this.HINTS = {};
-    this.HINTS.ITEM = this.makeCommentItem("item");
-    this.HINTS.COLLECTION = this.makeCommentItem("collection");
-    this.HINTS.VALUE = this.makeCommentItem("value");
-    this.HINTS.CONDITION = this.makeCommentItem("condition");
-    this.HINTS.EXPRESSION = this.makeCommentItem("expression");
-    this.HINTS.CONTROL_EXPRESSION = this.makeCommentItem("control expression");
+    this.ITEMS.FALSE = makeLiteral("false", 0);
+    this.ITEMS.TRUE  = makeLiteral("true", 0);
 
-    let payloads = Script.makeItem(Script.KEYWORD, 0x0FFFFFFF);
+    this.variables = new MetadataContainer("variables", variables, 0xFFFF);
+    this.functions = new MetadataContainer("functions", functions, 0xFFFF);
+    this.classes = new MetadataContainer("classes", classes, 0x3FF);
+    this.literals = new MetadataContainer("literals", literals, 0xFFFF);
+
+    this.FUNCS = {STRIDE: -1 & this.functions.mask};
+    this.CLASSES = {VOID: -1 & this.classes.mask};
+
+    this.lines = [];
+    this.lineKeys = [];
+
+    performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
+      objStore.get(this.projectID).onsuccess = (event) => {
+        if (!event.target.result) {
+          console.log("The previously opened project no longer exists");
+          this.projectID = 0;
+          localStorage.removeItem(ACTIVE_PROJECT_KEY);
+        } else {
+          let remainingStores = {count: 6};
+          let actions = [];
+
+          for (const container of [this.variables, this.functions, this.classes, this.literals]) {
+            actions.push({storeName: container.storeName, arguments: [container, remainingStores], function: function(container, remainingStores) {
+              this.openCursor().onsuccess = function(event) {
+                let cursor = event.target.result;
+                if (cursor) {
+                  container.dbMap.set(cursor.key, cursor.value);
+                  cursor.continue();
+                } else if (--remainingStores.count === 0) {
+                  parent.assembleMetadata();
+                }
+              };
+            }});
+          }
+
+          actions.push({storeName: "lines", arguments: [this, remainingStores], function: function(script, remainingStores) {
+            this.getAllKeys().onsuccess = function(event) {
+              script.lineKeys = event.target.result;
+              if (--remainingStores.count === 0) {
+                script.assembleMetadata();
+              }
+            };
+
+            this.getAll().onsuccess = function(event) {
+              script.lines = event.target.result;
+              if (--remainingStores.count === 0) {
+                script.assembleMetadata();
+              }
+            };
+          }});
+
+          this.performTransaction(new Set(["variables", "functions", "classes", "literals", "lines"]), "readonly", actions);
+        }
+      }
+    });
+
+    let payloads = Script.makeItem({format: Script.KEYWORD, value: -1});
     this.PAYLOADS = {};
     this.PAYLOADS.VAR_OPTIONS = payloads--;
-    this.PAYLOADS.FUNCTION_DEFINITION = payloads--;
     this.PAYLOADS.FUNCTION_REFERENCE = payloads--;
     this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN = payloads--;
     this.PAYLOADS.LITERAL_INPUT = payloads--;
-    this.PAYLOADS.PARENTHESIS_PAIR = payloads--;
     this.PAYLOADS.RENAME = payloads--;
+    this.PAYLOADS.WRAP_IN_PARENTHESIS = payloads--;
     this.PAYLOADS.DELETE_ITEM = payloads--;
-    this.PAYLOADS.DELETE_SUBEXPRESSION = payloads--;
-    this.PAYLOADS.REMOVE_PARENTHESIS_PAIR = payloads--;
+    this.PAYLOADS.UNWRAP_PARENTHESIS = payloads--;
+    this.PAYLOADS.APPEND_IF = payloads--;
+    this.PAYLOADS.INSERT_ELSE = payloads--;
+    this.PAYLOADS.ELSE_IF = payloads--;
 
 
-    function has(item) {
-      const data = item & 0xFFFFFF;
-      return item >>> 28 === Script.SYMBOL && data >= this.start && data < this.end;
+    class Operator {
+      constructor(start, end) {
+        this.start = Script.makeItem({format: Script.SYMBOL, value: start});
+        this.end = Script.makeItem({format: Script.SYMBOL, value: end});
+      }
+
+      includes(item) {
+        return item >= this.start && item < this.end;
+      }
+
+      *getMenuItems() {
+        for (let payload = this.start; payload < this.end; ++payload) {
+          yield {text: symbols[payload & 0xFFFF], style: "", payload};
+        }
+      }
     }
 
-    function getMenuItems() {
-      let options = [];
-      for (let i = this.start; i < this.end; ++i) {
-        options.push({text: SYMBOLS[i], style: "", payload: Script.makeItem(Script.SYMBOL, i)});
-      }
-      return options;
+    this.ASSIGNMENT_OPERATORS = new Operator(0, 9);
+    this.BINARY_OPERATORS = new Operator(9, 27);
+    this.UNARY_OPERATORS = new Operator(27, 30);
+  }
+
+  static makeItem({format = 0, flag = 0, flag2 = 0, meta = 0, value = 0}) {
+    return (format & 0xF) << 28 | (flag & 1) << 27 | (flag2 & 1) << 26 | (meta & 0x3FF) << 16 | (value & 0xFFFF);
+  }
+
+  static getItemData(item) {
+    return {format: item >>> 28, flag: item >>> 27 & 1, flag2: item >>> 26 & 1, meta: item >>> 16 & 0x3FF, value: item & 0xFFFF};
+  }
+
+  assembleMetadata() {
+    function getAndRemove(container, id) {
+      const entry = container.dbMap.get(id);
+      container.dbMap.delete(id);
+      const [name = id + " not found"] = [entry];
+
+      return name;
     }
 
-    function getMenuItemsUnary() {
-      let options = [];
-      for (let i = this.start; i < this.end; ++i) {
-        options.push({text: SYMBOLS[i] + "\n(unary)", style: "", payload: Script.makeItem(Script.SYMBOL, i)});
-      }
-      return options;
-    }
-
-    this.ASSIGNMENT_OPERATORS = {start: 0, end: 9, has, getMenuItems};
-    this.COMPARISON_OPERATORS = {start: 9, end: 17, has, getMenuItems};
-    this.BINARY_OPERATORS = {start: 9, end: 27, has, getMenuItems};
-    this.UNARY_OPERATORS = {start: 27, end: 30, has, getMenuItems: getMenuItemsUnary};
-    
-    if (SAMPLE_SCRIPT)
-      this.loadScript(SAMPLE_SCRIPT);
-  }
-
-  static makeItemWithMeta(format, meta, value) {
-    format &= 0xF;
-    meta &= 0xFFF;
-    value &= 0xFFFF;
-    return format << 28 | meta << 16 | value;
-  }
-
-  static makeItem(format, value) {
-    format &= 0xF;
-    value &= 0xFFFFFFF;
-    return format << 28 | value;
-  }
-
-  makeCommentItem(text) {
-    this.comments.set(this.nextComment, text);
-    return Script.makeItem(Script.COMMENT, this.nextComment++);
-  }
-
-  loadScript(sampleScript) {
-    let line = [0];
-    let indentation = 0;
-    let isFuncDef = false;
-    let hasEndBracket = false;
-    let parenthesisCount = 0;
-    let tokens = sampleScript.match(/(?:\/\*(?:[^*]|(?:\*+(?:[^*\/])))*\*+\/)|(?:\/\/.*)|(?:[^\s(,)=+\-*\/"]+|"[^"]*")+|[\n,()]|[=+\-\*\/]+/g);
-
-    for (let i = 0; i < tokens.length; ++i) {
-      let token = tokens[i];
-      
-      //figure out what this token refers to
-      if (token === "\n") {
-        if (hasEndBracket)
-          hasEndBracket = false;
-        else {
-          this.data.push(line);
-          line = [indentation];
-          isFuncDef = false;
-        }
-      }
-      else if (token === "{") {
-        ++indentation;
-        line[0] |= 1 << 31;
-      }
-      else if (token === "}") {
-        --indentation;
-        hasEndBracket = true;
-        line[0] = (line[0] & 0xFFFF0000) | indentation;
-      }
-      else if (token.startsWith('"')) {
-        this.stringLiterals.set(this.nextStringLiteral, token.substring(1, token.length - 1));
-        line.push(Script.makeItem(Script.STRING_LITERAL, this.nextStringLiteral++));
-      }
-      else if (token.startsWith("//")) {
-        line.push(makeCommentItemtoken.substring(2));
-      }
-      else if (token.startsWith("/*")) {
-        line.push(makeCommentItemtoken.substring(2, token.length - 2));
-      }
-      else if (!isNaN(token)) {
-        this.numericLiterals.set(this.nextNumericLiteral, token);
-        line.push(Script.makeItem(Script.NUMERIC_LITERAL, this.nextNumericLiteral++));
-      }
-      else if (this.symbolMap.has(token)) {
-        line.push(Script.makeItem(Script.SYMBOL, this.symbolMap.get(token)));
-        let last = line.peek();
-        if (last === this.ITEMS.START_PARENTHESIS)
-          ++parenthesisCount;
-        else if (last === this.ITEMS.END_PARENTHESIS)
-          --parenthesisCount;
-      }
-      else if (this.keywordMap.has(token)) {
-        line.push(Script.makeItem(Script.KEYWORD, this.keywordMap.get(token)));
-      }
-      else if (this.functionMap.has(token)) {
-        let funcId = this.functionMap.get(token);
-        line.push(Script.makeItemWithMeta(Script.FUNCTION_REFERENCE, this.functions[funcId].scope, funcId));
-      }
-      else if (this.classMap.has(token)) {
-        line.push(Script.makeItem(Script.KEYWORD, this.keywordMap.get(token)));
-      }
-      
-      //this token represents a function definition
-      else if (line.peek() === this.ITEMS.FUNC) {
-        isFuncDef = true;
-
-        let newFunc = {};
-        newFunc.scope = 0;
-        
-        let indexOf = token.indexOf(":");
-        if (indexOf !== -1) {
-          newFunc.name = token.substring(0, indexOf);
-          newFunc.returnType = this.classMap.get(token.substring(indexOf + 1));
-        }
-        else {
-          newFunc.name = token;
-          newFunc.returnType = 0;
-        }
-        
-        //console.log("new function. name: " + newFunc.name + " returnType: " + this.classes[newFunc.returnType].name + " js: " + newFunc.js);
-        //the remaining tokens are parameters
-        newFunc.parameters = [];
-        for (let j = i + 1; tokens[j] !== "\n"; ++j) {
-          let indexOf = tokens[j].indexOf(":");
-          let parameter = {};
-          parameter.name = tokens[j].substring(0, indexOf);
-          parameter.type = this.classMap.get(tokens[j].substring(indexOf + 1));
-          newFunc.parameters.push(parameter);
-        }
-        
-        let funcId = this.functions.length;
-        this.functions.push(newFunc);
-        let key = newFunc.scope ? `${this.classes[newFunc.scope].name}.${newFunc.name}` : newFunc.name;
-        this.functionMap.set(key, funcId);
-        
-        line.push(Script.makeItemWithMeta(Script.FUNCTION_DEFINITION, newFunc.returnType, funcId));
-      }
-      
-      //this token represents a variable declaration or parameter
-      else if (isFuncDef || line.peek() === this.ITEMS.FOR || line.peek() === this.ITEMS.LET || line.peek() === this.ITEMS.VAR || (parenthesisCount === 0 && line.peek() === this.ITEMS.COMMA)) {
-        let variable = {};
-        
-        let indexOf = token.indexOf(":");
-        if (indexOf >= 0) {
-          variable.name = token.substring(0, indexOf);
-          variable.type = this.classMap.get(token.substring(indexOf + 1));
-        } else {
-          variable.name = token;
-          variable.type = 0;
-        }
-        
-        variable.scope = 0;
-        
-        let id = this.variables.length;
-        this.variables.push(variable);
-        
-        ++this.nextVariable;
-        
-        line.push(Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, variable.type, id));
-      }
-      
-      //assume token is a variable reference of some form
-      else {
-        let name, scope;
-        
-        let indexOf = token.lastIndexOf(".");
-        if (indexOf === -1) {
-          name = token;
-          scope = 0;
-        } else {
-          name = token.substring(indexOf + 1);
-          scope = this.classMap.get(token.substring(0, indexOf));
-        }
-        
-        let id = -1;
-        for (let i = 0; i < this.variables.length; ++i) {
-          const variable = this.variables[i];
-          if (name === variable.name && scope === variable.scope) {
-            id = i;
-            break;
+    for (const line of this.lines) {
+      let func;
+      for (const item of line) {
+        const data = Script.getItemData(item);
+        switch (data.format) {
+          case Script.VARIABLE_DEFINITION: {
+            const index = (data.value + this.variables.builtinCount) & this.variables.mask;
+            const name = getAndRemove(this.variables, data.value);
+            this.variables.data[index] = {name, type: data.meta, scope: this.CLASSES.VOID};
+            if (func) {
+              func.parameters.push(this.variables.data[index]);
+            }
           }
-        }
-        
-        if (id === -1) {
-          this.comments.set(this.nextComment, `unrecognized token\n${token}`);
-          line.push(Script.makeItem(Script.COMMENT, this.nextComment++));
-        } else {
-          let variable = this.variables[id];
-          line.push(Script.makeItemWithMeta(Script.VARIABLE_REFERENCE, scope, id));
+          break;
+
+          case Script.FUNCTION_DEFINITION: {
+            const index = (data.value + this.functions.builtinCount) & this.functions.mask;
+            const name = getAndRemove(this.functions, data.value);
+            this.functions.data[index] = {name, returnType: data.meta, scope: this.CLASSES.VOID, parameters: []};
+            func = this.functions.data[index];
+          }
+          break;
+
+          case Script.LITERAL:
+            if (this.literals.isUserDefined(data.value)) {
+              const index = (data.value + this.literals.builtinCount) & this.literals.mask;
+              const name = getAndRemove(this.literals, data.value);
+              this.literals.data[index] = name;
+            }
+          break;
         }
       }
     }
-    
-    if (line.length > 1)
-      this.data.push(line);
+
+    for (const container of [this.variables, this.functions, this.classes, this.literals]) {
+      for (let index = container.builtinCount; index < container.data.length; ++index) {
+        if (container.data[index] === undefined) {
+          const id = (index - container.builtinCount) & container.mask;
+          container.gaps.push(id);
+        }
+      }
+
+      for (const [id, name] of container.dbMap) {
+        console.log(`removing ${container.storeName}[${id}] === ${name}`);
+        this.modifyObjStore(container.storeName, IDBObjectStore.prototype.delete, id);
+      }
+
+      delete container.dbMap;
+
+      if (container.gaps.length) {
+        console.log(container.storeName, "has gaps", container.gaps);
+      }
+    }
+
+    reloadAllRowsInPlace();
   }
 
   itemClicked(row, col) {
@@ -286,135 +275,153 @@ class Script {
       if (options)
         return options;
       
-      col = this.data[row].length;
+      col = this.getItemCount(row);
     }
 
-    let options = [];
-    const item = this.data[row][col] || 0xFFFFFFFF;
-    const format = item >>> 28;
-    const data = item & 0xFFFFFFF;
-    const meta = data >>> 16;
-    const value = item & 0xFFFF;
-    
+    const [item = 0xFFFFFFFF] = [this.getItem(row, col)];
+    const data = Script.getItemData(item);
 
-    if (format === Script.KEYWORD) {
-      if (item !== this.ITEMS.VAR || this.data[row][3] === this.ITEMS.EQUALS) {
+    if (data.format === Script.KEYWORD) {
+      if (item !== this.ITEMS.VAR || this.getItem(row, 3) === this.ITEMS.EQUALS) {
         const i = this.toggles.indexOf(item);
         if (i !== -1) {
-          this.data[row][col] = this.toggles[i ^ 1];
-          let newKeyword = this.keywords[this.data[row][col] & 0xFFFFFF].name;
+          this.setItem(row, col, this.toggles[i ^ 1]);
+          let newKeyword = this.keywords[this.getData(row, col).value].name;
           return {text: newKeyword, style: "keyword"};
         }
       }
     }
 
-    if (this.ASSIGNMENT_OPERATORS.has(item)) {
+    if (this.ASSIGNMENT_OPERATORS.includes(item)) {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
-    let beginParenthesis = col;
-    let depth = 0;
-    if (item === this.ITEMS.END_PARENTHESIS) {
-      while (beginParenthesis > 1) {
-        if (this.data[row][beginParenthesis] === this.ITEMS.END_PARENTHESIS) {
-          --depth;
-        }
+    let options = [];
 
-        if (this.data[row][beginParenthesis] === this.ITEMS.START_PARENTHESIS) {
-          ++depth;
-          if (depth === 0)
-            break;
-        }
-
-        --beginParenthesis;
-      }
-    }
-
-    if (item === this.ITEMS.START_PARENTHESIS || item === this.ITEMS.END_PARENTHESIS) {
-      let options;
-      if (this.data[row][beginParenthesis - 1] >>> 28 === Script.FUNCTION_REFERENCE) {
-        //don't allow removal operations if the parenthesis belongs to a function call that sits alone in a line
-        if (beginParenthesis === 2 && this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE)
-          return [];
-        
-        options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_SUBEXPRESSION}];
-      } else {
-        options = [
-          {text: "", style: "delete", payload: this.PAYLOADS.DELETE_SUBEXPRESSION},
-          {text: "", style: "delete-outline", payload: this.PAYLOADS.REMOVE_PARENTHESIS_PAIR}
-        ];
-      }
-
-      if (item === this.ITEMS.END_PARENTHESIS)
-        options.push(...this.BINARY_OPERATORS.getMenuItems());
-      return options;
-    }
-
-    if (format === Script.VARIABLE_REFERENCE
-    || format === Script.VARIABLE_DEFINITION
-    || format === Script.FUNCTION_REFERENCE
-    || format === Script.FUNCTION_DEFINITION) {
+    if (((data.format === Script.VARIABLE_REFERENCE || data.format === Script.VARIABLE_DEFINITION) && this.variables.isUserDefined(data.value))
+    || ((data.format === Script.FUNCTION_REFERENCE || data.format === Script.FUNCTION_DEFINITION) && this.functions.isUserDefined(data.value))) {
       options.push({text: "", style: "rename", payload: this.PAYLOADS.RENAME});
     }
 
+    if ((item === this.ITEMS.IF || item === this.ITEMS.ELSE)
+    && this.getItemCount(row) > 2) {
+      options.push({text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM});
+    }
+
     if (col === 1) {
-      if (format === Script.VARIABLE_REFERENCE)
+      if (data.format === Script.VARIABLE_REFERENCE)
         options.push(...this.getVisibleVariables(row, true));
-      else if (format === Script.FUNCTION_REFERENCE)
+      else if (data.format === Script.FUNCTION_REFERENCE) {
+        options.push({text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM});
         options.push(...this.getFunctionList(false));
+      }
+      else if (item === this.ITEMS.IF) {
+        const indentation = this.getIndentation(row);
+        for (let r = row - 1; r >= 0; --r) {
+          if (this.getIndentation(r) < indentation)
+            break;
+
+          if (this.getItemCount(r) !== 1) {
+            if (this.getItem(r, 1) === this.ITEMS.IF
+            || this.getItem(r, 2) === this.ITEMS.IF) {
+              options.push({text: "else", style: "keyword", payload: this.PAYLOADS.INSERT_ELSE});
+            }
+            break;
+          }
+        }
+      }
     } else {
       //don't allow the user to delete the item if it is a binary operator followed by anything meaningful
-      if (format !== Script.VARIABLE_DEFINITION && format !== Script.FUNCTION_DEFINITION) {
-        if (!this.BINARY_OPERATORS.has(item)
-        || (this.data[row][col + 1] === undefined || this.data[row][col + 1] === this.HINTS.EXPRESSION))
-          options.push( {text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM} );
+      if (data.format !== Script.VARIABLE_DEFINITION
+      && data.format !== Script.FUNCTION_DEFINITION
+      && data.format !== Script.KEYWORD) {
+        if (!this.BINARY_OPERATORS.includes(item)
+        || (this.getItem(row, col + 1) === undefined
+        || this.getItem(row, col + 1) === this.ITEMS.BLANK))
+          options.push({text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM});
       }
 
-      if (format === Script.VARIABLE_REFERENCE
-      || format === Script.FUNCTION_REFERENCE
-      || format === Script.NUMERIC_LITERAL
-      || format === Script.STRING_LITERAL
-      || item === this.ITEMS.TRUE
-      || item === this.ITEMS.FALSE) {
-        options.push( {text: "( )", style: "", payload: this.PAYLOADS.PARENTHESIS_PAIR} );
-        //options.push(...this.BINARY_OPERATORS.getMenuItems());
+      if (item === this.ITEMS.START_PARENTHESIS
+      || item === this.ITEMS.END_PARENTHESIS) {
+        let beginParenthesis = col;
+        let depth = 0;
+        while (beginParenthesis > 1) {
+          if (this.getItem(row, beginParenthesis) === this.ITEMS.END_PARENTHESIS) {
+            --depth;
+          }
+  
+          if (this.getItem(row, beginParenthesis) === this.ITEMS.START_PARENTHESIS) {
+            ++depth;
+            if (depth >= 0)
+              break;
+          }
+  
+          --beginParenthesis;
+        }
+
+        if (this.getData(row, beginParenthesis - 1).format !== Script.FUNCTION_REFERENCE) {
+          options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
+        }
+        options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
       }
 
-      if (format === Script.VARIABLE_DEFINITION || format === Script.FUNCTION_DEFINITION) {
-        let option = {text: "", style: "comment", payload: Script.makeItemWithMeta(Script.COMMENT, 0, 0)};
-        option.text = (format === Script.FUNCTION_DEFINITION) ? "none" : "auto";
-        options.push(option);
-            
-        for (let i = 2; i < this.classes.length; ++i) {
-          if (this.classes[i].size > 0)
-            options.push({text: this.classes[i].name, style: "keyword", payload: Script.makeItemWithMeta(Script.COMMENT, i, 0)});
+      if (data.format === Script.VARIABLE_REFERENCE
+      || data.format === Script.LITERAL) {
+        options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
+        options.push(...this.BINARY_OPERATORS.getMenuItems());
+      }
+
+      if (data.format === Script.FUNCTION_REFERENCE)
+        options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
+
+      if (data.format === Script.VARIABLE_DEFINITION
+      || data.format === Script.FUNCTION_DEFINITION) {
+        //don't allow function return types or parameter types to be automaticly detected
+        if (data.format === Script.FUNCTION_DEFINITION
+        || this.findItem(row, this.ITEMS.FUNC) < 1) {
+          let option = {text: "", style: "comment", payload: Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: this.CLASSES.VOID})};
+          option.text = (data.format === Script.FUNCTION_DEFINITION) ? "void" : "auto";
+          options.push(option);
+        }
+
+        for (const id of this.classes.getIDs()) {
+          const c = this.classes.get(id);
+          if (c.size > 0)
+            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.FUNCTION_DEFINITION, flag: 1, meta: id})});
         }
       }
       
-      const prevItem = this.data[row][col - 1];
-      const prevFormat = prevItem >>> 28;
-      const prevData = prevItem & 0xFFFFFFF;
-      const prevMeta = prevData >>> 16;
-      const prevValue = prevItem & 0xFFFF;
+      const prevItem = this.getItem(row, col - 1);
+      const prevData = this.getData(row, col - 1);
 
-      if (prevFormat === Script.VARIABLE_REFERENCE
-      || prevFormat === Script.NUMERIC_LITERAL
-      || prevFormat === Script.STRING_LITERAL
-      || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE
+      if (prevData.format === Script.VARIABLE_REFERENCE
+      || prevData.format === Script.LITERAL
       || prevItem === this.ITEMS.END_PARENTHESIS) {
         options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
-      if (this.BINARY_OPERATORS.has(prevItem) || this.UNARY_OPERATORS.has(prevItem) || this.ASSIGNMENT_OPERATORS.has(prevItem)
-      || prevItem === this.ITEMS.WHILE || prevItem === this.ITEMS.IF || prevItem === this.ITEMS.START_PARENTHESIS || prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.IN || prevItem === this.ITEMS.RETURN
-      || prevItem === this.ITEMS.TRUE || prevItem === this.ITEMS.FALSE) {
-        if (!this.UNARY_OPERATORS.has(prevItem)) {
+      if (this.BINARY_OPERATORS.includes(prevItem)
+      || this.UNARY_OPERATORS.includes(prevItem)
+      || this.ASSIGNMENT_OPERATORS.includes(prevItem)
+      || prevItem === this.ITEMS.WHILE
+      || prevItem === this.ITEMS.DO_WHILE
+      || prevItem === this.ITEMS.SWITCH
+      || prevItem === this.ITEMS.IF
+      || prevItem === this.ITEMS.START_PARENTHESIS
+      || prevItem === this.ITEMS.COMMA
+      || prevItem === this.ITEMS.IN
+      || prevItem === this.ITEMS.RETURN) {
+        if (!this.UNARY_OPERATORS.includes(prevItem)) {
           options.push(...this.UNARY_OPERATORS.getMenuItems());
         }
 
         options.push( {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN} );
         options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
         options.push(...this.getVisibleVariables(row, false));
+      }
+
+      if (item !== this.ITEMS.IF && prevItem === this.ITEMS.ELSE) {
+        options.push({text: "if", style: "keyword", payload: this.PAYLOADS.APPEND_IF});
       }
     }
 
@@ -432,28 +439,60 @@ class Script {
       let enclosingScopeType = 0;
       for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
         if (this.getIndentation(r) === indentation - 1) {
-          enclosingScopeType = this.data[r][1];
+          enclosingScopeType = this.getItem(r, 1);
           break;
         }
       }
 
       if (enclosingScopeType === this.ITEMS.SWITCH) {
         options = [
-          {text: "case", style: "keyword", payload: this.ITEMS.CASE}, 
+          {text: "case", style: "keyword", payload: this.ITEMS.CASE},
           {text: "default", style: "keyword", payload: this.ITEMS.DEFAULT}
         ];
       } else {
         options = [
           {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE},
-          {text: "func", style: "keyword", payload: this.PAYLOADS.FUNCTION_DEFINITION},
+          {text: "func", style: "keyword", payload: this.ITEMS.FUNC},
           {text: "let", style: "keyword", payload: this.ITEMS.LET},
           {text: "var", style: "keyword", payload: this.PAYLOADS.VAR_OPTIONS},
-          {text: "if", style: "keyword", payload: this.ITEMS.IF},
+          {text: "if", style: "keyword", payload: this.ITEMS.IF}];
+
+        for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
+          if (this.getIndentation(r) < indentation)
+            break;
+          
+          if (this.getItemCount(r) !== 1) {
+            if (this.getItem(r, 1) === this.ITEMS.IF
+            || this.getItem(r, 2) === this.ITEMS.IF) {
+              let preceedsElse = false;
+              for (let r = row + 1; r < rowCount; ++r) {
+                if (this.getIndentation(r) < indentation)
+                  break;
+
+                if (this.getItemCount(r) !== 1) {
+                  if (this.getItem(r, 1) === this.ITEMS.ELSE) {
+                    preceedsElse = true;
+                  }
+                  break;
+                }
+              }
+
+              if (preceedsElse) {
+                return [{text: "else if", style: "keyword", payload: this.PAYLOADS.ELSE_IF}];
+              } else {
+                options.push({text: "else", style: "keyword", payload: this.ITEMS.ELSE});
+              }
+            }
+            break;
+          }
+        }
+
+        options.push(
           {text: "for", style: "keyword", payload: this.ITEMS.FOR},
           {text: "while", style: "keyword", payload: this.ITEMS.WHILE},
           {text: "switch", style: "keyword", payload: this.ITEMS.SWITCH},
           {text: "return", style: "keyword", payload: this.ITEMS.RETURN}
-        ];
+        );
 
         options.push(...this.getVisibleVariables(Math.min(this.getRowCount(), row), true));
       }
@@ -461,7 +500,7 @@ class Script {
       return options;
     }
 
-    if (this.data[row][1] === this.ITEMS.VAR) {
+    if (this.getItem(row, 1) === this.ITEMS.VAR) {
       if (itemCount === 3) {
         return [
           {text: "=", style: "", payload: this.ITEMS.EQUALS},
@@ -469,25 +508,25 @@ class Script {
         ];
       }
 
-      if (this.data[row][3] === this.ITEMS.COMMA) {
+      if (itemCount > 3) {
         return [
           {text: ",", style: "", payload: this.ITEMS.COMMA}
         ];
       }
     }
 
-    if (this.data[row][1] >>> 28 === Script.FUNCTION_REFERENCE) {
-      return [];
+    if (this.getData(row, 1).format === Script.FUNCTION_REFERENCE) {
+      return null;
     }
 
-    const index = this.data[row].lastIndexOf(this.ITEMS.FUNC);
+    const index = this.findItem(row, this.ITEMS.FUNC);
     if (index > 0) {
       let options = [];
 
-      for (let i = 2; i < this.classes.length; ++i) {
-        const c = this.classes[i];
+      for (const id of this.classes.getIDs()) {
+        const c = this.classes.get(id);
         if (c.size > 0)
-          options.push({text: c.name, style: "keyword", payload: Script.makeItemWithMeta(Script.ARGUMENT_HINT, i, 0)});
+          options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.ARGUMENT_HINT, meta: id})});
       }
 
       return options;
@@ -498,49 +537,30 @@ class Script {
 
   //0 -> no change, 1 -> click item changed, 2-> row changed, 3 -> row(s) inserted
   menuItemClicked(row, col, payload) {
-    let indentation;
-    if (row > 0 && row < this.getRowCount())
-      indentation = this.getIndentation(row - 1) + this.isStartingScope(row - 1);
-    else
-      indentation = 0;
-    
-    while (row >= this.data.length) {
-      this.data.push([indentation]);
-    }
-
-    let isValue = false;
     if (col === -1)
-      col = this.data[row].length;
-    else {
-      const item = this.data[row][col];
-      const format = item >>> 28;
-      if (format === Script.VARIABLE_REFERENCE
-      || format === Script.NUMERIC_LITERAL
-      || format === Script.STRING_LITERAL
-      || item === this.ITEMS.TRUE || item === this.ITEMS.FALSE
-      || item === this.ITEMS.END_PARENTHESIS) {
-        isValue = true;
-      }
-    }
+      col = row < this.getRowCount() ? this.getItemCount(row) : 0;
 
     switch (payload) {
       case this.ITEMS.CASE:
-        this.data[row][0] |= 1 << 31;
-        this.data[row].push(payload, this.HINTS.VALUE);
+        this.appendRowsUpTo(row);
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload, this.ITEMS.BLANK);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
       case this.ITEMS.DEFAULT:
-        this.data[row][0] |= 1 << 31;
-        this.data[row].push(payload);
+        this.appendRowsUpTo(row);
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
       case this.ITEMS.LET:
       case this.ITEMS.VAR: {
-        const varId = this.variables.length;
+        const varId = this.variables.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
         if (name) {
-          this.variables.push({name, type: 0, scope: 0});
-          this.data[row].push(payload, Script.makeItem(Script.VARIABLE_DEFINITION, varId), this.ITEMS.EQUALS, this.HINTS.EXPRESSION);
+          this.appendRowsUpTo(row);
+          this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
+          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.EQUALS, this.ITEMS.BLANK);
           return Script.RESPONSE.ROW_UPDATED;
         } else {
           return Script.RESPONSE.NO_CHANGE;
@@ -550,10 +570,10 @@ class Script {
       case this.PAYLOADS.VAR_OPTIONS: {
         let options = [{text: "= expression", style: "comment", payload: this.ITEMS.VAR}];
 
-        for (let i = 2; i < this.classes.length; ++i) {
-          const c = this.classes[i];
+        for (const id of this.classes.getIDs()) {
+          const c = this.classes.get(id);
           if (c.size > 0)
-            options.push({text: c.name, style: "keyword", payload: Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, i, 0)});
+            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: id})});
         }
 
         return options;
@@ -561,70 +581,119 @@ class Script {
       
       case this.ITEMS.IF:
       case this.ITEMS.WHILE:
-        this.data[row][0] |= 1 << 31;
-        this.data[row].push(payload, this.HINTS.CONDITION);
+        this.appendRowsUpTo(row);
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload, this.ITEMS.BLANK);
+        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+      
+      case this.ITEMS.ELSE:
+        this.appendRowsUpTo(row);
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
-      case this.ITEMS.FOR:
-        this.data[row][0] |= 1 << 31;
-
-        let id = this.variables.length;
-        this.variables.push({name: "i", type: 0, scope: 0});
-
-        this.data[row].push(payload, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, 0, id), this.ITEMS.IN,
-          Script.makeItem(Script.FUNCTION_REFERENCE, this.functionMap.get("stride")),
-          this.ITEMS.START_PARENTHESIS,
-          Script.makeItemWithMeta(Script.ARGUMENT_HINT, 0, this.functionMap.get("stride")),
-          this.ITEMS.COMMA,
-          Script.makeItemWithMeta(Script.ARGUMENT_HINT, 1, this.functionMap.get("stride")),
-          this.ITEMS.COMMA,
-          Script.makeItemWithMeta(Script.ARGUMENT_HINT, 2, this.functionMap.get("stride")),
-          this.ITEMS.END_PARENTHESIS);
+      case this.PAYLOADS.ELSE_IF:
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, this.ITEMS.ELSE, this.ITEMS.IF, this.ITEMS.BLANK);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+      
+      case this.PAYLOADS.APPEND_IF:
+        this.pushItems(row, this.ITEMS.IF, this.ITEMS.BLANK);
+        return Script.RESPONSE.ROW_UPDATED;
+      
+      case this.PAYLOADS.INSERT_ELSE:
+        this.spliceRow(row, col, 0, this.ITEMS.ELSE);
+        return Script.RESPONSE.ROW_UPDATED;
+
+      case this.ITEMS.FOR: {
+
+        let name = "index";
+
+        if (row < this.getRowCount()) {
+          let indentation = this.getIndentation(row) - 1;
+          for (let r = row - 1; r >= 0, indentation >= 0; --r) {
+            if (this.getIndentation(r) === indentation && this.isStartingScope(r)) {
+              --indentation;
+
+              if (this.getItem(r, 1) === this.ITEMS.FOR) {
+                const loopingVar = this.variables.get(this.getData(r, 2).value);
+                const nestingDepth = (loopingVar.name.match(/\d+$/) || [""]).pop();
+                name = loopingVar.name.substring(0, loopingVar.name.length - nestingDepth.length) + (Number(nestingDepth) + 1);
+                break;
+              }
+            }
+          }
+        }
+
+        name = prompt("Enter for loop variable name:", name);
+        if (name) {
+          this.appendRowsUpTo(row);
+          this.setIsStartingScope(row, true);
+          let varId = this.variables.nextId();
+  
+          this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
+  
+          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.IN,
+            Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.CLASSES.VOID, value: this.FUNCS.STRIDE}),
+            this.ITEMS.START_PARENTHESIS,
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.STRIDE}),
+            this.ITEMS.COMMA,
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.STRIDE}),
+            this.ITEMS.COMMA,
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.STRIDE}),
+            this.ITEMS.END_PARENTHESIS);
+          return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        }
+
+        return Script.RESPONSE.NO_CHANGE;
+      }
 
       case this.ITEMS.SWITCH:
-        this.data[row][0] |= 1 << 31;
-        this.data[row].push(payload, this.HINTS.CONTROL_EXPRESSION);
+        this.appendRowsUpTo(row);
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload, this.ITEMS.BLANK);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
       case this.ITEMS.RETURN: {
+        this.appendRowsUpTo(row);
         let returnType = 0;
         for (let r = row - 1; r >= 0; --r) {
-          if (this.data[r][1] === this.ITEMS.FUNC) {
-            returnType = (this.data[r][2] >>> 16) & 0x0FFF;
+          if (this.getItem(r, 1) === this.ITEMS.FUNC) {
+            returnType = this.getData(r, 2).meta;
             break;
           }
         }
 
-        this.data[row].push(payload);
+        this.pushItems(row, payload);
         if (returnType > 0)
-          this.data[row].push(this.HINTS.EXPRESSION);
+          this.pushItems(row, this.ITEMS.BLANK);
         
         return Script.RESPONSE.ROW_UPDATED;
       }
 
-      case this.PAYLOADS.FUNCTION_DEFINITION: {
-        let options = [{text: "none", style: "comment", payload: Script.makeItemWithMeta(Script.NUMERIC_LITERAL, 0, 0)}];
-            
-        for (let i = 2; i < this.classes.length; ++i) {
-          if (this.classes[i].size > 0)
-            options.push({text: this.classes[i].name, style: "keyword", payload: Script.makeItemWithMeta(Script.NUMERIC_LITERAL, i, 0)});
+      case this.ITEMS.FUNC: {
+        let options = [{text: "none", style: "comment", payload: Script.makeItem({format: Script.LITERAL, meta: 0})}];
+
+        for (const id of this.classes.getIDs()) {
+          const c = this.classes.get(id);
+          if (c.size > 0)
+            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.LITERAL, meta: id})});
         }
 
         return options;
       }
 
       case this.ITEMS.EQUALS:
-        this.data[row].push(this.ITEMS.EQUALS, this.HINTS.EXPRESSION);
+        this.pushItems(row, this.ITEMS.EQUALS, this.ITEMS.BLANK);
         return Script.RESPONSE.ROW_UPDATED;
 
       case this.ITEMS.COMMA: {
-        let varId = this.variables.length;
+        let varId = this.variables.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
         if (name) {
-          let type = (this.data[row].peek() >>> 16) & 0x0FFF;
-          this.variables.push({name, type, scope: 0});
-          this.data[row].push(this.ITEMS.COMMA, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
+          let type = this.getData(row, this.getItemCount(row) - 1).meta;
+          this.variables.set(varId, {name, type, scope: this.CLASSES.VOID});
+          this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
           return Script.RESPONSE.ROW_UPDATED;
         } else {
           return Script.RESPONSE.NO_CHANGE;
@@ -634,160 +703,114 @@ class Script {
       case this.PAYLOADS.LITERAL_INPUT: {
         let hint = "";
 
-        const item = this.data[row][col];
-        const format = item >>> 28;
-        if (format === Script.NUMERIC_LITERAL) {
-          hint = this.numericLiterals.get(item & 0xFFFFFFF);
-        } else if (format === Script.STRING_LITERAL) {
-          hint = '"' + this.stringLiterals.get(item & 0xFFFFFFF) + '"';
-        } else if (item === this.ITEMS.TRUE || item === this.ITEMS.FALSE) {
-          hint = this.keywords[item & 0xFFFFFFF].name;
+        const data = this.getData(row, col);
+        if (data.format == Script.LITERAL) {
+          hint = this.literals.get(data.value);
         }
 
         let input = prompt("Enter a string or a number:", hint);
         if (input === null)
           return Script.RESPONSE.NO_CHANGE;
-        
-        if (input.trim().length !== 0 && !isNaN(input)) {
-          this.numericLiterals.set(this.nextNumericLiteral, input);
-          this.data[row][col] = Script.makeItem(Script.NUMERIC_LITERAL, this.nextNumericLiteral++);
-        } else if (input === "true") {
-          this.data[row][col] = this.ITEMS.TRUE;
-        } else if (input === "false") {
-          this.data[row][col] = this.ITEMS.FALSE;
-        } else {
-          if (input.startsWith('"')) {
-            if (input.endsWith('"')) {
-              input = input.substring(1, input.length - 1);
-            } else {
-              input = input.substring(1);
-            }
-          }
 
-          this.stringLiterals.set(this.nextStringLiteral, input);
-          this.data[row][col] = Script.makeItem(Script.STRING_LITERAL, this.nextStringLiteral++);
+        let payload;
+        
+        if (input === "true") {
+          payload = this.ITEMS.TRUE;
+        } else if (input === "false") {
+          payload = this.ITEMS.FALSE;
+        } else {
+          const id = this.literals.nextId();
+
+          if (input.trim().length !== 0 && !isNaN(input)) {
+            input = input.trim();
+            payload = Script.makeItem({format: Script.LITERAL, meta: 2, value: id});
+          } else {
+            if (!input.startsWith('"'))
+              input = '"' + input;
+            
+            if (!input.endsWith('"' || input.length < 2))
+              input = input + '"';
+
+            payload = Script.makeItem({format: Script.LITERAL, meta: 1, value: id});
+          }
+          
+          this.literals.set(id, input);
         }
 
+        const [start, end] = this.getExpressionBounds(row, col);
+        this.spliceRow(row, start, end - start + 1, payload);
         return Script.RESPONSE.ROW_UPDATED;
       }
 
       case this.PAYLOADS.RENAME: {
-        const data = this.data[row][col];
-        const id = data & 0xFFFF;
-        let format = data >>> 28;
+        const data = this.getData(row, col);
+        let container;
 
-        let obj;
-
-        switch (format) {
+        switch (data.format) {
           case Script.VARIABLE_DEFINITION:
           case Script.VARIABLE_REFERENCE:
-            obj = this.variables[id];
+            container = this.variables;
             break;
 
           case Script.FUNCTION_DEFINITION:
           case Script.FUNCTION_REFERENCE:
-            obj = this.functions[id];
+            container = this.functions;
             break;
         }
 
-        let input = prompt("Enter new name:", obj.name);
+        let metadata = container.get(data.value);
+        let input = prompt("Enter new name:", metadata.name);
 
         if (input === null)
           return Script.RESPONSE.NO_CHANGE;
         else {
-          obj.name = input;
+          metadata.name = input;
+          container.set(data.value, metadata);
           return Script.RESPONSE.SCRIPT_CHANGED;
         }
       }
 
       case this.PAYLOADS.DELETE_ITEM: {
-        const item = this.data[row][col];
-        const format = item >>> 28;
-        const data = item & 0xFFFFFF;
+        const item = this.getItem(row, col);
 
-        if (this.UNARY_OPERATORS.has(item)) {
-          this.data[row].splice(col, 1);
+        if (this.UNARY_OPERATORS.includes(item)) {
+          this.spliceRow(row, col, 1);
         }
-        if (this.BINARY_OPERATORS.has(item)) {
-          this.data[row].splice(col, 2);
+        else if (this.BINARY_OPERATORS.includes(item)) {
+          this.spliceRow(row, col, 2);
         }
-        if (item === this.HINTS.EXPRESSION && this.BINARY_OPERATORS.has(this.data[row][col - 1])) {
-          this.data[row].splice(col - 1, 2);
+        else if (item === this.ITEMS.BLANK && this.BINARY_OPERATORS.includes(this.getItem(row, col - 1))) {
+          this.spliceRow(row, col - 1, 2);
         }
+        else if (item === this.ITEMS.IF) {
+          this.spliceRow(row, 2, this.getItemCount(row) - 2);
+        }
+        else {
+          const [start, end] = this.getExpressionBounds(row, col);
 
-        if (format === Script.VARIABLE_REFERENCE
-        || format === Script.NUMERIC_LITERAL
-        || format === Script.STRING_LITERAL
-        || item === this.ITEMS.TRUE || item === this.ITEMS.FALSE) {
-          this.data[row].splice(col, 1, this.HINTS.EXPRESSION);
-        }
-
-        if (format === Script.FUNCTION_REFERENCE) {
-          let end = col + 2;
-          while (end < this.data[row].length) {
-            if (this.data[row][end] === this.ITEMS.END_PARENTHESIS)
-              break;
-            
-            ++end;
+          //assumes any selection that reaches the first item spans the whole line
+          if (start === 1) {
+            if (this.getIndentation(row) === 0 && row + 1 === this.getRowCount()) {
+              return Script.RESPONSE.ROW_DELETED;
+            } else {
+              this.spliceRow(row, start, end - start + 1);
+            }
+          } else {
+            this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
           }
-
-          this.data[row].splice(col, end - col + 1, this.HINTS.EXPRESSION);
         }
 
         return Script.RESPONSE.ROW_UPDATED;
       }
 
-      case this.PAYLOADS.DELETE_SUBEXPRESSION:
-      case this.PAYLOADS.REMOVE_PARENTHESIS_PAIR: {
-        const item = this.data[row][col];
-        let matchingParenthesis = col;
-        let depth = 0;
-
-        if (item === this.ITEMS.END_PARENTHESIS) {
-          while (matchingParenthesis > 1) {
-            if (this.data[row][matchingParenthesis] === this.ITEMS.END_PARENTHESIS) {
-              --depth;
-            }
-
-            if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS) {
-              ++depth;
-              if (depth === 0)
-                break;
-            }
-
-            --matchingParenthesis;
-          }
-        }
-
-        if (item === this.ITEMS.START_PARENTHESIS) {
-          while (matchingParenthesis < this.data[row].length) {
-            if (this.data[row][matchingParenthesis] === this.ITEMS.START_PARENTHESIS) {
-              --depth;
-            }
-
-            if (this.data[row][matchingParenthesis] === this.ITEMS.END_PARENTHESIS) {
-              ++depth;
-              if (depth === 0)
-                break;
-            }
-
-            ++matchingParenthesis;
-          }
-        }
-
-        let start = Math.min(col, matchingParenthesis);
-        const end = Math.max(col, matchingParenthesis);
+      case this.PAYLOADS.UNWRAP_PARENTHESIS: {
+        const [start, end] = this.getExpressionBounds(row, col);
+        let removeFromBeginning = 1;
+        if (this.UNARY_OPERATORS.includes(this.getItem(row, start)))
+          ++removeFromBeginning;
         
-        if (payload === this.PAYLOADS.DELETE_SUBEXPRESSION) {
-          if (this.data[row][start - 1] >>> 28 === Script.FUNCTION_REFERENCE)
-            --start;
-
-          this.data[row].splice(start, end - start + 1, this.HINTS.EXPRESSION);
-        } else {
-          this.data[row].splice(end, 1);
-          this.data[row].splice(start, 1);
-        }
-
+        this.spliceRow(row, end, 1);
+        this.spliceRow(row, start, removeFromBeginning);
         return Script.RESPONSE.ROW_UPDATED;
       }
 
@@ -797,48 +820,48 @@ class Script {
         return this.getFunctionList(requireReturn);
       }
 
-      case this.PAYLOADS.PARENTHESIS_PAIR: {
+      case this.PAYLOADS.WRAP_IN_PARENTHESIS: {
         const [start, end] = this.getExpressionBounds(row, col);
 
-        this.data[row].splice(end + 1, 0, this.ITEMS.END_PARENTHESIS);
-        this.data[row].splice(start, 0, this.ITEMS.START_PARENTHESIS);
+        this.spliceRow(row, end + 1, 0, this.ITEMS.END_PARENTHESIS);
+        this.spliceRow(row, start, 0, this.ITEMS.START_PARENTHESIS);
 
         return Script.RESPONSE.ROW_UPDATED;
       }
     }
 
-    let format = payload >>> 28;
-    let meta = (payload >>> 16) & 0x0FFF;
-    let data = payload & 0xFFFF;
+    const payloadData = Script.getItemData(payload);
 
     //if a specific variable reference is provided
-    if (format === Script.VARIABLE_REFERENCE) {
-      let varId = payload & 0xFFFF;
-      let variable = this.variables[varId];
+    if (payloadData.format === Script.VARIABLE_REFERENCE) {
+      let varId = payloadData.value;
+      const variable = this.variables.get(varId);
       
-      if (this.data[row].length === 1) {
-        this.data[row].push(
-          Script.makeItemWithMeta(Script.VARIABLE_REFERENCE, variable.type, varId),
+      this.appendRowsUpTo(row);
+      if (this.getItemCount(row) === 1) {
+        this.pushItems(row,
+          Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: variable.scope, value: varId}),
           this.ITEMS.EQUALS,
-          this.HINTS.EXPRESSION
+          this.ITEMS.BLANK
         );
         return Script.RESPONSE.ROW_UPDATED;
       }
 
       const [start, end] = this.getExpressionBounds(row, col);
-      this.data[row].splice(start, end - start + 1, payload);
+      this.spliceRow(row, start, end - start + 1, payload);
 
       return Script.RESPONSE.ROW_UPDATED;
     }
 
     //user chose a type for a variable declaration
-    if (format === Script.VARIABLE_DEFINITION) {
-      const varId = this.variables.length;
+    if (payloadData.format === Script.VARIABLE_DEFINITION) {
+      const varId = this.variables.nextId();
       const name = prompt("Enter variable name:", `var${varId}`);
       if (name) {
-        const type = meta;
-        this.variables.push({name, type, scope: 0});
-        this.data[row].push(this.ITEMS.VAR, Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
+        const type = payloadData.meta;
+        this.appendRowsUpTo(row);
+        this.variables.set(varId, {name, type, flag: 1, scope: this.CLASSES.VOID});
+        this.pushItems(row, this.ITEMS.VAR, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
         return Script.RESPONSE.ROW_UPDATED;
       } else {
         return Script.RESPONSE.NO_CHANGE;
@@ -846,15 +869,16 @@ class Script {
     }
 
     //user chose a type for a function declaration
-    if (format === Script.NUMERIC_LITERAL) {
-      let funcId = this.functions.length;
-      const returnType = meta;
+    if (payloadData.format === Script.LITERAL) {
+      let funcId = this.functions.nextId();
+      const returnType = payloadData.meta;
       const name = prompt(`Enter function name`, `f${funcId}`);
-        if (name) {
-        let newFunc = {name, returnType, scope: 0, parameters: []};
-        this.functions.push(newFunc);
-        this.data[row][0] |= 1 << 31;
-        this.data[row].push(this.ITEMS.FUNC, Script.makeItemWithMeta(Script.FUNCTION_DEFINITION, returnType, funcId));
+      if (name) {
+        let newFunc = {name, returnType, scope: this.CLASSES.VOID, parameters: []};
+        this.appendRowsUpTo(row);
+        this.functions.set(funcId, newFunc);
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, this.ITEMS.FUNC, Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: returnType, value: funcId}));
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       } else {
         return Script.RESPONSE.NO_CHANGE;
@@ -862,37 +886,40 @@ class Script {
     }
 
     //user chose a specific function call
-    if (format === Script.FUNCTION_REFERENCE) {
-      const func = this.functions[data];
+    if (payloadData.format === Script.FUNCTION_REFERENCE) {
+      const func = this.functions.get(payloadData.value);
       let replacementItems = [payload];
 
       for (let i = 0; i < func.parameters.length; ++i) {
         replacementItems.push(this.ITEMS.COMMA);
-        replacementItems.push(Script.makeItemWithMeta(Script.ARGUMENT_HINT, i, data));
+        replacementItems.push(Script.makeItem({format: Script.ARGUMENT_HINT, meta: i, value: payloadData.value}));
       }
 
       replacementItems[1] = this.ITEMS.START_PARENTHESIS;
       replacementItems.push(this.ITEMS.END_PARENTHESIS);
 
-      const [start, end] = this.getExpressionBounds(row, col);
-      this.data[row].splice(start, end - start + 1, ...replacementItems);
+      this.appendRowsUpTo(row);
+      const [start, end] = col === 0 ? [1,1] : this.getExpressionBounds(row, col);
+      this.spliceRow(row, start, end - start + 1, ...replacementItems);
       
       return Script.RESPONSE.ROW_UPDATED;
     }
 
     //appending additional parameters
-    if (format === Script.ARGUMENT_HINT) {
-      let varId = this.variables.length;
-      let type = meta;
-      const name = prompt(`Enter name for ${this.classes[type].name} parameter:`, `var${varId}`);
+    if (payloadData.format === Script.ARGUMENT_HINT) {
+      let varId = this.variables.nextId();
+      let type = payloadData.meta;
+      const name = prompt(`Enter name for ${this.classes.get(type).name} parameter:`, `var${varId}`);
 
       if (name) {
-        this.variables.push({name, type, scope: 0});
-        this.data[row].push(Script.makeItemWithMeta(Script.VARIABLE_DEFINITION, type, varId));
+        this.variables.set(varId, {name, type, scope: this.CLASSES.VOID});
+        this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
 
-        const index = this.data[row].lastIndexOf(this.ITEMS.FUNC);
-        const func = this.functions[this.data[row][index + 1] & 0xFFFF];
+        const index = this.findItem(row, this.ITEMS.FUNC);
+        const funcId = this.getData(row, index + 1).value;
+        const func = this.functions.get(funcId);
         func.parameters.push({name, type})
+        this.functions.set(funcId, func);
 
         return Script.RESPONSE.ROW_UPDATED;
       } else {
@@ -901,40 +928,50 @@ class Script {
     }
 
     //user chose a symbol to insert into the script
-    if (format === Script.SYMBOL) {
-      if (isValue || this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
-        if (this.UNARY_OPERATORS.has(payload))
-          this.data[row].splice(col, 0, payload);
-        else
-          this.data[row].splice(col + 1, 0, payload, this.HINTS.EXPRESSION);
+    if (payloadData.format === Script.SYMBOL) {
+      const item = this.getItem(row, col);
+      if (this.UNARY_OPERATORS.includes(item) || this.BINARY_OPERATORS.includes(item)) {
+        this.setItem(row, col, payload);
       } else {
-        this.data[row][col] = payload;
+        if (this.UNARY_OPERATORS.includes(payload))
+          this.spliceRow(row, col, 0, payload);
+        else
+          this.spliceRow(row, col + 1, 0, payload, this.ITEMS.BLANK);
       }
+      
       return Script.RESPONSE.ROW_UPDATED;
     }
 
     //user updated the type annotation of a variable or function
-    if (format === Script.COMMENT) {
-      this.data[row][col] = (this.data[row][col] & 0xF000FFFF) | meta << 16;
+    if (payloadData.format === Script.FUNCTION_DEFINITION) {
+      const {format, value} = this.getData(row, col);
+      const {flag, meta} = payloadData;
+      const newItem = Script.makeItem({format, flag, meta, value});
+      this.setItem(row, col, newItem, true);
 
-      if (this.data[row][col] >>> 28 === Script.FUNCTION_DEFINITION) {
-        const hasReturn = meta !== 0;
+      if (format === Script.FUNCTION_DEFINITION) {
+        const hasReturn = payloadData.meta !== this.CLASSES.VOID;
 
         let indentation = this.getIndentation(row);
-        for (let r = row + 1; r < this.data.length; ++r) {
+        for (let r = row + 1; r < this.getRowCount(); ++r) {
           if (this.getIndentation(r) === indentation)
             break;
           
-          if (this.data[r][1] === this.ITEMS.RETURN) {
-            if (hasReturn) {
-              this.data[r] = [this.data[r][0], this.ITEMS.RETURN, this.HINTS.EXPRESSION];
-            } else {
-              this.data[r].length = 2;
-            }
+          if (this.getItem(r, 1) === this.ITEMS.RETURN) {
+            let replacementItems = hasReturn ? [this.ITEMS.BLANK] : [];
+            this.spliceRow(r, 2, this.getItemCount(r) - 2, ...replacementItems);
           }
         }
 
+        const func = this.functions.get(value);
+        func.returnType = payloadData.meta;
+        this.functions.set(value, func);
+
         return Script.RESPONSE.SCRIPT_CHANGED;
+      } else {
+        const v = this.variables.get(value);
+        v.type = payloadData.meta;
+        this.variables.set(value, v);
       }
       
       return Script.RESPONSE.ROW_UPDATED;
@@ -950,26 +987,30 @@ class Script {
 
     for (let r = row - 1; r >= 0; --r) {
       let lineIndentation = this.getIndentation(r);
-      if (lineIndentation + this.isStartingScope(r) <= indentation && this.data[r].length > 1) {
+      if (lineIndentation + this.isStartingScope(r) <= indentation && this.getItemCount(r) > 1) {
         indentation = Math.min(indentation, lineIndentation);
-        if (!requiresMutable || this.data[r][1] === this.ITEMS.VAR) {
-          let itemCount = this.data[r].length;
+        if (!requiresMutable || this.getItem(r, 1) === this.ITEMS.VAR) {
+          let itemCount = this.getItemCount(r);
           for (let col = 1; col < itemCount; ++col) {
-            if (this.data[r][col] >>> 28 === Script.VARIABLE_DEFINITION) {
-              let varId = this.data[r][col] & 0xFFFF;
-              const v = this.variables[varId];
-              const text = this.classes[v.type].name + " " + this.classes[v.scope].name + "\n" + v.name;
-              options.push({text, style: "keyword-declaration", payload: (Script.VARIABLE_REFERENCE << 28) | varId});
+            if (this.getData(r, col).format === Script.VARIABLE_DEFINITION) {
+              let varId = this.getData(r, col).value;
+              const v = this.variables.get(varId);
+              const type = this.classes.get(v.type);
+              const scope = this.classes.get(v.scope);
+              const text = (v.type === this.CLASSES.VOID ? "undeclared" : type.name) + (v.scope === this.CLASSES.VOID ? "" : " " + scope.name) + "\n" + v.name;
+              options.push({text, style: "keyword-declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.type, value: varId})});
             }
           }
         }
       }
     }
 
-    for (let i = 0; i < this.EXTERNAL_VARIABLE_COUNT; ++i) {
-      const v = this.variables[i];
-      const text = this.classes[v.type].name + " " + this.classes[v.scope].name + "\n" + v.name;
-      options.push({text, style: "keyword-declaration", payload: (Script.VARIABLE_REFERENCE << 28) | i});
+    if (!requiresMutable) {
+      for (let i = -this.variables.builtinCount; i <= -1; ++i) {
+        const v = this.variables.get(i);
+        const text = this.classes.get(v.type).name + " " + this.classes.get(v.scope).name + "\n" + v.name;
+        options.push({text, style: "keyword-declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: i})});
+      }
     }
 
     return options;
@@ -978,34 +1019,41 @@ class Script {
   getFunctionList(requireReturn) {
     let options = [];
 
-    for (let i = 0; i < this.functions.length; ++i) {
-      const func = this.functions[i];
+    for (const id of this.functions.getIDs()) {
+      let func = this.functions.get(id);
       if (!requireReturn || func.returnType !== 0) {
-        const scope = this.classes[func.scope];
-        options.push({text: scope.name + "\n" + func.name, style: "keyword-call", payload: Script.makeItemWithMeta(Script.FUNCTION_REFERENCE, func.scope, i)});
+        const returnType = this.classes.get(func.returnType);
+        const scope = this.classes.get(func.scope);
+        if (func.name === "dot")
+          console.log(func);
+        options.push({text: returnType.name + (func.scope === this.CLASSES.VOID ? "" : " " + scope.name) + "\n" + func.name, style: "keyword-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
       }
     }
 
     return options;
   }
 
-  //return an array marking the first and last item that belongs to the selected expression
+  /**
+   * Finds the bounds of the smallest expression that contains the item position
+   * @param {Number} row
+   * @param {Number} col
+   * @return {[Number, Number]} [startItem, endItem] 
+   */
   getExpressionBounds(row, col) {
     let start = col;
     let end = col;
 
-    if (this.UNARY_OPERATORS.has(this.data[row][col - 1])) {
-      --start;
-    }
+    const item = this.getItem(row, col);
+    const data = Script.getItemData(item);
 
-    if (this.data[row][col] >>> 28 === Script.FUNCTION_REFERENCE) {
+    if (data.format === Script.FUNCTION_REFERENCE || item === this.ITEMS.START_PARENTHESIS) {
       let depth = 0;
-      while (end < this.data[row].length) {
-        if (this.data[row][end] === this.ITEMS.START_PARENTHESIS) {
+      while (end < this.getItemCount(row)) {
+        if (this.getItem(row, end) === this.ITEMS.START_PARENTHESIS) {
           ++depth;
         }
 
-        if (this.data[row][end] === this.ITEMS.END_PARENTHESIS) {
+        if (this.getItem(row, end) === this.ITEMS.END_PARENTHESIS) {
           --depth;
           if (depth === 0)
             break;
@@ -1015,92 +1063,429 @@ class Script {
       }
     }
 
+    if (item === this.ITEMS.END_PARENTHESIS) {
+      let depth = 0;
+      while (start > 1) {
+        if (this.getItem(row, start) === this.ITEMS.END_PARENTHESIS) {
+          ++depth;
+        }
+
+        if (this.getItem(row, start) === this.ITEMS.START_PARENTHESIS) {
+          --depth;
+          if (depth === 0)
+            break;
+        }
+
+        --start;
+      }
+    }
+
+    if (this.getData(row, start - 1).format === Script.FUNCTION_REFERENCE)
+      --start;
+
+    if (this.UNARY_OPERATORS.includes(this.getItem(row, start - 1)))
+      --start;
+
     return [start, end];
   }
 
+  appendRowsUpTo(row) {
+    let oldLength = this.getRowCount();
+    let inserted = 0;
+
+    let key = this.lines.length === 0 ? new ArrayBuffer(1) : this.lineKeys[this.lines.length - 1];
+    const header = Script.makeItem({format: 0xF});
+    while (row >= this.getRowCount()) {
+      key = Script.incrementKey(key);
+      this.lines.push([header]);
+      this.lineKeys.push(key);
+      ++inserted;
+    }
+    this.saveRow(this.lines.slice(oldLength), this.lineKeys.slice(oldLength));
+  }
+
   insertRow(row) {
-    let line = [this.getIndentation(row - 1) + this.isStartingScope(row - 1)];
-    this.data.splice(row, 0, line);
+    let indentation = row === 0 ? 0 : this.getIndentation(row - 1) + this.isStartingScope(row - 1);
+    if (row > 0 && this.getItemCount(row - 1) === 1) {
+      indentation = Math.max(indentation - 1, row < this.getRowCount() ? this.getIndentation(row) : 0);
+    }
+    let key;
+
+    //find the best place to insert a row to minimize key size
+    //moving the row insertion higher or lower within the same indentation level is unnoticable
+    let endScope = row;
+    while (true) {
+      if (endScope >= this.getRowCount()) {
+        if (indentation === 0)
+          return -1;
+
+        //the indentation is not 0, so it's not whitespace.  Append the rows
+        const lowKey = this.lineKeys[this.lines.length - 1];
+        key = Script.incrementKey(lowKey);
+        row = endScope;
+        break;
+      }
+      
+      if (this.getIndentation(endScope) === indentation && this.getItemCount(endScope) === 1) {
+        ++endScope;
+      } else {
+        break;
+      }
+    }
+
+    if (!key) {
+      let startScope = row;
+      while (startScope > 0 && this.getIndentation(startScope - 1) === indentation && this.getItemCount(startScope - 1) === 1) {
+        --startScope;
+      }
+
+      let bestScore = 0xFFFFFFF;
+      for (let i = startScope; i <= endScope; ++i) {
+        const lowKey = (i > 0) ? this.lineKeys[i - 1] : new ArrayBuffer(1);
+        const highKey = this.lineKeys[i];
+        const testKey = Script.averageKeys(lowKey, highKey);
+        const last = testKey.byteLength - 1;
+        const score = last * 256 + (new Uint8Array(lowKey)[last] || 0) - new Uint8Array(testKey)[last];
+
+        if (score < bestScore) {
+          row = i;
+          key = testKey;
+          bestScore = score;
+        }
+      }
+    }
+
+    const header = Script.makeItem({format: 0xF, value: indentation});
+    this.lines.splice(row, 0, [header]);
+    this.lineKeys.splice(row, 0, key);
+    this.saveRow([[header]], [key]);
+    return row;
   }
 
   deleteRow(row) {
-    this.data.splice(row, 1);
+    const indentation = this.getIndentation(row);
+    let r = row;
+    do {
+      this.lines[r].forEach(this.recycleItem, this);
+      ++r;
+    } while (r < this.getRowCount() && this.getIndentation(r) > indentation);
+    let count = r - row;
+
+    //manage orphaned else and else if structures
+    const modifiedRows = [];
+    if (this.getItem(row, 1) === this.ITEMS.IF
+    || this.getItem(row, 2) === this.ITEMS.IF) {
+      while (r < this.getRowCount() && !this.isStartingScope(r)) {
+        ++r;
+      }
+      if (r < this.getRowCount()) {
+        if (this.getItem(row, 1) === this.ITEMS.IF) {
+          if (this.getItem(r, 2) === this.ITEMS.IF) {
+            this.spliceRow(r, 1, 1);
+          }
+          else if (this.getItem(r, 1) === this.ITEMS.ELSE) {
+            this.spliceRow(r, 1, 1, this.ITEMS.IF, this.ITEMS.TRUE);
+          }
+
+          modifiedRows.push(r - count);
+        }
+      }
+    }
+
+    //trim whitespace off the bottom of the script
+    let startRow = row;
+    if (row + count === this.getRowCount()) {
+      while (startRow > 0 && this.getIndentation(startRow - 1) === 0 && this.getItemCount(startRow - 1) === 1) {
+        --startRow;
+      }
+      count = r - startRow;
+    }
+
+    const keyRange = IDBKeyRange.bound(this.lineKeys[startRow], this.lineKeys[startRow + count - 1]);
+    this.modifyObjStore("lines", IDBObjectStore.prototype.delete, keyRange);
+
+    this.lines.splice(startRow, count);
+    this.lineKeys.splice(startRow, count);
+    return [startRow, count, modifiedRows];
+  }
+
+  saveRow(lines, lineKeys) {
+    this.modifyObjStore("lines", function(lines, lineKeys) {
+      for (let i = 0; i < lineKeys.length; ++i) {
+        this.put(lines[i], lineKeys[i]);
+      }
+    }, lines, lineKeys);
+  }
+
+  /**
+   * creates a new key that sorts after key
+   * @param {ArrayBuffer} key 
+   * @returns {ArrayBuffer} succeeding key
+   */
+  static incrementKey(key) {
+    let arrKey = Array.from(new Uint8Array(key));
+    let incremented = false;
+
+    for (let i = 0; i < arrKey.length; ++i) {
+      if (arrKey[i] < 255) {
+        arrKey[i]++;
+        arrKey.length = i + 1;
+        incremented = true;
+        break;
+      }
+    }
+
+    if (!incremented) {
+      arrKey.push(1);
+    }
+    
+    return (new Uint8Array(arrKey)).buffer;
+  }
+
+  /**
+   * creates a new key that sorts between lowKey and highKey
+   * @param {ArrayBuffer} lowKey 
+   * @param {ArrayBuffer} highKey
+   * @return {ArrayBuffer} midway key
+   */
+  static averageKeys(lowKey, highKey) {
+    let arrKey = [];
+    const lowKeyArr = new Uint8Array(lowKey);
+    const highKeyArr = new Uint8Array(highKey);
+
+    for (let i = 0, end = Math.max(lowKeyArr.length, highKeyArr.length) + 1; i < end; ++i) {
+      let low = (i < lowKeyArr.length) ? lowKeyArr[i] : 0;
+      let high = (i < highKeyArr.length) ? highKeyArr[i] : 256;
+
+      if (low + 1 < high) {
+        arrKey[i] = (low + high) >>> 1;
+        break;
+      }
+      else {
+        arrKey.push(low);
+      }
+    }
+
+    return (new Uint8Array(arrKey)).buffer;
   }
 
   getRowCount() {
-    return this.data.length;
+    return this.lines.length;
   }
 
   getItemCount(row) {
-    return this.data[row].length;
+    return this.lines[row].length;
   }
 
-  getIndentation(row) {
-    return this.data[row][0] & 0xFFFF;
-  }
+  /**
+   * Check the item for variable, function, class, or string resources to recycle before overwriting
+   * @param {Number} oldItem item that is being discarded
+   * @param {Number} newItem replacement item, if it exists
+   */
+  recycleItem(oldItem) {
+    const oldData = Script.getItemData(oldItem);
 
-  isStartingScope(row) {
-    return this.data[row][0] >>> 31;
+    switch (oldData.format) {
+      case Script.VARIABLE_DEFINITION:
+        this.variables.delete(oldData.value);
+      break;
+
+      case Script.FUNCTION_DEFINITION:
+        this.functions.delete(oldData.value);
+      break;
+      
+      case Script.LITERAL:
+        this.literals.delete(oldData.value);
+      break;
+    }
   }
 
   getItem(row, col) {
-    const item = this.data[row][col];
-    const format = item >>> 28; //4 bits
-    const data = item & 0xFFFFFFF; //28 bits
-    const meta = data >>> 16; //12 bits
-    const value = item & 0xFFFF; //16 bits
+    return this.lines[row][col];
+  }
+
+  getData(row, col) {
+    return Script.getItemData(this.getItem(row, col));
+  }
+
+  setItem(row, col, val, skipRecycling = false) {
+    if (!skipRecycling) {
+      this.recycleItem(this.lines[row][col]);
+    }
+    this.lines[row][col] = val;
+    this.saveRow([this.lines[row]], [this.lineKeys[row]]);
+  }
+
+  spliceRow(row, col, count, ...items) {
+    this.lines[row].splice(col, count, ...items).forEach(this.recycleItem, this);
+    this.saveRow([this.lines[row]], [this.lineKeys[row]]);
+  }
+
+  pushItems(row, ...items) {
+    this.lines[row].push(...items);
+    this.saveRow([this.lines[row]], [this.lineKeys[row]]);
+  }
+
+  findItem(row, item) {
+    return this.lines[row].indexOf(item);
+  }
+
+  getIndentation(row) {
+    return this.getData(row, 0).value;
+  }
+
+  isStartingScope(row) {
+    return this.getData(row, 0).flag;
+  }
+  
+  setIsStartingScope(row, isStartingScope) {
+    const header = this.getData(row, 0);
+    header.flag = isStartingScope & 1;
+    const item = Script.makeItem(header);
+    this.setItem(row, 0, item, true);
+  }
+
+  getItemDisplay(row, col) {
+    const {format, flag, meta, value} = this.getData(row, col);
 
     switch (format) {
       case Script.VARIABLE_DEFINITION:
       {
-        let name = this.variables[value].name || `var${value}`;
-        if (meta === 0)
+        let name = this.variables.get(value).name;
+        if (!flag)
           return [name, "declaration"];
         else
-          return [this.classes[meta].name + '\n' + name, "keyword-declaration"];
+          return [this.classes.get(meta).name + '\n' + name, "keyword-declaration"];
       }
 
       case Script.VARIABLE_REFERENCE:
       {
-        let name = this.variables[value].name || `var${value}`;
-        if (meta === 0)
+        let name = this.variables.get(value).name;
+        if (meta === this.CLASSES.VOID)
           return [name, ""];
         else
-          return [this.classes[meta].name + '\n' + name, "keyword"];
+          return [this.classes.get(meta).name + '\n' + name, "keyword"];
       }
 
       case Script.FUNCTION_DEFINITION:
-        if (meta === 0)
-          return [this.functions[value].name, "function-definition"];
+        if (meta === this.CLASSES.VOID)
+          return [this.functions.get(value).name, "function-definition"];
         else
-          return [this.classes[meta].name + '\n' + this.functions[value].name, "keyword-def"];
+          return [this.classes.get(meta).name + '\n' + this.functions.get(value).name, "keyword-def"];
 
       case Script.FUNCTION_REFERENCE:
-        if (meta === 0)
-          return [this.functions[value].name, "function-call"];
+        if (meta === this.CLASSES.VOID)
+          return [this.functions.get(value).name, "function-call"];
         else
-          return [this.classes[meta].name + '\n' + this.functions[value].name, "keyword-call"];
+          return [this.classes.get(meta).name + '\n' + this.functions.get(value).name, "keyword-call"];
 
       case Script.ARGUMENT_HINT:
-        return [this.functions[value].parameters[meta].name, "comment"];
+        return [this.functions.get(value).parameters[meta].name, "comment"];
 
       case Script.SYMBOL:
-        return [this.symbols[data], ""];
+        return [this.symbols[value], ""];
 
       case Script.KEYWORD:
-        return [this.keywords[data].name, "keyword"];
+        return [this.keywords[value].name, "keyword"];
 
-      case Script.NUMERIC_LITERAL:
-        return [this.numericLiterals.get(data), "numeric"];
-
-      case Script.STRING_LITERAL:
-        return [this.stringLiterals.get(data), "string"];
-
-      case Script.COMMENT:
-        return [this.comments.get(data), "comment"];
+      case Script.LITERAL:
+        return [this.literals.get(value), "literal"];
 
       default:
         return [`format\n${format}`, "error"];
+    }
+  }
+
+  performTransaction(scope, mode, actions) {
+    let openRequest = indexedDB.open("TouchScript-" + this.projectID, 1);
+  
+    openRequest.onerror = function(event) {
+      alert("Failed to open project data database. Error code " + event.errorCode);
+    };
+    openRequest.onupgradeneeded = function(event) {
+      console.log("upgrading project data database");
+      let db = event.target.result;
+      db.createObjectStore("variables");
+      db.createObjectStore("functions");
+      db.createObjectStore("classes");
+      db.createObjectStore("literals");
+      db.createObjectStore("lines");
+      db.createObjectStore("save-data");
+    };
+    openRequest.onsuccess = function(event) {
+      let db = event.target.result;
+  
+      db.onerror = function(event) {
+        alert("Database error: " + event.target.errorCode);
+      };
+
+      let transaction = db.transaction(scope, mode);
+      scope.clear();
+      
+      while (actions.length) {
+        const action = actions.shift();
+        //console.log("performing", mode, "transaction on store", action.storeName);
+        action.function.apply(transaction.objectStore(action.storeName), action.arguments);
+      }
+    };
+  }
+
+  /**
+   * Opens a transaction with the given scope and mode and performs the action on it.  If the project did not already exist, creates it.
+   * @param {String[]} storeName name of object stores to modify data
+   * @param {Function} action function that takes an object store and additional parameters
+   * @param {*[]} args remainder of arguments are sent to the action function
+   */
+  modifyObjStore(storeName, action, ...args) {
+    this.queuedDBwrites.scope.add(storeName);
+    this.queuedDBwrites.actions.push({storeName, arguments: args, function: action});
+
+    if (this.queuedDBwrites.actions.length === 1) {
+      performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
+        objStore.get(this.projectID).onsuccess = (event) => {
+          if (event.target.result) {
+            //console.log("Updating edit date of project listing " + this.projectID);
+            let projectListing = event.target.result;
+            projectListing.lastModified = new Date();
+            objStore.put(projectListing);
+            this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
+          } else {
+            const now = new Date();
+            const newProject = {name: getDateString(now), created: now, lastModified: now};
+      
+            objStore.add(newProject).onsuccess = (event) => {
+              console.log("Successfully created new project listing.  ID is", event.target.result);
+              this.projectID = event.target.result;
+              localStorage.setItem(ACTIVE_PROJECT_KEY, event.target.result);
+      
+              this.queuedDBwrites = {scope: new Set(), actions: []};
+
+              function saveAllMetadata(container) {
+                for (let id = container.builtinCount; id < container.data.length; ++id) {
+                  const meta = container.data[id];
+                  if (meta) {
+                    this.put(typeof meta === "string" ? meta : meta.name, id - container.builtinCount);
+                  }
+                }
+              };
+
+              for (let container of [this.variables, this.classes, this.functions, this.literals]) {
+                this.queuedDBwrites.scope.add(container.storeName);
+                this.queuedDBwrites.actions.push({storeName: container.storeName, arguments: [container], function: saveAllMetadata});
+              }
+
+              this.queuedDBwrites.scope.add("lines");
+              this.queuedDBwrites.actions.push({storeName: "lines", arguments: [this.lines, this.lineKeys], function: function(lines, lineKeys) {
+                for (let i = 0; i < lines.length; ++i) {
+                  this.put(lines[i], lineKeys[i]);
+                }
+              }});
+
+              this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
+            }
+          }
+        }
+      });
     }
   }
 
@@ -1110,36 +1495,34 @@ class Script {
   */
   getJavaScript() {
     let js = "";
-    for (let row = 0; row < this.data.length; ++row) {
+    for (let row = 0; row < this.getRowCount(); ++row) {
       let indentation = this.getIndentation(row);
       js += " ".repeat(indentation);
-
-      let rowData = this.data[row];
 
       let needsEndParenthesis = false;
       let needsEndColon = false;
       let needsCommas = false;
 
       //check the first symbol
-      if (rowData[1] === this.ITEMS.CASE || rowData[1] === this.ITEMS.DEFAULT) {
+      let firstItem = this.getItem(row, 1);
+      const firstData = this.getData(row, 1);
+      if (firstItem === this.ITEMS.CASE || firstItem === this.ITEMS.DEFAULT) {
         needsEndColon = true;
-      } else if ((rowData[1] >>> 28) === Script.KEYWORD) {
-        if (this.keywords[rowData[1] & 0xFFFF].js.endsWith("(")) {
+      } else if (firstData.format === Script.KEYWORD) {
+        if (this.keywords[firstData.value].js.endsWith("(")) {
           needsEndParenthesis = true;
         }
       }
 
-      for (let col = 1; col < rowData.length; ++col) {
-        let item = rowData[col];
-        let format = item >>> 28;
-        let value = item & 0xFFFF; //least sig 16 bits
+      for (let col = 1, end = this.getItemCount(row); col < end; ++col) {
+        const {format, value} = this.getData(row, col);
 
         //append an end parenthesis to the end of the line
         switch (format) {
           case Script.VARIABLE_DEFINITION:
           case Script.VARIABLE_REFERENCE:
-            if ("js" in this.variables[value]) {
-              js += this.variables[value].js;
+            if ("js" in this.variables.get(value)) {
+              js += this.variables.get(value).js;
             } else {
               js += `v${value}`;
             }
@@ -1149,8 +1532,7 @@ class Script {
 
           case Script.FUNCTION_DEFINITION:
           {
-            let func = this.functions[value];
-            let funcName;
+            let func = this.functions.get(value);
 
             if ("js" in func) {
               js += `${func.js} = function ( `;
@@ -1166,7 +1548,7 @@ class Script {
 
           case Script.FUNCTION_REFERENCE:
           {
-            let func = this.functions[value];
+            let func = this.functions.get(value);
             let funcName;
             if ("js" in func) {
               funcName = func.js;
@@ -1189,16 +1571,8 @@ class Script {
             js += `${this.keywords[value].js} `;
             break;
 
-          case Script.NUMERIC_LITERAL:
-            js += `${this.numericLiterals.get(value)} `;
-            break;
-
-          case Script.STRING_LITERAL:
-            js += `"${this.stringLiterals.get(value)}" `;
-            break;
-
-          case Script.COMMENT:
-            js += `/*${this.comments.get(value)}*/ `;
+          case Script.LITERAL:
+            js += `${this.literals.get(value)} `;
             break;
 
           default:
@@ -1215,7 +1589,7 @@ class Script {
       if (this.isStartingScope(row))
         js += "{ ";
 
-      if (row < this.data.length - 1) {
+      if (row < this.getRowCount() - 1) {
         let nextIndentation = this.getIndentation(row + 1);
         let expectedIndentation = indentation + this.isStartingScope(row);
         if (nextIndentation < expectedIndentation) {
@@ -1239,20 +1613,19 @@ class Script {
 /* Static constants  */
 {
   let i = 0;
-  Script.VARIABLE_DEFINITION  = i++;
-  Script.VARIABLE_REFERENCE   = i++;
-  Script.FUNCTION_DEFINITION  = i++;
-  Script.FUNCTION_REFERENCE   = i++;
-  Script.ARGUMENT_HINT        = i++;
-  Script.SYMBOL               = i++;
-  Script.KEYWORD              = i++;
-  Script.NUMERIC_LITERAL      = i++;
-  Script.STRING_LITERAL       = i++;
-  Script.COMMENT              = i++;
+  Script.VARIABLE_DEFINITION = i++;
+  Script.VARIABLE_REFERENCE  = i++;
+  Script.FUNCTION_DEFINITION = i++;
+  Script.FUNCTION_REFERENCE  = i++;
+  Script.ARGUMENT_HINT       = i++;
+  Script.SYMBOL              = i++;
+  Script.KEYWORD             = i++;
+  Script.LITERAL             = i++;
 }
 
 Script.RESPONSE = {};
 Script.RESPONSE.NO_CHANGE      = 0;
 Script.RESPONSE.ROW_UPDATED    = 1;
-Script.RESPONSE.ROWS_INSERTED  = 2;
-Script.RESPONSE.SCRIPT_CHANGED = 4;
+Script.RESPONSE.ROW_DELETED    = 2;
+Script.RESPONSE.ROWS_INSERTED  = 4;
+Script.RESPONSE.SCRIPT_CHANGED = 8;
