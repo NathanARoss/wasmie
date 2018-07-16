@@ -419,7 +419,8 @@ function insertRow(position) {
 
 
 function deleteRow(position) {
-  let [pos, count] = script.deleteRow(position);
+  let [pos, count, modifiedRows] = script.deleteRow(position);
+
   let rowIndex = Math.max(0, pos - firstLoadedPosition);
   const end = Math.min(pos + count, list.childNodes.length + firstLoadedPosition);
 
@@ -427,6 +428,13 @@ function deleteRow(position) {
     let node = list.childNodes[rowIndex];
     loadRow(firstLoadedPosition + list.childNodes.length - 1, node);
     list.appendChild(node);
+  }
+
+  for (const position of modifiedRows) {
+    let index = position - firstLoadedPosition;
+    if (index >= 0 && index < list.childNodes.length) {
+      loadRow(position, list.childNodes[index], false);
+    }
   }
   
   updateLineNumbers(rowIndex);
