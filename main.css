@@ -100,7 +100,7 @@ button.selected {
 
 @media only screen and (min-width: 450px) {
   .slide-menu {
-    width: calc(80px + 2.5em); /*3.5em*/
+    width: 3.5em;
   }
   
   #line-number-item {

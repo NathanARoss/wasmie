@@ -459,8 +459,7 @@ function updateLineNumbers(modifiedRow) {
     let outerRow = list.childNodes[i];
     let position = i + firstLoadedPosition;
     
-    //outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
-    outerRow.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && new Uint8Array(script.lineKeys[position]) || "n/a");
+    outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
     outerRow.childNodes[1].position = position;
   }
 }
@@ -472,8 +471,7 @@ function loadRow(position, outerDiv, movedPosition = true) {
   innerRow.position = position;
   
   //update the line number item of the slide menu
-  //innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
-  outerDiv.firstChild.firstChild.firstChild.nodeValue = position + ": " + (script.lines[position] && new Uint8Array(script.lineKeys[position]) || "n/a");
+  innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
   
   while (innerRow.childNodes.length > 2) {
     buttonPool.push(innerRow.lastChild);
