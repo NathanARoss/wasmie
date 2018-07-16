@@ -326,7 +326,6 @@ class Script {
             || this.getItem(r, 2) === this.ITEMS.IF) {
               options.push({text: "else", style: "keyword", payload: this.PAYLOADS.INSERT_ELSE});
             }
-            break;
           }
         }
       }
@@ -378,7 +377,8 @@ class Script {
       || data.format === Script.FUNCTION_DEFINITION) {
         //don't allow function return types or parameter types to be automaticly detected
         if (data.format === Script.FUNCTION_DEFINITION
-        || this.findItem(row, this.ITEMS.FUNC) < 1) {
+        || (this.findItem(row, this.ITEMS.FUNC) < 1
+        && (this.getItem(row, 1) !== this.ITEMS.VAR || this.getItem(row, 3) === this.ITEMS.EQUALS))) {
           let option = {text: "", style: "comment", payload: Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: this.CLASSES.VOID})};
           option.text = (data.format === Script.FUNCTION_DEFINITION) ? "void" : "auto";
           options.push(option);
@@ -473,7 +473,6 @@ class Script {
                   if (this.getItem(r, 1) === this.ITEMS.ELSE) {
                     preceedsElse = true;
                   }
-                  break;
                 }
               }
 
@@ -483,7 +482,6 @@ class Script {
                 options.push({text: "else", style: "keyword", payload: this.ITEMS.ELSE});
               }
             }
-            break;
           }
         }
 
@@ -1360,10 +1358,7 @@ class Script {
       case Script.VARIABLE_REFERENCE:
       {
         let name = this.variables.get(value).name;
-        if (meta === this.CLASSES.VOID)
-          return [name, ""];
-        else
-          return [this.classes.get(meta).name + '\n' + name, "keyword"];
+        return [name, ""];
       }
 
       case Script.FUNCTION_DEFINITION:
