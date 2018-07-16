@@ -292,7 +292,7 @@ class Script {
       }
     }
 
-    if (this.ASSIGNMENT_OPERATORS.includes(item)) {
+    if (col === 2 && this.ASSIGNMENT_OPERATORS.includes(item)) {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
@@ -929,8 +929,7 @@ class Script {
 
     //user chose a symbol to insert into the script
     if (payloadData.format === Script.SYMBOL) {
-      const item = this.getItem(row, col);
-      if (this.UNARY_OPERATORS.includes(item) || this.BINARY_OPERATORS.includes(item)) {
+      if (this.getData(row, col).format === Script.SYMBOL) {
         this.setItem(row, col, payload);
       } else {
         if (this.UNARY_OPERATORS.includes(payload))
