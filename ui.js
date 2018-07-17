@@ -30,6 +30,8 @@ const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
 
 menuButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+
   if (menuButton.toggled) {
     history.pushState({action: "run"}, "TouchScript Runtime");
     window.onpopstate();
@@ -40,6 +42,8 @@ menuButton.addEventListener("click", function(event) {
 });
 
 createButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
   
@@ -49,6 +53,8 @@ createButton.addEventListener("click", function(event) {
 });
 
 loadButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
@@ -57,6 +63,8 @@ loadButton.addEventListener("click", function(event) {
 });
 
 viewCodeButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+  
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
