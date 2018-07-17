@@ -745,8 +745,19 @@ function touchCanceled(outerRow) {
 
 
 function* stride(start, end, by) {
-  for (let i = start; i != end; i += by) {
-    yield i;
+  if (by === 0)
+    return;
+  
+  by = Math.abs(by);
+
+  if (start < end) {
+    for (let i = start; i < end; i += by) {
+      yield i;
+    }
+  } else {
+    for (let i = start; i > end; i -= by) {
+      yield i;
+    }
   }
 }
 

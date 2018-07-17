@@ -604,26 +604,7 @@ class Script {
         return Script.RESPONSE.ROW_UPDATED;
 
       case this.ITEMS.FOR: {
-
-        let name = "index";
-
-        if (row < this.getRowCount()) {
-          let indentation = this.getIndentation(row) - 1;
-          for (let r = row - 1; r >= 0, indentation >= 0; --r) {
-            if (this.getIndentation(r) === indentation && this.isStartingScope(r)) {
-              --indentation;
-
-              if (this.getItem(r, 1) === this.ITEMS.FOR) {
-                const loopingVar = this.variables.get(this.getData(r, 2).value);
-                const nestingDepth = (loopingVar.name.match(/\d+$/) || [""]).pop();
-                name = loopingVar.name.substring(0, loopingVar.name.length - nestingDepth.length) + (Number(nestingDepth) + 1);
-                break;
-              }
-            }
-          }
-        }
-
-        name = prompt("Enter for loop variable name:", name);
+        let name = prompt("Enter for loop variable name:", "index");
         if (name) {
           this.appendRowsUpTo(row);
           this.setIsStartingScope(row, true);
@@ -726,7 +707,7 @@ class Script {
             if (!input.startsWith('"'))
               input = '"' + input;
             
-            if (!input.endsWith('"' || input.length < 2))
+            if (!input.endsWith('"') || input.length < 2)
               input = input + '"';
 
             payload = Script.makeItem({format: Script.LITERAL, meta: 1, value: id});
@@ -992,10 +973,13 @@ class Script {
             if (this.getData(r, col).format === Script.VARIABLE_DEFINITION) {
               let varId = this.getData(r, col).value;
               const v = this.variables.get(varId);
-              const type = this.classes.get(v.type);
-              const scope = this.classes.get(v.scope);
-              const text = (v.type === this.CLASSES.VOID ? "undeclared" : type.name) + (v.scope === this.CLASSES.VOID ? "" : " " + scope.name) + "\n" + v.name;
-              options.push({text, style: "keyword-declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.type, value: varId})});
+              let text = v.name;
+              let style = "declaration";
+              if (v.scope !== this.CLASSES.VOID) {
+                text = this.classes.get(v.scope) + "\n" + text;
+                style = "keyword-declaration";
+              }
+              options.push({text, style, payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: varId})});
             }
           }
         }
@@ -1005,7 +989,7 @@ class Script {
     if (!requiresMutable) {
       for (let i = -this.variables.builtinCount; i <= -1; ++i) {
         const v = this.variables.get(i);
-        const text = this.classes.get(v.type).name + " " + this.classes.get(v.scope).name + "\n" + v.name;
+        const text = this.classes.get(v.scope).name + "\n" + v.name;
         options.push({text, style: "keyword-declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: i})});
       }
     }
@@ -1358,7 +1342,10 @@ class Script {
       case Script.VARIABLE_REFERENCE:
       {
         let name = this.variables.get(value).name;
-        return [name, ""];
+        if (meta === this.CLASSES.VOID)
+          return [name, ""];
+        else
+          return [this.classes.get(meta).name + '\n' + name, "keyword"];
       }
 
       case Script.FUNCTION_DEFINITION:
