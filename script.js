@@ -61,7 +61,7 @@ class Script {
     }
 
 
-    const {classes, variables, functions, symbols, keywords} = getBuiltIns();
+    const {classes, variables, functions, symbols, keywords} = new BuiltIns();
     this.symbols = symbols;
     this.keywords = keywords;
 
@@ -97,7 +97,7 @@ class Script {
     this.ITEMS.START_PARENTHESIS = makeSymbol("(");
     this.ITEMS.END_PARENTHESIS   = makeSymbol(")");
     this.ITEMS.COMMA             = makeSymbol(",");
-    this.ITEMS.BLANK             = makeSymbol("_____");
+    this.ITEMS.BLANK             = makeSymbol("____");
 
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
@@ -107,7 +107,7 @@ class Script {
     this.classes = new MetadataContainer("classes", classes, 0x3FF);
     this.literals = new MetadataContainer("literals", literals, 0xFFFF);
 
-    this.FUNCS = {STRIDE: -1 & this.functions.mask};
+    this.FUNCS = {RANGE: -1 & this.functions.mask};
     this.CLASSES = {VOID: -1 & this.classes.mask};
 
     this.lines = [];
@@ -193,6 +193,7 @@ class Script {
     this.ASSIGNMENT_OPERATORS = new Operator(0, 9);
     this.BINARY_OPERATORS = new Operator(9, 27);
     this.UNARY_OPERATORS = new Operator(27, 30);
+    this.OPERATORS = new Operator(0, 30);
   }
 
   static makeItem({format = 0, flag = 0, flag2 = 0, meta = 0, value = 0}) {
@@ -400,9 +401,7 @@ class Script {
         options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
-      if (this.BINARY_OPERATORS.includes(prevItem)
-      || this.UNARY_OPERATORS.includes(prevItem)
-      || this.ASSIGNMENT_OPERATORS.includes(prevItem)
+      if (this.OPERATORS.includes(prevItem)
       || prevItem === this.ITEMS.WHILE
       || prevItem === this.ITEMS.DO_WHILE
       || prevItem === this.ITEMS.SWITCH
@@ -613,13 +612,13 @@ class Script {
           this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
   
           this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.IN,
-            Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.CLASSES.VOID, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.RANGE).scope, value: this.FUNCS.RANGE}),
             this.ITEMS.START_PARENTHESIS,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.RANGE}),
             this.ITEMS.COMMA,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.RANGE}),
             this.ITEMS.COMMA,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.RANGE}),
             this.ITEMS.END_PARENTHESIS);
           return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
         }
@@ -775,7 +774,32 @@ class Script {
               this.spliceRow(row, start, end - start + 1);
             }
           } else {
-            this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
+            //if the removed item 
+            let paramIndex = 0;
+            let funcID = -1;
+
+            const nextItem = this.getItem(row, end + 1);
+            const prevItem = this.getItem(row, start - 1);
+            if ((nextItem === this.ITEMS.COMMA || nextItem === this.ITEMS.END_PARENTHESIS)
+            && (prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.START_PARENTHESIS)) {
+              for (let c = start - 1; c > 0; --c) {
+                const data = this.getData(row, c);
+                if (data.format === Script.FUNCTION_REFERENCE) {
+                  funcID = data.value;
+                  break;
+                }
+  
+                if (this.getItem(row, c) === this.ITEMS.COMMA) {
+                  ++paramIndex;
+                }
+              }
+            }
+
+            if (funcID > -1) {
+              this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
+            } else {
+              this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
+            }
           }
         }
 
@@ -908,7 +932,8 @@ class Script {
 
     //user chose a symbol to insert into the script
     if (payloadData.format === Script.SYMBOL) {
-      if (this.getData(row, col).format === Script.SYMBOL) {
+      const item = this.getItem(row, col);
+      if (this.OPERATORS.includes(item)) {
         this.setItem(row, col, payload);
       } else {
         if (this.UNARY_OPERATORS.includes(payload))
@@ -1496,7 +1521,7 @@ class Script {
       }
 
       for (let col = 1, end = this.getItemCount(row); col < end; ++col) {
-        const {format, value} = this.getData(row, col);
+        const {format, meta, value} = this.getData(row, col);
 
         //append an end parenthesis to the end of the line
         switch (format) {
@@ -1541,8 +1566,15 @@ class Script {
             break;
           }
 
-          case Script.ARGUMENT_HINT:
-            return `/*argument hint*/ `;
+          case Script.ARGUMENT_HINT: {
+            let val = this.functions.get(value).parameters[meta].default;
+            if (typeof val === "string") {
+              val = `"${val.replace("\n", "\\n")}"`;
+            }
+
+            js += `${val} `;
+            break;
+          }
 
           case Script.SYMBOL:
             js += `${this.symbols[value]} `;

@@ -9,7 +9,6 @@ let firstLoadedPosition = 0;
 const list = document.getElementById("list");
 const spacer = document.getElementById("spacer");
 const debug = document.getElementById("debug");
-const canvas = document.getElementById("canvas");
 const editor = document.getElementById("editor_div");
 const modal = document.getElementById("modal");
 const menuButton = document.getElementById("menu-button");
@@ -18,13 +17,10 @@ const loadButton = document.getElementById("load-button");
 const viewCodeButton = document.getElementById("view-code-button");
 const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
+const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
-const context = canvas.getContext("2d", { alpha: false });
 
 let buttonPool = [];
-
-let renderLoop = 0;
-let eventHandlers = new Object(null);
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
@@ -75,51 +71,6 @@ viewCodeButton.addEventListener("click", function(event) {
 
 modal.addEventListener("click", modalContainerClicked);
 
-canvas.addEventListener("contextmenu", preventDefault);
-
-canvas.addEventListener("touchstart", function(event) {
-  if (eventHandlers.ontouchstart) {
-    for (const touch of event.changedTouches)
-      eventHandlers.ontouchstart(touch.pageX * window.devicePixelRatio, touch.pageY * window.devicePixelRatio, touch.identifier);
-  }
-}, {passive: true});
-
-canvas.addEventListener("touchmove", function(event) {
-  if (eventHandlers.ontouchmove) {
-    for (const touch of event.changedTouches)
-      eventHandlers.ontouchmove(touch.pageX * window.devicePixelRatio, touch.pageY * window.devicePixelRatio, touch.identifier);
-  }
-}, {passive: true});
-
-canvas.addEventListener("touchend", function(event) {
-  if (eventHandlers.ontouchend) {
-    for (const touch of event.changedTouches)
-      eventHandlers.ontouchend(touch.pageX * window.devicePixelRatio, touch.pageY * window.devicePixelRatio, touch.identifier);
-  }
-
-  event.preventDefault();
-}, {passive: false});
-
-canvas.addEventListener("mousedown", function(event) {
-  if (eventHandlers.onmousedown) {
-    eventHandlers.onmousedown(event.x * window.devicePixelRatio, event.y * window.devicePixelRatio, event.button);
-  }
-}, {passive: true});
-
-canvas.addEventListener("mousemove", function(event) {
-  if (eventHandlers.onmousemove) {
-    eventHandlers.onmousemove(event.x * window.devicePixelRatio, event.y * window.devicePixelRatio, event.movementX * window.devicePixelRatio, event.movementY * window.devicePixelRatio);
-  }
-}, {passive: true});
-
-canvas.addEventListener("mouseup", function(event) {
-  if (eventHandlers.onmouseup) {
-    eventHandlers.onmouseup(event.x * window.devicePixelRatio, event.y * window.devicePixelRatio, event.button);
-  }
-
-  event.preventDefault;
-}, {passive: false});
-
 
 
 document.body.onresize = function () {
@@ -149,12 +100,6 @@ document.body.onresize = function () {
       innerRow.removeChild(innerRow.lastChild);
     }
   }
-
-  canvas.width = window.innerWidth * window.devicePixelRatio;
-  canvas.height = window.innerHeight * window.devicePixelRatio;
-  
-  if (eventHandlers.onresize)
-    eventHandlers.onresize(canvas.width, canvas.height);
 };
 document.body.onresize();
 
@@ -200,18 +145,11 @@ window.onpopstate = function(event) {
       programList.removeChild(programList.lastChild);
     }
 
-    if (renderLoop !== 0) {
-      window.cancelAnimationFrame(renderLoop)
-      renderLoop = 0;
-    }
-    
-    eventHandlers = new Object(null);
+    consoleOutput.innerHTML = "";
     document.body.style.height = getRowCount() * rowHeight + "px";
     document.title = "TouchScript"
   }
-  else if (event.state.action === "run") {
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
+  else if (event.state.action === "run") {    
     try {
       const js = script.getJavaScript();
       (new Function(js)) ();
@@ -221,9 +159,6 @@ window.onpopstate = function(event) {
       history.back();
       return;
     }
-    
-    if (renderLoop === 0 && eventHandlers.ondraw)
-      renderLoop = window.requestAnimationFrame(draw);
     
     editor.style.display = "none";
     runtime.style.display = "";
@@ -751,45 +686,15 @@ function* stride(start, end, by) {
   by = Math.abs(by);
 
   if (start < end) {
-    for (let i = start; i < end; i += by) {
-      yield i;
-    }
+    for (let i = start; i < end; i += by) yield i;
   } else {
-    for (let i = start; i > end; i -= by) {
-      yield i;
-    }
+    for (let i = start; i > end; i -= by) yield i;
   }
 }
 
-function drawCircle(x, y, r, color) {
-  r = Math.abs(r);
-
-  context.beginPath();
-  context.fillStyle = color;
-  context.arc(x,y,r, 0,2*Math.PI);
-  context.fill();
-}
-
-function drawRectangle(x, y, w, h, color) {
-  context.fillStyle = color;
-  context.fillRect(x, y, w, h);
-}
-
-function drawText(x, y, size, color, text) {
-  context.textBaseline = "top";
-  context.font = size + "px Monospace";
-  context.fillStyle = color;
-  const lines = String(text).split("\n");
-
-  for (let i = 0; i < lines.length; ++i) {
-    context.fillText(lines[i], x, y + i * size);
-  }
-}
-
-function draw(timestamp) {
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  eventHandlers.ondraw(timestamp);
-  renderLoop = window.requestAnimationFrame(draw);
+function print(value, terminator) {
+  const text = document.createTextNode(String(value) + terminator);
+  consoleOutput.appendChild(text);
 }
 
 // let httpRequest = new XMLHttpRequest();
