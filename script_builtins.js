@@ -28,8 +28,6 @@ function BuiltIns() {
   
   //static variables of classes only.  no instance variables
   this.variables = [
-    {name: "width",    type: classMap.get("Int32"),  scope: classMap.get("Canvas"), js: "canvas.width"},
-    {name: "height",   type: classMap.get("Int32"),  scope: classMap.get("Canvas"), js: "canvas.height"},
     {name: "E",        type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.E"},
     {name: "PI",       type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.PI"},
   ].reverse();
