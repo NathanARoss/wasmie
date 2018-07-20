@@ -346,65 +346,25 @@ function createRow() {
 
 
 function insertRow(position) {
-  position = script.insertRow(position);
-  if (position === -1)
-    return;
-
-  const lastDiv = list.childNodes[(firstLoadedPosition + loadedCount - 1) % loadedCount];
-  if (position < firstLoadedPosition) {
-    loadRow(firstLoadedPosition, lastDiv);
-    list.insertBefore(lastDiv, list.childNodes[firstLoadedPosition % loadedCount]);
-  }
-  else if (position < firstLoadedPosition + loadedCount) {
-    loadRow(position, lastDiv);
-    list.insertBefore(lastDiv, list.childNodes[position % loadedCount]);
-  }
-
-  updateLineNumbers(position);
-  document.body.style.height = getRowCount() * rowHeight + "px";
+  const pos = script.insertRow(position);
+  if (pos !== -1)
+    refreshRows(pos, script.getRowCount());
 }
-
-
 
 function deleteRow(position) {
-  const [pos, count, modifiedRows] = script.deleteRow(position);
-
-  const lastDiv = list.childNodes[firstLoadedPosition % loadedCount];
-  const offset = firstLoadedPosition + loadedCount - count - pos;
-  for (let position = pos; position < pos + count; ++position) {
-    const node = list.childNodes[Math.max(firstLoadedPosition, pos) % loadedCount];
-    const oldPos = node.childNodes[1].position;
-    loadRow(offset + position, node);
-    
-    if (lastDiv === list.firstChild) {
-      list.appendChild(node);
-      console.log("repurposing row", position, "which is configured as row", oldPos, "Appending it at position", offset + position);
-    } else {
-      list.insertBefore(node, lastDiv);
-      console.log("repurposing row", position, "which is configured as row", oldPos, "Inserting it at position", offset + position, "before row", lastDiv.childNodes[1].position);
-    }
-  }
-
-  for (const position of modifiedRows) {
-    if (position >= firstLoadedPosition && position < firstLoadedPosition + loadedCount) {
-      loadRow(position, list.childNodes[position % loadedCount], false);
-    }
-  }
-  
-  updateLineNumbers(pos);
-  document.body.style.height = getRowCount() * rowHeight + "px";
+  const oldRowCount = script.getRowCount();
+  const pos = script.deleteRow(position);
+  refreshRows(pos, oldRowCount);
 }
 
-
-
-function updateLineNumbers(modifiedPosition) {
-  for (let position = modifiedPosition; position < firstLoadedPosition + loadedCount; ++position) {
-    let outerDiv = list.childNodes[position % loadedCount];
-    outerDiv.style.transform = "translateY(" + position * rowHeight + "px)";
-    
-    outerDiv.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
-    outerDiv.childNodes[1].position = position;
+function refreshRows(pos, oldRowCount) {
+  const start = Math.max(pos, firstLoadedPosition);
+  const end = Math.min(oldRowCount, firstLoadedPosition + loadedCount);
+  for (let position = start; position < end; ++position) {
+    loadRow(position, list.childNodes[position % loadedCount]);
   }
+
+  document.body.style.height = getRowCount() * rowHeight + "px";
 }
 
 

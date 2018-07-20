@@ -1178,7 +1178,6 @@ class Script {
     let count = r - row;
 
     //manage orphaned else and else if structures
-    const modifiedRows = [];
     if (this.getItem(row, 1) === this.ITEMS.IF
     || this.getItem(row, 2) === this.ITEMS.IF) {
       while (r < this.getRowCount() && !this.isStartingScope(r)) {
@@ -1192,8 +1191,6 @@ class Script {
           else if (this.getItem(r, 1) === this.ITEMS.ELSE) {
             this.spliceRow(r, 1, 1, this.ITEMS.IF, this.ITEMS.TRUE);
           }
-
-          modifiedRows.push(r - count);
         }
       }
     }
@@ -1212,7 +1209,7 @@ class Script {
 
     this.lines.splice(startRow, count);
     this.lineKeys.splice(startRow, count);
-    return [startRow, count, modifiedRows];
+    return startRow;
   }
 
   saveRow(lines, lineKeys) {
