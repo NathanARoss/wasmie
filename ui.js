@@ -7,29 +7,26 @@ let loadedCount = 0;
 let firstLoadedPosition = 0;
 
 const list = document.getElementById("list");
-const spacer = document.getElementById("spacer");
 const debug = document.getElementById("debug");
-const canvas = document.getElementById("canvas");
 const editor = document.getElementById("editor_div");
-const modal = document.getElementById("modal");
+const menu = document.getElementById("menu");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
 const loadButton = document.getElementById("load-button");
 const viewCodeButton = document.getElementById("view-code-button");
 const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
+const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
-const context = canvas.getContext("2d", { alpha: false });
 
-let buttonPool = [];
-
-let renderLoop = 0;
-let eventHandlers = new Object(null);
+let itemPool = [];
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
 
 menuButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+
   if (menuButton.toggled) {
     history.pushState({action: "run"}, "TouchScript Runtime");
     window.onpopstate();
@@ -40,6 +37,8 @@ menuButton.addEventListener("click", function(event) {
 });
 
 createButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
   
@@ -49,6 +48,8 @@ createButton.addEventListener("click", function(event) {
 });
 
 loadButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
@@ -57,60 +58,13 @@ loadButton.addEventListener("click", function(event) {
 });
 
 viewCodeButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+  
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
   alert(script.getJavaScript());
 });
-
-
-
-modal.addEventListener("click", modalContainerClicked);
-
-canvas.addEventListener("contextmenu", preventDefault);
-
-canvas.addEventListener("touchstart", function(event) {
-  if (eventHandlers.ontouchstart) {
-    for (const touch of event.changedTouches)
-      eventHandlers.ontouchstart(touch.pageX * window.devicePixelRatio, touch.pageY * window.devicePixelRatio, touch.identifier);
-  }
-}, {passive: true});
-
-canvas.addEventListener("touchmove", function(event) {
-  if (eventHandlers.ontouchmove) {
-    for (const touch of event.changedTouches)
-      eventHandlers.ontouchmove(touch.pageX * window.devicePixelRatio, touch.pageY * window.devicePixelRatio, touch.identifier);
-  }
-}, {passive: true});
-
-canvas.addEventListener("touchend", function(event) {
-  if (eventHandlers.ontouchend) {
-    for (const touch of event.changedTouches)
-      eventHandlers.ontouchend(touch.pageX * window.devicePixelRatio, touch.pageY * window.devicePixelRatio, touch.identifier);
-  }
-
-  event.preventDefault();
-}, {passive: false});
-
-canvas.addEventListener("mousedown", function(event) {
-  if (eventHandlers.onmousedown) {
-    eventHandlers.onmousedown(event.x * window.devicePixelRatio, event.y * window.devicePixelRatio, event.button);
-  }
-}, {passive: true});
-
-canvas.addEventListener("mousemove", function(event) {
-  if (eventHandlers.onmousemove) {
-    eventHandlers.onmousemove(event.x * window.devicePixelRatio, event.y * window.devicePixelRatio, event.movementX * window.devicePixelRatio, event.movementY * window.devicePixelRatio);
-  }
-}, {passive: true});
-
-canvas.addEventListener("mouseup", function(event) {
-  if (eventHandlers.onmouseup) {
-    eventHandlers.onmouseup(event.x * window.devicePixelRatio, event.y * window.devicePixelRatio, event.button);
-  }
-
-  event.preventDefault;
-}, {passive: false});
 
 
 
@@ -127,6 +81,7 @@ document.body.onresize = function () {
     let div = createRow();
     let position = list.childNodes.length + firstLoadedPosition;
     loadRow(position, div);
+    div.style.transform = "translateY(" + position * rowHeight + "px)";
     list.appendChild(div);
   }
 
@@ -137,16 +92,10 @@ document.body.onresize = function () {
     let innerRow = lastChild.childNodes[1];
   
     while (innerRow.childNodes.length > 2) {
-      buttonPool.push(innerRow.lastChild);
+      itemPool.push(innerRow.lastChild);
       innerRow.removeChild(innerRow.lastChild);
     }
   }
-
-  canvas.width = window.innerWidth * window.devicePixelRatio;
-  canvas.height = window.innerHeight * window.devicePixelRatio;
-  
-  if (eventHandlers.onresize)
-    eventHandlers.onresize(canvas.width, canvas.height);
 };
 document.body.onresize();
 
@@ -158,20 +107,21 @@ window.onscroll = function() {
   
   //keep a number of rows prepared for both direction
   while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition) && (firstLoadedPosition + loadedCount < getRowCount())) {
-    let outerDiv = list.firstChild;
-    list.appendChild(outerDiv);
-    loadRow(firstLoadedPosition + loadedCount, outerDiv);
+    const position = firstLoadedPosition + loadedCount;
+    const outerDiv = list.childNodes[position % loadedCount];
+    outerDiv.style.transform = "translateY(" + position * rowHeight + "px)";
+    loadRow(position, outerDiv);
     ++firstLoadedPosition;
   }
   
   while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition) && (firstLoadedPosition > 0)) {
-    let outerDiv = list.lastChild;
-    list.insertBefore(outerDiv, list.firstChild);
-    loadRow(firstLoadedPosition - 1, outerDiv);
+    const position = firstLoadedPosition - 1;
+    const outerDiv = list.childNodes[position % loadedCount];
+    outerDiv.style.transform = "translateY(" + position * rowHeight + "px)";
+    loadRow(position, outerDiv);
     --firstLoadedPosition;
   }
   
-  spacer.style.height = firstLoadedPosition * rowHeight + "px";
   list.childNodes.forEach(touchCanceled);
 
   debug.firstChild.nodeValue = `[${firstLoadedPosition}, ${(firstLoadedPosition + loadedCount - 1)}]`;
@@ -192,18 +142,11 @@ window.onpopstate = function(event) {
       programList.removeChild(programList.lastChild);
     }
 
-    if (renderLoop !== 0) {
-      window.cancelAnimationFrame(renderLoop)
-      renderLoop = 0;
-    }
-    
-    eventHandlers = new Object(null);
+    consoleOutput.innerHTML = "";
     document.body.style.height = getRowCount() * rowHeight + "px";
     document.title = "TouchScript"
   }
-  else if (event.state.action === "run") {
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
+  else if (event.state.action === "run") {    
     try {
       const js = script.getJavaScript();
       (new Function(js)) ();
@@ -213,9 +156,6 @@ window.onpopstate = function(event) {
       history.back();
       return;
     }
-    
-    if (renderLoop === 0 && eventHandlers.ondraw)
-      renderLoop = window.requestAnimationFrame(draw);
     
     editor.style.display = "none";
     runtime.style.display = "";
@@ -410,57 +350,60 @@ function insertRow(position) {
   if (position === -1)
     return;
 
-  let rowIndex = position - firstLoadedPosition;
-  if (rowIndex >= 0 && rowIndex < list.childNodes.length) {
-    let node = list.lastChild;
-    loadRow(position, node);
-    list.insertBefore(node, list.childNodes[rowIndex]);
+  const lastDiv = list.childNodes[(firstLoadedPosition + loadedCount - 1) % loadedCount];
+  if (position < firstLoadedPosition) {
+    loadRow(firstLoadedPosition, lastDiv);
+    list.insertBefore(lastDiv, list.childNodes[firstLoadedPosition % loadedCount]);
   }
-  else if (rowIndex < 0) {
-    let node = list.lastChild;
-    loadRow(firstLoadedPosition, node);
-    list.insertBefore(node, list.firstChild);
+  else if (position < firstLoadedPosition + loadedCount) {
+    loadRow(position, lastDiv);
+    list.insertBefore(lastDiv, list.childNodes[position % loadedCount]);
   }
 
-  updateLineNumbers(Math.max(0, rowIndex + 1));
+  updateLineNumbers(position);
   document.body.style.height = getRowCount() * rowHeight + "px";
 }
 
 
 
 function deleteRow(position) {
-  let [pos, count, modifiedRows] = script.deleteRow(position);
+  const [pos, count, modifiedRows] = script.deleteRow(position);
 
-  let rowIndex = Math.max(0, pos - firstLoadedPosition);
-  const end = Math.min(pos + count, list.childNodes.length + firstLoadedPosition);
-
-  for (; pos < end; ++pos) {
-    let node = list.childNodes[rowIndex];
-    loadRow(firstLoadedPosition + list.childNodes.length - 1, node);
-    list.appendChild(node);
+  const lastDiv = list.childNodes[firstLoadedPosition % loadedCount];
+  const offset = firstLoadedPosition + loadedCount - count - pos;
+  for (let position = pos; position < pos + count; ++position) {
+    const node = list.childNodes[Math.max(firstLoadedPosition, pos) % loadedCount];
+    const oldPos = node.childNodes[1].position;
+    loadRow(offset + position, node);
+    
+    if (lastDiv === list.firstChild) {
+      list.appendChild(node);
+      console.log("repurposing row", position, "which is configured as row", oldPos, "Appending it at position", offset + position);
+    } else {
+      list.insertBefore(node, lastDiv);
+      console.log("repurposing row", position, "which is configured as row", oldPos, "Inserting it at position", offset + position, "before row", lastDiv.childNodes[1].position);
+    }
   }
 
   for (const position of modifiedRows) {
-    let index = position - firstLoadedPosition;
-    if (index >= 0 && index < list.childNodes.length) {
-      loadRow(position, list.childNodes[index], false);
+    if (position >= firstLoadedPosition && position < firstLoadedPosition + loadedCount) {
+      loadRow(position, list.childNodes[position % loadedCount], false);
     }
   }
   
-  updateLineNumbers(rowIndex);
+  updateLineNumbers(pos);
   document.body.style.height = getRowCount() * rowHeight + "px";
 }
 
 
 
-function updateLineNumbers(modifiedRow) {
-  let count = list.childNodes.length;
-  for (let i = modifiedRow; i < count; ++i) {
-    let outerRow = list.childNodes[i];
-    let position = i + firstLoadedPosition;
+function updateLineNumbers(modifiedPosition) {
+  for (let position = modifiedPosition; position < firstLoadedPosition + loadedCount; ++position) {
+    let outerDiv = list.childNodes[position % loadedCount];
+    outerDiv.style.transform = "translateY(" + position * rowHeight + "px)";
     
-    outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
-    outerRow.childNodes[1].position = position;
+    outerDiv.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
+    outerDiv.childNodes[1].position = position;
   }
 }
 
@@ -468,13 +411,9 @@ function updateLineNumbers(modifiedRow) {
 
 function loadRow(position, outerDiv, movedPosition = true) {
   let innerRow = outerDiv.childNodes[1];
-  innerRow.position = position;
-  
-  //update the line number item of the slide menu
-  innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
   
   while (innerRow.childNodes.length > 2) {
-    buttonPool.push(innerRow.lastChild);
+    itemPool.push(innerRow.lastChild);
     innerRow.removeChild(innerRow.lastChild);
   }
 
@@ -497,14 +436,15 @@ function loadRow(position, outerDiv, movedPosition = true) {
   }
 
   if (movedPosition) {
-    let button = innerRow.childNodes[1 + modal.col];
+    innerRow.position = position;
+    innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
 
-    if (modal.row === position) {
-      outerDiv.classList.add("selected");
+    let button = innerRow.childNodes[1 + menu.col];
+
+    if (menu.row === position) {
       button.classList.add("selected");
       innerRow.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     } else {
-      outerDiv.classList.remove("selected");
       if (button)
         button.classList.remove("selected");
     }
@@ -514,8 +454,8 @@ function loadRow(position, outerDiv, movedPosition = true) {
 function reloadAllRowsInPlace() {
   document.body.style.height = getRowCount() * rowHeight + "px";
 
-  for (const outerRow of list.childNodes) {
-    loadRow(outerRow.childNodes[1].position, outerRow, false);
+  for (const outerDiv of list.childNodes) {
+    loadRow(outerDiv.childNodes[1].position, outerDiv, false);
   }
 
   //console.log("reloaded all rows in place");
@@ -524,8 +464,8 @@ function reloadAllRowsInPlace() {
 
 
 function getItem(text) {
-  if (buttonPool.length !== 0) {
-    let node = buttonPool.pop();
+  if (itemPool.length !== 0) {
+    let node = itemPool.pop();
     node.firstChild.nodeValue = text;
     return node;
   } else {
@@ -537,62 +477,64 @@ function getItem(text) {
 
 
 
-function configureModal(options) {
-  while (modal.hasChildNodes()) {
-    buttonPool.push(modal.lastChild);
-    modal.removeChild(modal.lastChild);
+function configureMenu(options) {
+  while (menu.hasChildNodes()) {
+    itemPool.push(menu.lastChild);
+    menu.removeChild(menu.lastChild);
   }
 
   for (const option of options) {
     let button = getItem(option.text);
-    button.className = "item modal-item no-select " + option.style;
+    button.className = "item menu-item no-select " + option.style;
     button.position = option.payload;
-    modal.appendChild(button);
+    menu.appendChild(button);
   }
 }
 
-function closeModal() {
-  while (modal.hasChildNodes()) {
-    buttonPool.push(modal.lastChild);
-    modal.removeChild(modal.lastChild);
+function closeMenu() {
+  while (menu.hasChildNodes()) {
+    itemPool.push(menu.lastChild);
+    menu.removeChild(menu.lastChild);
   }
 
-  let outerRow = list.childNodes[modal.row - firstLoadedPosition];
-  if (outerRow) {
-    outerRow.classList.remove("selected");
-
-    let button = outerRow.childNodes[1].childNodes[1 + modal.col];
-    if (button)
-      button.classList.remove("selected");
+  if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
+    const outerDiv = list.childNodes[menu.row % loadedCount];
+    if (outerDiv) {
+      outerDiv.classList.remove("selected");
+  
+      const button = outerDiv.childNodes[1].childNodes[1 + menu.col];
+      if (button)
+        button.classList.remove("selected");
+    }
   }
 
-  modal.row = -1;
+  menu.row = -1;
   document.body.classList.remove("selected");
 }
 
 function menuItemClicked(payload) {
-  let response = script.menuItemClicked(modal.row, modal.col, payload);
+  let response = script.menuItemClicked(menu.row, menu.col, payload);
 
   if (Array.isArray(response) && response.length > 0) {
-    configureModal(response);
+    configureMenu(response);
     return;
   } else if (typeof response === 'number') {
     if ((response & Script.RESPONSE.ROW_UPDATED) !== 0) {
-      let outerRow = list.childNodes[modal.row - firstLoadedPosition];
-      if (outerRow) {
-        loadRow(modal.row, outerRow, false);
-        if (modal.col === -1) {
-          outerRow.childNodes[1].scrollLeft = 1e10;
+      let outerDiv = list.childNodes[menu.row % loadedCount];
+      if (outerDiv) {
+        loadRow(menu.row, outerDiv, false);
+        if (menu.col === -1) {
+          outerDiv.childNodes[1].scrollLeft = 1e10;
         }
       }
     }
 
     if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
-      insertRow(modal.row + 1);
+      insertRow(menu.row + 1);
     }
     
     if (response === Script.RESPONSE.ROW_DELETED) {
-      deleteRow(modal.row);
+      deleteRow(menu.row);
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
@@ -602,22 +544,28 @@ function menuItemClicked(payload) {
     document.body.style.height = getRowCount() * rowHeight + "px";
   }
 
-  closeModal();
+  closeMenu();
 }
 
 
+
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape") {
+    closeMenu();
+  }
+});
 
 function preventDefault(event) {
   event.preventDefault();
 }
 
-function modalContainerClicked(event) {
+menu.addEventListener("click", function (event) {
   if (event.target !== this) {
     menuItemClicked(event.target.position);
   } else {
-    closeModal();
+    closeMenu();
   }
-}
+});
 
 function slideMenuClickHandler(event) {
   let position = this.nextSibling.position;
@@ -647,11 +595,14 @@ function rowClickHandler(event) {
   let options = script.itemClicked(row, col);
 
   if (typeof options[Symbol.iterator] === 'function') {
-    modal.row = row;
-    modal.col = col;
-    configureModal(options);
+    if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
+      list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.remove("selected");
+    }
+
+    menu.row = row;
+    menu.col = col;
+    configureMenu(options);
     document.body.classList.add("selected");
-    this.parentElement.classList.add("selected");
     event.target.classList.add("selected");
   }
   else {
@@ -692,27 +643,27 @@ function existingTouchHandler(event) {
   }
 }
 
-function touchMoved(outerRow, touch) {
-  let travel = touch.pageX - outerRow.touchStartX;
+function touchMoved(outerDiv, touch) {
+  let travel = touch.pageX - outerDiv.touchStartX;
   
-  if (!outerRow.touchCaptured && travel > 10) {
-    outerRow.touchCaptured = true;
-    outerRow.firstChild.classList.remove("slow-transition");
-    outerRow.slideMenuStartWidth = outerRow.firstChild.offsetWidth;
-    outerRow.touchStartX += 10;
+  if (!outerDiv.touchCaptured && travel > 10) {
+    outerDiv.touchCaptured = true;
+    outerDiv.firstChild.classList.remove("slow-transition");
+    outerDiv.slideMenuStartWidth = outerDiv.firstChild.offsetWidth;
+    outerDiv.touchStartX += 10;
     travel -= 10;
   }
   
-  if (outerRow.touchCaptured) {
-    outerRow.firstChild.style.width = outerRow.slideMenuStartWidth + Math.max(travel, 0) + "px";
+  if (outerDiv.touchCaptured) {
+    outerDiv.firstChild.style.width = outerDiv.slideMenuStartWidth + Math.max(travel, 0) + "px";
   }
 }
 
-function touchEnded(outerRow, touch) {
-  if (outerRow.touchCaptured) {
-    const position = outerRow.childNodes[1].position;
+function touchEnded(outerDiv, touch) {
+  if (outerDiv.touchCaptured) {
+    const position = outerDiv.childNodes[1].position;
     if (position <= script.getRowCount()) {
-      let travel = touch.pageX - outerRow.touchStartX;
+      let travel = touch.pageX - outerDiv.touchStartX;
       
       if (travel > 200) {
         if (position < script.getRowCount())
@@ -723,54 +674,35 @@ function touchEnded(outerRow, touch) {
     }
   }
   
-  touchCanceled(outerRow);
+  touchCanceled(outerDiv);
 }
 
-function touchCanceled(outerRow) {
-  outerRow.touchId = -1;
-  if (outerRow.touchCaptured) {
-    outerRow.touchCaptured = false;
-    outerRow.firstChild.classList.add("slow-transition");
-    outerRow.firstChild.style.width = "";
+function touchCanceled(outerDiv) {
+  outerDiv.touchId = -1;
+  if (outerDiv.touchCaptured) {
+    outerDiv.touchCaptured = false;
+    outerDiv.firstChild.classList.add("slow-transition");
+    outerDiv.firstChild.style.width = "";
   }
 }
 
 
 function* stride(start, end, by) {
-  for (let i = start; i != end; i += by) {
-    yield i;
+  if (by === 0)
+    return;
+  
+  by = Math.abs(by);
+
+  if (start < end) {
+    for (let i = start; i < end; i += by) yield i;
+  } else {
+    for (let i = start; i > end; i -= by) yield i;
   }
 }
 
-function drawCircle(x, y, r, color) {
-  r = Math.abs(r);
-
-  context.beginPath();
-  context.fillStyle = color;
-  context.arc(x,y,r, 0,2*Math.PI);
-  context.fill();
-}
-
-function drawRectangle(x, y, w, h, color) {
-  context.fillStyle = color;
-  context.fillRect(x, y, w, h);
-}
-
-function drawText(x, y, size, color, text) {
-  context.textBaseline = "top";
-  context.font = size + "px Monospace";
-  context.fillStyle = color;
-  const lines = String(text).split("\n");
-
-  for (let i = 0; i < lines.length; ++i) {
-    context.fillText(lines[i], x, y + i * size);
-  }
-}
-
-function draw(timestamp) {
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  eventHandlers.ondraw(timestamp);
-  renderLoop = window.requestAnimationFrame(draw);
+function print(value, terminator) {
+  const text = document.createTextNode(String(value) + terminator);
+  consoleOutput.appendChild(text);
 }
 
 // let httpRequest = new XMLHttpRequest();

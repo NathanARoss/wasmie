@@ -61,7 +61,7 @@ class Script {
     }
 
 
-    const {classes, variables, functions, symbols, keywords} = getBuiltIns();
+    const {classes, variables, functions, symbols, keywords} = new BuiltIns();
     this.symbols = symbols;
     this.keywords = keywords;
 
@@ -97,7 +97,7 @@ class Script {
     this.ITEMS.START_PARENTHESIS = makeSymbol("(");
     this.ITEMS.END_PARENTHESIS   = makeSymbol(")");
     this.ITEMS.COMMA             = makeSymbol(",");
-    this.ITEMS.BLANK             = makeSymbol("_____");
+    this.ITEMS.BLANK             = makeSymbol("____");
 
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
@@ -107,7 +107,7 @@ class Script {
     this.classes = new MetadataContainer("classes", classes, 0x3FF);
     this.literals = new MetadataContainer("literals", literals, 0xFFFF);
 
-    this.FUNCS = {STRIDE: -1 & this.functions.mask};
+    this.FUNCS = {RANGE: -1 & this.functions.mask};
     this.CLASSES = {VOID: -1 & this.classes.mask};
 
     this.lines = [];
@@ -193,6 +193,7 @@ class Script {
     this.ASSIGNMENT_OPERATORS = new Operator(0, 9);
     this.BINARY_OPERATORS = new Operator(9, 27);
     this.UNARY_OPERATORS = new Operator(27, 30);
+    this.OPERATORS = new Operator(0, 30);
   }
 
   static makeItem({format = 0, flag = 0, flag2 = 0, meta = 0, value = 0}) {
@@ -292,7 +293,7 @@ class Script {
       }
     }
 
-    if (this.ASSIGNMENT_OPERATORS.includes(item)) {
+    if (col === 2 && this.ASSIGNMENT_OPERATORS.includes(item)) {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
@@ -326,7 +327,6 @@ class Script {
             || this.getItem(r, 2) === this.ITEMS.IF) {
               options.push({text: "else", style: "keyword", payload: this.PAYLOADS.INSERT_ELSE});
             }
-            break;
           }
         }
       }
@@ -378,7 +378,8 @@ class Script {
       || data.format === Script.FUNCTION_DEFINITION) {
         //don't allow function return types or parameter types to be automaticly detected
         if (data.format === Script.FUNCTION_DEFINITION
-        || this.findItem(row, this.ITEMS.FUNC) < 1) {
+        || (this.findItem(row, this.ITEMS.FUNC) < 1
+        && (this.getItem(row, 1) !== this.ITEMS.VAR || this.getItem(row, 3) === this.ITEMS.EQUALS))) {
           let option = {text: "", style: "comment", payload: Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: this.CLASSES.VOID})};
           option.text = (data.format === Script.FUNCTION_DEFINITION) ? "void" : "auto";
           options.push(option);
@@ -400,9 +401,7 @@ class Script {
         options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
-      if (this.BINARY_OPERATORS.includes(prevItem)
-      || this.UNARY_OPERATORS.includes(prevItem)
-      || this.ASSIGNMENT_OPERATORS.includes(prevItem)
+      if (this.OPERATORS.includes(prevItem)
       || prevItem === this.ITEMS.WHILE
       || prevItem === this.ITEMS.DO_WHILE
       || prevItem === this.ITEMS.SWITCH
@@ -473,7 +472,6 @@ class Script {
                   if (this.getItem(r, 1) === this.ITEMS.ELSE) {
                     preceedsElse = true;
                   }
-                  break;
                 }
               }
 
@@ -483,7 +481,6 @@ class Script {
                 options.push({text: "else", style: "keyword", payload: this.ITEMS.ELSE});
               }
             }
-            break;
           }
         }
 
@@ -606,26 +603,7 @@ class Script {
         return Script.RESPONSE.ROW_UPDATED;
 
       case this.ITEMS.FOR: {
-
-        let name = "index";
-
-        if (row < this.getRowCount()) {
-          let indentation = this.getIndentation(row) - 1;
-          for (let r = row - 1; r >= 0, indentation >= 0; --r) {
-            if (this.getIndentation(r) === indentation && this.isStartingScope(r)) {
-              --indentation;
-
-              if (this.getItem(r, 1) === this.ITEMS.FOR) {
-                const loopingVar = this.variables.get(this.getData(r, 2).value);
-                const nestingDepth = (loopingVar.name.match(/\d+$/) || [""]).pop();
-                name = loopingVar.name.substring(0, loopingVar.name.length - nestingDepth.length) + (Number(nestingDepth) + 1);
-                break;
-              }
-            }
-          }
-        }
-
-        name = prompt("Enter for loop variable name:", name);
+        let name = prompt("Enter for loop variable name:", "index");
         if (name) {
           this.appendRowsUpTo(row);
           this.setIsStartingScope(row, true);
@@ -634,13 +612,13 @@ class Script {
           this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
   
           this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.IN,
-            Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.CLASSES.VOID, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.RANGE).scope, value: this.FUNCS.RANGE}),
             this.ITEMS.START_PARENTHESIS,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.RANGE}),
             this.ITEMS.COMMA,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.RANGE}),
             this.ITEMS.COMMA,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.STRIDE}),
+            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.RANGE}),
             this.ITEMS.END_PARENTHESIS);
           return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
         }
@@ -728,7 +706,7 @@ class Script {
             if (!input.startsWith('"'))
               input = '"' + input;
             
-            if (!input.endsWith('"' || input.length < 2))
+            if (!input.endsWith('"') || input.length < 2)
               input = input + '"';
 
             payload = Script.makeItem({format: Script.LITERAL, meta: 1, value: id});
@@ -796,7 +774,32 @@ class Script {
               this.spliceRow(row, start, end - start + 1);
             }
           } else {
-            this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
+            //if the removed item 
+            let paramIndex = 0;
+            let funcID = -1;
+
+            const nextItem = this.getItem(row, end + 1);
+            const prevItem = this.getItem(row, start - 1);
+            if ((nextItem === this.ITEMS.COMMA || nextItem === this.ITEMS.END_PARENTHESIS)
+            && (prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.START_PARENTHESIS)) {
+              for (let c = start - 1; c > 0; --c) {
+                const data = this.getData(row, c);
+                if (data.format === Script.FUNCTION_REFERENCE) {
+                  funcID = data.value;
+                  break;
+                }
+  
+                if (this.getItem(row, c) === this.ITEMS.COMMA) {
+                  ++paramIndex;
+                }
+              }
+            }
+
+            if (funcID > -1) {
+              this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
+            } else {
+              this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
+            }
           }
         }
 
@@ -930,7 +933,7 @@ class Script {
     //user chose a symbol to insert into the script
     if (payloadData.format === Script.SYMBOL) {
       const item = this.getItem(row, col);
-      if (this.UNARY_OPERATORS.includes(item) || this.BINARY_OPERATORS.includes(item)) {
+      if (this.OPERATORS.includes(item)) {
         this.setItem(row, col, payload);
       } else {
         if (this.UNARY_OPERATORS.includes(payload))
@@ -995,10 +998,13 @@ class Script {
             if (this.getData(r, col).format === Script.VARIABLE_DEFINITION) {
               let varId = this.getData(r, col).value;
               const v = this.variables.get(varId);
-              const type = this.classes.get(v.type);
-              const scope = this.classes.get(v.scope);
-              const text = (v.type === this.CLASSES.VOID ? "undeclared" : type.name) + (v.scope === this.CLASSES.VOID ? "" : " " + scope.name) + "\n" + v.name;
-              options.push({text, style: "keyword-declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.type, value: varId})});
+              let text = v.name;
+              let style = "declaration";
+              if (v.scope !== this.CLASSES.VOID) {
+                text = this.classes.get(v.scope) + "." + text;
+                style = "keyword-declaration";
+              }
+              options.push({text, style, payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: varId})});
             }
           }
         }
@@ -1008,7 +1014,7 @@ class Script {
     if (!requiresMutable) {
       for (let i = -this.variables.builtinCount; i <= -1; ++i) {
         const v = this.variables.get(i);
-        const text = this.classes.get(v.type).name + " " + this.classes.get(v.scope).name + "\n" + v.name;
+        const text = this.classes.get(v.scope).name + "." + v.name;
         options.push({text, style: "keyword-declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: i})});
       }
     }
@@ -1026,7 +1032,7 @@ class Script {
         const scope = this.classes.get(func.scope);
         if (func.name === "dot")
           console.log(func);
-        options.push({text: returnType.name + (func.scope === this.CLASSES.VOID ? "" : " " + scope.name) + "\n" + func.name, style: "keyword-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
+        options.push({text: returnType.name + (func.scope === this.CLASSES.VOID ? "" : " " + scope.name) + "." + func.name, style: "keyword-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
       }
     }
 
@@ -1515,7 +1521,7 @@ class Script {
       }
 
       for (let col = 1, end = this.getItemCount(row); col < end; ++col) {
-        const {format, value} = this.getData(row, col);
+        const {format, meta, value} = this.getData(row, col);
 
         //append an end parenthesis to the end of the line
         switch (format) {
@@ -1560,8 +1566,15 @@ class Script {
             break;
           }
 
-          case Script.ARGUMENT_HINT:
-            return `/*argument hint*/ `;
+          case Script.ARGUMENT_HINT: {
+            let val = this.functions.get(value).parameters[meta].default;
+            if (typeof val === "string") {
+              val = `"${val.replace("\n", "\\n")}"`;
+            }
+
+            js += `${val} `;
+            break;
+          }
 
           case Script.SYMBOL:
             js += `${this.symbols[value]} `;

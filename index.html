@@ -9,14 +9,11 @@
   
   <body>
     <div id="runtime">
-      <canvas id="canvas"></canvas>
+      <p id="console-output"></p>
     </div>
 
     
     <div id="editor_div">
-      <div id="modal"></div>  
-      <p id="debug" class="no-select">&nbsp;</p>
-
       <div id="FAB-menu">
         <button id="menu-button" class="FAB no-select"></button>
         <button id="view-code-button" class="FAB FAB-small"></button>
@@ -24,13 +21,15 @@
         <button id="new-button" class="FAB FAB-small"></button>
       </div>
 
-
-      <div id="spacer"></div>
+      <p id="debug" class="no-select">&nbsp;</p>
       <div id="list"></div>
+      <div id="menu"></div>
     </div>
+
 
     <div id="program-list"><h3 id="no-projects-message">No projects found</h3></div>
     
+
     <script src="script_builtins.js"></script>
     <script src="script.js"></script>
     <script src="ui.js"></script>
