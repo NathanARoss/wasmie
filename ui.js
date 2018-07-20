@@ -81,7 +81,6 @@ document.body.onresize = function () {
     let div = createRow();
     let position = list.childNodes.length + firstLoadedPosition;
     loadRow(position, div);
-    div.style.transform = "translateY(" + position * rowHeight + "px)";
     list.appendChild(div);
   }
 
@@ -109,7 +108,6 @@ window.onscroll = function() {
   while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition) && (firstLoadedPosition + loadedCount < getRowCount())) {
     const position = firstLoadedPosition + loadedCount;
     const outerDiv = list.childNodes[position % loadedCount];
-    outerDiv.style.transform = "translateY(" + position * rowHeight + "px)";
     loadRow(position, outerDiv);
     ++firstLoadedPosition;
   }
@@ -117,7 +115,6 @@ window.onscroll = function() {
   while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition) && (firstLoadedPosition > 0)) {
     const position = firstLoadedPosition - 1;
     const outerDiv = list.childNodes[position % loadedCount];
-    outerDiv.style.transform = "translateY(" + position * rowHeight + "px)";
     loadRow(position, outerDiv);
     --firstLoadedPosition;
   }
@@ -396,6 +393,7 @@ function loadRow(position, outerDiv, movedPosition = true) {
   }
 
   if (movedPosition) {
+    outerDiv.style.transform = "translateY(" + Math.floor(position / loadedCount) * loadedCount * rowHeight + "px)";
     innerRow.position = position;
     innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
 

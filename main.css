@@ -29,7 +29,7 @@ button.selected {
 }
 
 .outer-row {
-  position: absolute;
+  position: relative;
   height: var(--line-height);
   overflow: hidden;
   white-space: nowrap;
