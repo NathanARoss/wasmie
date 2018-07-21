@@ -680,8 +680,21 @@ function* stride(start, end, by) {
 }
 
 function print(value, terminator) {
-  const text = document.createTextNode(String(value) + terminator);
-  consoleOutput.appendChild(text);
+  const text = String(value) + terminator;
+  const segments = text.split("\n");
+  const lastSegment = segments.pop();
+
+  for (const segment of segments) {
+    const textNode = document.createTextNode(segment);
+    const lineBreak = document.createElement("BR");
+    consoleOutput.appendChild(textNode);
+    consoleOutput.appendChild(lineBreak);
+  }
+
+  if (lastSegment) {
+    const textNode = document.createTextNode(lastSegment);
+    consoleOutput.appendChild(textNode);
+  }
 }
 
 // let httpRequest = new XMLHttpRequest();
