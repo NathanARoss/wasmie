@@ -31,6 +31,7 @@ function BuiltIns() {
   this.variables = [
     {name: "E",        type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.E"},
     {name: "PI",       type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.PI"},
+    {name: "non-breaking space", type: classMap.get("String"), scope: classMap.get("System"), js: '"\xa0"'},
   ].reverse();
   
   function parseFunction(js, returnType, scope, name, ...parameters) {
