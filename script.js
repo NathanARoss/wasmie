@@ -107,7 +107,10 @@ class Script {
     this.classes = new MetadataContainer("classes", classes, 0x3FF);
     this.literals = new MetadataContainer("literals", literals, 0xFFFF);
 
-    this.FUNCS = {RANGE: -1 & this.functions.mask};
+    this.FUNCS = {
+      RANGE: -1 & this.functions.mask,
+      PRINT: (-this.functions.builtinCount + this.functions.data.findIndex(func => func.name === "print")) & this.functions.mask
+    };
     this.CLASSES = {VOID: -1 & this.classes.mask};
 
     this.lines = [];
@@ -190,10 +193,10 @@ class Script {
       }
     }
 
-    this.ASSIGNMENT_OPERATORS = new Operator(0, 9);
-    this.BINARY_OPERATORS = new Operator(9, 27);
-    this.UNARY_OPERATORS = new Operator(27, 30);
-    this.OPERATORS = new Operator(0, 30);
+    this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
+    this.BINARY_OPERATORS = new Operator(13, 31);
+    this.UNARY_OPERATORS = new Operator(31, 35);
+    this.OPERATORS = new Operator(0, 35);
   }
 
   static makeItem({format = 0, flag = 0, flag2 = 0, meta = 0, value = 0}) {
@@ -267,7 +270,7 @@ class Script {
       }
     }
 
-    reloadAllRowsInPlace();
+    reloadAllRows();
   }
 
   itemClicked(row, col) {
@@ -326,6 +329,7 @@ class Script {
             if (this.getItem(r, 1) === this.ITEMS.IF
             || this.getItem(r, 2) === this.ITEMS.IF) {
               options.push({text: "else", style: "keyword", payload: this.PAYLOADS.INSERT_ELSE});
+              break;
             }
           }
         }
@@ -362,13 +366,9 @@ class Script {
         if (this.getData(row, beginParenthesis - 1).format !== Script.FUNCTION_REFERENCE) {
           options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
         }
-        options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
-      }
 
-      if (data.format === Script.VARIABLE_REFERENCE
-      || data.format === Script.LITERAL) {
-        options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
-        options.push(...this.BINARY_OPERATORS.getMenuItems());
+        if (item !== this.ITEMS.END_PARENTHESIS)
+          options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
       }
 
       if (data.format === Script.FUNCTION_REFERENCE)
@@ -391,17 +391,12 @@ class Script {
             options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.FUNCTION_DEFINITION, flag: 1, meta: id})});
         }
       }
-      
+
       const prevItem = this.getItem(row, col - 1);
-      const prevData = this.getData(row, col - 1);
+      const prevData = Script.getItemData(prevItem);
 
-      if (prevData.format === Script.VARIABLE_REFERENCE
-      || prevData.format === Script.LITERAL
-      || prevItem === this.ITEMS.END_PARENTHESIS) {
-        options.push(...this.BINARY_OPERATORS.getMenuItems());
-      }
-
-      if (this.OPERATORS.includes(prevItem)
+      if (item !== this.ITEMS.END_PARENTHESIS
+      && (this.OPERATORS.includes(prevItem)
       || prevItem === this.ITEMS.WHILE
       || prevItem === this.ITEMS.DO_WHILE
       || prevItem === this.ITEMS.SWITCH
@@ -409,14 +404,27 @@ class Script {
       || prevItem === this.ITEMS.START_PARENTHESIS
       || prevItem === this.ITEMS.COMMA
       || prevItem === this.ITEMS.IN
-      || prevItem === this.ITEMS.RETURN) {
+      || prevItem === this.ITEMS.RETURN)) {
+        options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
+        options.push( {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN} );
+
         if (!this.UNARY_OPERATORS.includes(prevItem)) {
           options.push(...this.UNARY_OPERATORS.getMenuItems());
         }
 
-        options.push( {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN} );
-        options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
         options.push(...this.getVisibleVariables(row, false));
+      }
+
+      if (data.format === Script.VARIABLE_REFERENCE
+      || data.format === Script.LITERAL
+      || item === this.ITEMS.END_PARENTHESIS) {
+        options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
+        options.push(...this.BINARY_OPERATORS.getMenuItems());
+      }
+      else if (prevData.format === Script.VARIABLE_REFERENCE
+      || prevData.format === Script.LITERAL
+      || prevItem === this.ITEMS.END_PARENTHESIS) {
+        options.push(...this.BINARY_OPERATORS.getMenuItems());
       }
 
       if (item !== this.ITEMS.IF && prevItem === this.ITEMS.ELSE) {
@@ -451,6 +459,7 @@ class Script {
       } else {
         options = [
           {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE},
+          {text: "print", style: "function-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.PRINT).scope, value: this.FUNCS.PRINT})},
           {text: "func", style: "keyword", payload: this.ITEMS.FUNC},
           {text: "let", style: "keyword", payload: this.ITEMS.LET},
           {text: "var", style: "keyword", payload: this.PAYLOADS.VAR_OPTIONS},
@@ -479,6 +488,7 @@ class Script {
                 return [{text: "else if", style: "keyword", payload: this.PAYLOADS.ELSE_IF}];
               } else {
                 options.push({text: "else", style: "keyword", payload: this.ITEMS.ELSE});
+                break;
               }
             }
           }
@@ -557,7 +567,7 @@ class Script {
         if (name) {
           this.appendRowsUpTo(row);
           this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
-          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.EQUALS, this.ITEMS.BLANK);
+          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.EQUALS);
           return Script.RESPONSE.ROW_UPDATED;
         } else {
           return Script.RESPONSE.NO_CHANGE;
@@ -580,7 +590,7 @@ class Script {
       case this.ITEMS.WHILE:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
-        this.pushItems(row, payload, this.ITEMS.BLANK);
+        this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
       case this.ITEMS.ELSE:
@@ -591,11 +601,11 @@ class Script {
 
       case this.PAYLOADS.ELSE_IF:
         this.setIsStartingScope(row, true);
-        this.pushItems(row, this.ITEMS.ELSE, this.ITEMS.IF, this.ITEMS.BLANK);
+        this.pushItems(row, this.ITEMS.ELSE, this.ITEMS.IF);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
       case this.PAYLOADS.APPEND_IF:
-        this.pushItems(row, this.ITEMS.IF, this.ITEMS.BLANK);
+        this.pushItems(row, this.ITEMS.IF);
         return Script.RESPONSE.ROW_UPDATED;
       
       case this.PAYLOADS.INSERT_ELSE:
@@ -629,7 +639,7 @@ class Script {
       case this.ITEMS.SWITCH:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
-        this.pushItems(row, payload, this.ITEMS.BLANK);
+        this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
       case this.ITEMS.RETURN: {
@@ -643,9 +653,6 @@ class Script {
         }
 
         this.pushItems(row, payload);
-        if (returnType > 0)
-          this.pushItems(row, this.ITEMS.BLANK);
-        
         return Script.RESPONSE.ROW_UPDATED;
       }
 
@@ -662,7 +669,7 @@ class Script {
       }
 
       case this.ITEMS.EQUALS:
-        this.pushItems(row, this.ITEMS.EQUALS, this.ITEMS.BLANK);
+        this.pushItems(row, this.ITEMS.EQUALS);
         return Script.RESPONSE.ROW_UPDATED;
 
       case this.ITEMS.COMMA: {
@@ -798,7 +805,11 @@ class Script {
             if (funcID > -1) {
               this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
             } else {
-              this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
+              if (end + 1 >= this.getItemCount(row)) {
+                this.spliceRow(row, start, end - start + 1);
+              } else {
+                this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
+              }
             }
           }
         }
@@ -844,8 +855,7 @@ class Script {
       if (this.getItemCount(row) === 1) {
         this.pushItems(row,
           Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: variable.scope, value: varId}),
-          this.ITEMS.EQUALS,
-          this.ITEMS.BLANK
+          this.ITEMS.EQUALS
         );
         return Script.RESPONSE.ROW_UPDATED;
       }
@@ -938,8 +948,13 @@ class Script {
       } else {
         if (this.UNARY_OPERATORS.includes(payload))
           this.spliceRow(row, col, 0, payload);
-        else
-          this.spliceRow(row, col + 1, 0, payload, this.ITEMS.BLANK);
+        else {
+          if (col + 1 < this.getItemCount(row)) {
+            this.spliceRow(row, col + 1, 0, payload, this.ITEMS.BLANK);
+          } else {
+            this.pushItems(row, payload);
+          }
+        }
       }
       
       return Script.RESPONSE.ROW_UPDATED;
@@ -953,16 +968,13 @@ class Script {
       this.setItem(row, col, newItem, true);
 
       if (format === Script.FUNCTION_DEFINITION) {
-        const hasReturn = payloadData.meta !== this.CLASSES.VOID;
-
         let indentation = this.getIndentation(row);
         for (let r = row + 1; r < this.getRowCount(); ++r) {
           if (this.getIndentation(r) === indentation)
             break;
           
           if (this.getItem(r, 1) === this.ITEMS.RETURN) {
-            let replacementItems = hasReturn ? [this.ITEMS.BLANK] : [];
-            this.spliceRow(r, 2, this.getItemCount(r) - 2, ...replacementItems);
+            this.spliceRow(r, 2, this.getItemCount(r) - 2);
           }
         }
 
@@ -998,13 +1010,7 @@ class Script {
             if (this.getData(r, col).format === Script.VARIABLE_DEFINITION) {
               let varId = this.getData(r, col).value;
               const v = this.variables.get(varId);
-              let text = v.name;
-              let style = "declaration";
-              if (v.scope !== this.CLASSES.VOID) {
-                text = this.classes.get(v.scope) + "." + text;
-                style = "keyword-declaration";
-              }
-              options.push({text, style, payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: varId})});
+              options.push({text: v.name, style: "declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: varId})});
             }
           }
         }
@@ -1014,11 +1020,11 @@ class Script {
     if (!requiresMutable) {
       for (let i = -this.variables.builtinCount; i <= -1; ++i) {
         const v = this.variables.get(i);
-        const text = this.classes.get(v.scope).name + "." + v.name;
-        options.push({text, style: "keyword-declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: i})});
+        options.push({text: v.name, style: "declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: i})});
       }
     }
 
+    options.sort((a, b) => a.text.localeCompare(b.text));
     return options;
   }
 
@@ -1028,14 +1034,11 @@ class Script {
     for (const id of this.functions.getIDs()) {
       let func = this.functions.get(id);
       if (!requireReturn || func.returnType !== 0) {
-        const returnType = this.classes.get(func.returnType);
-        const scope = this.classes.get(func.scope);
-        if (func.name === "dot")
-          console.log(func);
-        options.push({text: returnType.name + (func.scope === this.CLASSES.VOID ? "" : " " + scope.name) + "." + func.name, style: "keyword-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
+        options.push({text: func.name, style: "function-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
       }
     }
 
+    options.sort((a, b) => a.text.localeCompare(b.text));
     return options;
   }
 

@@ -44,7 +44,7 @@ createButton.addEventListener("click", function(event) {
   
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
-  reloadAllRowsInPlace();
+  reloadAllRows();
 });
 
 loadButton.addEventListener("click", function(event) {
@@ -66,6 +66,34 @@ viewCodeButton.addEventListener("click", function(event) {
   alert(script.getJavaScript());
 });
 
+menu.addEventListener("touchstart", function(event) {
+  if (this.touchId === undefined) {
+    const touch = event.changedTouches[0];
+    this.touchId = touch.identifier;
+    this.touchStartX = touch.pageX;
+    this.touchStartY = touch.pageY;
+  }
+});
+
+menu.addEventListener("touchend", function(event) {
+  for (const touch of event.changedTouches) {
+    if (touch.identifier === this.touchId) {
+      const travelX = touch.pageX - this.touchStartX;
+      const travelY = touch.pageY - this.touchStartY;
+  
+      if (travelX > 50 && travelX > Math.abs(travelY)) {
+        closeMenu();
+      }
+    }
+  }
+
+  this.touchId = undefined;
+});
+
+menu.addEventListener("touchcancel", function(event) {
+  this.touchId = undefined;
+});
+
 
 
 document.body.onresize = function () {
@@ -74,8 +102,7 @@ document.body.onresize = function () {
   loadedCount = newLoadedCount;
   
   //allow the viewport to scroll past the currently loaded rows
-  if (history.state === null)
-    document.body.style.height = getRowCount() * rowHeight + "px";
+  list.style.height = getRowCount() * rowHeight + "px";
   
   for(let i = 0; i < diff; ++i) {
     let div = createRow();
@@ -140,7 +167,6 @@ window.onpopstate = function(event) {
     }
 
     consoleOutput.innerHTML = "";
-    document.body.style.height = getRowCount() * rowHeight + "px";
     document.title = "TouchScript"
   }
   else if (event.state.action === "run") {    
@@ -157,14 +183,12 @@ window.onpopstate = function(event) {
     editor.style.display = "none";
     runtime.style.display = "";
     programList.style.display = "none";
-    document.body.style.height = "auto";
     document.title = "TouchScript Runtime"
   }
   else if (event.state.action === "load") {
     editor.style.display = "none";
     runtime.style.display = "none";
     programList.style.display = "";
-    document.body.style.height = "auto";
     document.title = "TouchScript Project Manager"
 
     performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
@@ -174,7 +198,7 @@ window.onpopstate = function(event) {
         if (projectID !== oldActiveProject) {
           localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
           script = new Script();
-          reloadAllRowsInPlace();
+          reloadAllRows();
         }
         window.history.back();
       }
@@ -361,12 +385,12 @@ function refreshRows(pos, oldRowCount) {
     loadRow(position, list.childNodes[position % loadedCount]);
   }
 
-  document.body.style.height = getRowCount() * rowHeight + "px";
+  list.style.height = getRowCount() * rowHeight + "px";
 }
 
 
 
-function loadRow(position, outerDiv, movedPosition = true) {
+function loadRow(position, outerDiv) {
   let innerRow = outerDiv.childNodes[1];
   
   while (innerRow.childNodes.length > 2) {
@@ -392,7 +416,7 @@ function loadRow(position, outerDiv, movedPosition = true) {
     innerRow.childNodes[1].style.display = (indentation === 0) ? "none" : "";
   }
 
-  if (movedPosition) {
+  if (innerRow.position !== position) {
     outerDiv.style.transform = "translateY(" + Math.floor(position / loadedCount) * loadedCount * rowHeight + "px)";
     innerRow.position = position;
     innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
@@ -409,14 +433,12 @@ function loadRow(position, outerDiv, movedPosition = true) {
   }
 }
 
-function reloadAllRowsInPlace() {
-  document.body.style.height = getRowCount() * rowHeight + "px";
+function reloadAllRows() {
+  list.style.height = getRowCount() * rowHeight + "px";
 
   for (const outerDiv of list.childNodes) {
-    loadRow(outerDiv.childNodes[1].position, outerDiv, false);
+    loadRow(outerDiv.childNodes[1].position, outerDiv);
   }
-
-  //console.log("reloaded all rows in place");
 }
 
 
@@ -480,7 +502,7 @@ function menuItemClicked(payload) {
     if ((response & Script.RESPONSE.ROW_UPDATED) !== 0) {
       let outerDiv = list.childNodes[menu.row % loadedCount];
       if (outerDiv) {
-        loadRow(menu.row, outerDiv, false);
+        loadRow(menu.row, outerDiv);
         if (menu.col === -1) {
           outerDiv.childNodes[1].scrollLeft = 1e10;
         }
@@ -496,10 +518,8 @@ function menuItemClicked(payload) {
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
-      reloadAllRowsInPlace();
+      reloadAllRows();
     }
-
-    document.body.style.height = getRowCount() * rowHeight + "px";
   }
 
   closeMenu();

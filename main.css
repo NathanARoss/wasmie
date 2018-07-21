@@ -270,18 +270,28 @@ button {
   height: 100%;
 }
 
+#list {
+  width: 100%;
+  transition: width 0.25s;
+}
+
+.selected #list {
+  width: calc(100% - 100px);
+}
+
 #menu {
   position: fixed;
-  right: 0;
   top: 0;
-  width: 0%;
-  height: 100%;
+  right: 0;
+  bottom: 0;
+  width: 0;
   transition: width 0.25s;
   background-color: var(--primary-color);
+  overflow-y: auto;
 }
 
 .selected #menu {
-  width: 50%;
+  width: 100px;
 }
 
 .menu-item {
