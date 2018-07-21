@@ -7,10 +7,9 @@ let loadedCount = 0;
 let firstLoadedPosition = 0;
 
 const list = document.getElementById("list");
-const spacer = document.getElementById("spacer");
 const debug = document.getElementById("debug");
 const editor = document.getElementById("editor_div");
-const modal = document.getElementById("modal");
+const menu = document.getElementById("menu");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
 const loadButton = document.getElementById("load-button");
@@ -20,7 +19,7 @@ const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
 
-let buttonPool = [];
+let itemPool = [];
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
@@ -45,7 +44,7 @@ createButton.addEventListener("click", function(event) {
   
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
-  reloadAllRowsInPlace();
+  reloadAllRows();
 });
 
 loadButton.addEventListener("click", function(event) {
@@ -67,9 +66,33 @@ viewCodeButton.addEventListener("click", function(event) {
   alert(script.getJavaScript());
 });
 
+menu.addEventListener("touchstart", function(event) {
+  if (this.touchId === undefined) {
+    const touch = event.changedTouches[0];
+    this.touchId = touch.identifier;
+    this.touchStartX = touch.pageX;
+    this.touchStartY = touch.pageY;
+  }
+});
 
+menu.addEventListener("touchend", function(event) {
+  for (const touch of event.changedTouches) {
+    if (touch.identifier === this.touchId) {
+      const travelX = touch.pageX - this.touchStartX;
+      const travelY = touch.pageY - this.touchStartY;
+  
+      if (travelX > 50 && travelX > Math.abs(travelY)) {
+        closeMenu();
+      }
+    }
+  }
 
-modal.addEventListener("click", modalContainerClicked);
+  this.touchId = undefined;
+});
+
+menu.addEventListener("touchcancel", function(event) {
+  this.touchId = undefined;
+});
 
 
 
@@ -79,8 +102,7 @@ document.body.onresize = function () {
   loadedCount = newLoadedCount;
   
   //allow the viewport to scroll past the currently loaded rows
-  if (history.state === null)
-    document.body.style.height = getRowCount() * rowHeight + "px";
+  list.style.height = getRowCount() * rowHeight + "px";
   
   for(let i = 0; i < diff; ++i) {
     let div = createRow();
@@ -96,7 +118,7 @@ document.body.onresize = function () {
     let innerRow = lastChild.childNodes[1];
   
     while (innerRow.childNodes.length > 2) {
-      buttonPool.push(innerRow.lastChild);
+      itemPool.push(innerRow.lastChild);
       innerRow.removeChild(innerRow.lastChild);
     }
   }
@@ -111,20 +133,19 @@ window.onscroll = function() {
   
   //keep a number of rows prepared for both direction
   while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition) && (firstLoadedPosition + loadedCount < getRowCount())) {
-    let outerDiv = list.firstChild;
-    list.appendChild(outerDiv);
-    loadRow(firstLoadedPosition + loadedCount, outerDiv);
+    const position = firstLoadedPosition + loadedCount;
+    const outerDiv = list.childNodes[position % loadedCount];
+    loadRow(position, outerDiv);
     ++firstLoadedPosition;
   }
   
   while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition) && (firstLoadedPosition > 0)) {
-    let outerDiv = list.lastChild;
-    list.insertBefore(outerDiv, list.firstChild);
-    loadRow(firstLoadedPosition - 1, outerDiv);
+    const position = firstLoadedPosition - 1;
+    const outerDiv = list.childNodes[position % loadedCount];
+    loadRow(position, outerDiv);
     --firstLoadedPosition;
   }
   
-  spacer.style.height = firstLoadedPosition * rowHeight + "px";
   list.childNodes.forEach(touchCanceled);
 
   debug.firstChild.nodeValue = `[${firstLoadedPosition}, ${(firstLoadedPosition + loadedCount - 1)}]`;
@@ -146,7 +167,6 @@ window.onpopstate = function(event) {
     }
 
     consoleOutput.innerHTML = "";
-    document.body.style.height = getRowCount() * rowHeight + "px";
     document.title = "TouchScript"
   }
   else if (event.state.action === "run") {    
@@ -163,14 +183,12 @@ window.onpopstate = function(event) {
     editor.style.display = "none";
     runtime.style.display = "";
     programList.style.display = "none";
-    document.body.style.height = "auto";
     document.title = "TouchScript Runtime"
   }
   else if (event.state.action === "load") {
     editor.style.display = "none";
     runtime.style.display = "none";
     programList.style.display = "";
-    document.body.style.height = "auto";
     document.title = "TouchScript Project Manager"
 
     performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
@@ -180,7 +198,7 @@ window.onpopstate = function(event) {
         if (projectID !== oldActiveProject) {
           localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
           script = new Script();
-          reloadAllRowsInPlace();
+          reloadAllRows();
         }
         window.history.back();
       }
@@ -349,75 +367,34 @@ function createRow() {
 
 
 function insertRow(position) {
-  position = script.insertRow(position);
-  if (position === -1)
-    return;
-
-  let rowIndex = position - firstLoadedPosition;
-  if (rowIndex >= 0 && rowIndex < list.childNodes.length) {
-    let node = list.lastChild;
-    loadRow(position, node);
-    list.insertBefore(node, list.childNodes[rowIndex]);
-  }
-  else if (rowIndex < 0) {
-    let node = list.lastChild;
-    loadRow(firstLoadedPosition, node);
-    list.insertBefore(node, list.firstChild);
-  }
-
-  updateLineNumbers(Math.max(0, rowIndex + 1));
-  document.body.style.height = getRowCount() * rowHeight + "px";
+  const pos = script.insertRow(position);
+  if (pos !== -1)
+    refreshRows(pos, script.getRowCount());
 }
-
-
 
 function deleteRow(position) {
-  let [pos, count, modifiedRows] = script.deleteRow(position);
+  const oldRowCount = script.getRowCount();
+  const pos = script.deleteRow(position);
+  refreshRows(pos, oldRowCount);
+}
 
-  let rowIndex = Math.max(0, pos - firstLoadedPosition);
-  const end = Math.min(pos + count, list.childNodes.length + firstLoadedPosition);
-
-  for (; pos < end; ++pos) {
-    let node = list.childNodes[rowIndex];
-    loadRow(firstLoadedPosition + list.childNodes.length - 1, node);
-    list.appendChild(node);
+function refreshRows(pos, oldRowCount) {
+  const start = Math.max(pos, firstLoadedPosition);
+  const end = Math.min(oldRowCount, firstLoadedPosition + loadedCount);
+  for (let position = start; position < end; ++position) {
+    loadRow(position, list.childNodes[position % loadedCount]);
   }
 
-  for (const position of modifiedRows) {
-    let index = position - firstLoadedPosition;
-    if (index >= 0 && index < list.childNodes.length) {
-      loadRow(position, list.childNodes[index], false);
-    }
-  }
-  
-  updateLineNumbers(rowIndex);
-  document.body.style.height = getRowCount() * rowHeight + "px";
+  list.style.height = getRowCount() * rowHeight + "px";
 }
 
 
 
-function updateLineNumbers(modifiedRow) {
-  let count = list.childNodes.length;
-  for (let i = modifiedRow; i < count; ++i) {
-    let outerRow = list.childNodes[i];
-    let position = i + firstLoadedPosition;
-    
-    outerRow.firstChild.firstChild.firstChild.nodeValue = String(position).padStart(4);
-    outerRow.childNodes[1].position = position;
-  }
-}
-
-
-
-function loadRow(position, outerDiv, movedPosition = true) {
+function loadRow(position, outerDiv) {
   let innerRow = outerDiv.childNodes[1];
-  innerRow.position = position;
-  
-  //update the line number item of the slide menu
-  innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
   
   while (innerRow.childNodes.length > 2) {
-    buttonPool.push(innerRow.lastChild);
+    itemPool.push(innerRow.lastChild);
     innerRow.removeChild(innerRow.lastChild);
   }
 
@@ -439,36 +416,36 @@ function loadRow(position, outerDiv, movedPosition = true) {
     innerRow.childNodes[1].style.display = (indentation === 0) ? "none" : "";
   }
 
-  if (movedPosition) {
-    let button = innerRow.childNodes[1 + modal.col];
+  if (innerRow.position !== position) {
+    outerDiv.style.transform = "translateY(" + Math.floor(position / loadedCount) * loadedCount * rowHeight + "px)";
+    innerRow.position = position;
+    innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
 
-    if (modal.row === position) {
-      outerDiv.classList.add("selected");
+    let button = innerRow.childNodes[1 + menu.col];
+
+    if (menu.row === position) {
       button.classList.add("selected");
       innerRow.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     } else {
-      outerDiv.classList.remove("selected");
       if (button)
         button.classList.remove("selected");
     }
   }
 }
 
-function reloadAllRowsInPlace() {
-  document.body.style.height = getRowCount() * rowHeight + "px";
+function reloadAllRows() {
+  list.style.height = getRowCount() * rowHeight + "px";
 
-  for (const outerRow of list.childNodes) {
-    loadRow(outerRow.childNodes[1].position, outerRow, false);
+  for (const outerDiv of list.childNodes) {
+    loadRow(outerDiv.childNodes[1].position, outerDiv);
   }
-
-  //console.log("reloaded all rows in place");
 }
 
 
 
 function getItem(text) {
-  if (buttonPool.length !== 0) {
-    let node = buttonPool.pop();
+  if (itemPool.length !== 0) {
+    let node = itemPool.pop();
     node.firstChild.nodeValue = text;
     return node;
   } else {
@@ -480,87 +457,93 @@ function getItem(text) {
 
 
 
-function configureModal(options) {
-  while (modal.hasChildNodes()) {
-    buttonPool.push(modal.lastChild);
-    modal.removeChild(modal.lastChild);
+function configureMenu(options) {
+  while (menu.hasChildNodes()) {
+    itemPool.push(menu.lastChild);
+    menu.removeChild(menu.lastChild);
   }
 
   for (const option of options) {
     let button = getItem(option.text);
-    button.className = "item modal-item no-select " + option.style;
+    button.className = "item menu-item no-select " + option.style;
     button.position = option.payload;
-    modal.appendChild(button);
+    menu.appendChild(button);
   }
 }
 
-function closeModal() {
-  while (modal.hasChildNodes()) {
-    buttonPool.push(modal.lastChild);
-    modal.removeChild(modal.lastChild);
+function closeMenu() {
+  while (menu.hasChildNodes()) {
+    itemPool.push(menu.lastChild);
+    menu.removeChild(menu.lastChild);
   }
 
-  let outerRow = list.childNodes[modal.row - firstLoadedPosition];
-  if (outerRow) {
-    outerRow.classList.remove("selected");
-
-    let button = outerRow.childNodes[1].childNodes[1 + modal.col];
-    if (button)
-      button.classList.remove("selected");
+  if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
+    const outerDiv = list.childNodes[menu.row % loadedCount];
+    if (outerDiv) {
+      outerDiv.classList.remove("selected");
+  
+      const button = outerDiv.childNodes[1].childNodes[1 + menu.col];
+      if (button)
+        button.classList.remove("selected");
+    }
   }
 
-  modal.row = -1;
+  menu.row = -1;
   document.body.classList.remove("selected");
 }
 
 function menuItemClicked(payload) {
-  let response = script.menuItemClicked(modal.row, modal.col, payload);
+  let response = script.menuItemClicked(menu.row, menu.col, payload);
 
   if (Array.isArray(response) && response.length > 0) {
-    configureModal(response);
+    configureMenu(response);
     return;
   } else if (typeof response === 'number') {
     if ((response & Script.RESPONSE.ROW_UPDATED) !== 0) {
-      let outerRow = list.childNodes[modal.row - firstLoadedPosition];
-      if (outerRow) {
-        loadRow(modal.row, outerRow, false);
-        if (modal.col === -1) {
-          outerRow.childNodes[1].scrollLeft = 1e10;
+      let outerDiv = list.childNodes[menu.row % loadedCount];
+      if (outerDiv) {
+        loadRow(menu.row, outerDiv);
+        if (menu.col === -1) {
+          outerDiv.childNodes[1].scrollLeft = 1e10;
         }
       }
     }
 
     if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
-      insertRow(modal.row + 1);
+      insertRow(menu.row + 1);
     }
     
     if (response === Script.RESPONSE.ROW_DELETED) {
-      deleteRow(modal.row);
+      deleteRow(menu.row);
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
-      reloadAllRowsInPlace();
+      reloadAllRows();
     }
-
-    document.body.style.height = getRowCount() * rowHeight + "px";
   }
 
-  closeModal();
+  closeMenu();
 }
 
 
+
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape") {
+    closeMenu();
+  }
+});
 
 function preventDefault(event) {
   event.preventDefault();
 }
 
-function modalContainerClicked(event) {
+menu.addEventListener("click", function (event) {
   if (event.target !== this) {
     menuItemClicked(event.target.position);
   } else {
-    closeModal();
+    closeMenu();
   }
-}
+});
 
 function slideMenuClickHandler(event) {
   let position = this.nextSibling.position;
@@ -590,11 +573,14 @@ function rowClickHandler(event) {
   let options = script.itemClicked(row, col);
 
   if (typeof options[Symbol.iterator] === 'function') {
-    modal.row = row;
-    modal.col = col;
-    configureModal(options);
+    if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
+      list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.remove("selected");
+    }
+
+    menu.row = row;
+    menu.col = col;
+    configureMenu(options);
     document.body.classList.add("selected");
-    this.parentElement.classList.add("selected");
     event.target.classList.add("selected");
   }
   else {
@@ -635,27 +621,27 @@ function existingTouchHandler(event) {
   }
 }
 
-function touchMoved(outerRow, touch) {
-  let travel = touch.pageX - outerRow.touchStartX;
+function touchMoved(outerDiv, touch) {
+  let travel = touch.pageX - outerDiv.touchStartX;
   
-  if (!outerRow.touchCaptured && travel > 10) {
-    outerRow.touchCaptured = true;
-    outerRow.firstChild.classList.remove("slow-transition");
-    outerRow.slideMenuStartWidth = outerRow.firstChild.offsetWidth;
-    outerRow.touchStartX += 10;
+  if (!outerDiv.touchCaptured && travel > 10) {
+    outerDiv.touchCaptured = true;
+    outerDiv.firstChild.classList.remove("slow-transition");
+    outerDiv.slideMenuStartWidth = outerDiv.firstChild.offsetWidth;
+    outerDiv.touchStartX += 10;
     travel -= 10;
   }
   
-  if (outerRow.touchCaptured) {
-    outerRow.firstChild.style.width = outerRow.slideMenuStartWidth + Math.max(travel, 0) + "px";
+  if (outerDiv.touchCaptured) {
+    outerDiv.firstChild.style.width = outerDiv.slideMenuStartWidth + Math.max(travel, 0) + "px";
   }
 }
 
-function touchEnded(outerRow, touch) {
-  if (outerRow.touchCaptured) {
-    const position = outerRow.childNodes[1].position;
+function touchEnded(outerDiv, touch) {
+  if (outerDiv.touchCaptured) {
+    const position = outerDiv.childNodes[1].position;
     if (position <= script.getRowCount()) {
-      let travel = touch.pageX - outerRow.touchStartX;
+      let travel = touch.pageX - outerDiv.touchStartX;
       
       if (travel > 200) {
         if (position < script.getRowCount())
@@ -666,15 +652,15 @@ function touchEnded(outerRow, touch) {
     }
   }
   
-  touchCanceled(outerRow);
+  touchCanceled(outerDiv);
 }
 
-function touchCanceled(outerRow) {
-  outerRow.touchId = -1;
-  if (outerRow.touchCaptured) {
-    outerRow.touchCaptured = false;
-    outerRow.firstChild.classList.add("slow-transition");
-    outerRow.firstChild.style.width = "";
+function touchCanceled(outerDiv) {
+  outerDiv.touchId = -1;
+  if (outerDiv.touchCaptured) {
+    outerDiv.touchCaptured = false;
+    outerDiv.firstChild.classList.add("slow-transition");
+    outerDiv.firstChild.style.width = "";
   }
 }
 

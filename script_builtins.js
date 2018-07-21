@@ -4,6 +4,7 @@ function BuiltIns() {
   this.classes = [
     {name: "void", size: 0},
     {name: "Any", size: 0},
+    {name: "Boolean", size: 1},
     {name: "Int8", size: 1},
     {name: "UInt8", size: 1},
     {name: "Int16", size: 2},
@@ -89,36 +90,41 @@ function BuiltIns() {
   ].reverse();
   
   this.symbols = [
-    "=", //asignment oeprators
+    "=", //asignment operators
     "+=",
     "-=",
     "*=",
     "/=",
     "%=",
-    "^=",
+    "^=", //integer-specific assignment operators
     "&=",
     "|=",
+    "<<=",
+    ">>=",
+    "===", //reference-specific comparison operators
+    "!==",
     "==", //comparison operators
     "!=",
-    "===",
-    "!==",
     ">",
     ">=",
     "<",
     "<=",
-    "+", //binary operators
+    "+", //arithmetic operators
     "-",
     "*",
     "/",
     "%",
-    "^",
+    "^", //integer-specific operators
     "&",
     "|",
-    "&&",
+    "<<",
+    ">>",
+    "&&", //boolean binary operators
     "||",
-    "-", //unary operators
-    "!",
-    "~",
+    "+", //unary operators
+    "-",
+    "!", //boolean unary operator
+    "~", //bitwise unary operator
     "(", //misc
     ")",
     "[",
@@ -128,6 +134,11 @@ function BuiltIns() {
     ".",
     ",",
     "____",
+    "?",
+    ":",
+    "??",
+    "...",
+    ".."
   ];
   
   this.keywords = [

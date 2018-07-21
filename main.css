@@ -24,15 +24,12 @@ body {
   color: white;
 }
 
-div.selected .inner-row {
-  background-color: #2B2B2B;
-}
-
 button.selected {
   border: solid thin rgb(143, 111, 61);
 }
 
 .outer-row {
+  position: relative;
   height: var(--line-height);
   overflow: hidden;
   white-space: nowrap;
@@ -40,14 +37,6 @@ button.selected {
 
 .outer-row:hover {
   background-color: var(--hover-color)
-}
-
-.selected .outer-row:not(.selected) {
-  filter: brightness(0.4);
-  background-color: #242424;
-}
-.selected .outer-row.selected {
-  filter: brightness(0.4);
 }
 
 .inner-row {
@@ -181,16 +170,20 @@ button {
 }
 
 .text-input {
-  background: url(baseline-keyboard-24px.svg) no-repeat center;
+  background: url(baseline-keyboard-24px.svg) no-repeat left;
+  background-origin: content-box;
 }
 .rename {
-  background: url(rename-box.svg) no-repeat center;
+  background: url(rename-box.svg) no-repeat left;
+  background-origin: content-box;
 }
 .delete {
-  background: url(ic_delete_white_24px.svg) no-repeat center;
+  background: url(ic_delete_white_24px.svg) no-repeat left;
+  background-origin: content-box;
 }
 .delete-outline {
-  background: url(baseline-delete_outline-24px.svg) no-repeat center;
+  background: url(baseline-delete_outline-24px.svg) no-repeat left;
+  background-origin: content-box;
 }
 
 #debug {
@@ -262,7 +255,7 @@ button {
   background-image: url(baseline-add-24px.svg);
 }
 
-.selected .FAB, .selected #debug, .selected #FAB-menu {
+.selected #debug, .selected #FAB-menu {
   display: none;
 }
 
@@ -277,29 +270,34 @@ button {
   height: 100%;
 }
 
-#modal {
-  position: fixed;
-  left: 0;
-  top: 0;
+#list {
   width: 100%;
-  height: 100%;
-  display: none;
-  justify-content: center;
-  align-content: flex-start;
-  flex-wrap: wrap-reverse;
-  z-index: 2;
+  transition: width 0.25s;
 }
 
-.selected #modal {
-  display: flex;
+.selected #list {
+  width: calc(100% - 100px);
 }
 
-.modal-item {
-  min-width: var(--line-height);
+#menu {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 0;
+  transition: width 0.25s;
+  background-color: var(--primary-color);
+  overflow-y: auto;
+}
+
+.selected #menu {
+  width: 100px;
+}
+
+.menu-item {
+  text-align: left;
+  width: 100%;
   padding: 1em;
-  background-color: rgba(59, 59, 59, 0.0);
-  box-sizing: content-box;
-  align-self: flex-start;
 }
 
 .project-list-entry {
