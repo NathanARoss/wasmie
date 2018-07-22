@@ -161,11 +161,11 @@ class Script {
       }
     });
 
-    let payloads = Script.makeItem({format: Script.KEYWORD, value: -1});
+    let payloads = Script.makeItem({value: -1});
     this.PAYLOADS = {};
     this.PAYLOADS.VAR_OPTIONS = payloads--;
-    this.PAYLOADS.FUNCTION_REFERENCE = payloads--;
-    this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN = payloads--;
+    this.PAYLOADS.FUNCTIONS = payloads--;
+    this.PAYLOADS.FUNCTIONS_WITH_RETURN = payloads--;
     this.PAYLOADS.LITERAL_INPUT = payloads--;
     this.PAYLOADS.RENAME = payloads--;
     this.PAYLOADS.WRAP_IN_PARENTHESIS = payloads--;
@@ -174,6 +174,12 @@ class Script {
     this.PAYLOADS.APPEND_IF = payloads--;
     this.PAYLOADS.INSERT_ELSE = payloads--;
     this.PAYLOADS.ELSE_IF = payloads--;
+    this.PAYLOADS.VARIABLE_DEFINITION = payloads--;
+    this.PAYLOADS.FUNCTION_DEFINITION = payloads--;
+    this.PAYLOADS.APPEND_PARAMETER = payloads--;
+    this.PAYLOADS.CHANGE_TYPE = payloads--;
+    this.PAYLOADS.ASSIGN_VALUE = payloads--;
+    this.PAYLOADS.DEFINE_ANOTHER_VAR = payloads--;
 
 
     class Operator {
@@ -374,22 +380,17 @@ class Script {
       if (data.format === Script.FUNCTION_REFERENCE)
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
 
-      if (data.format === Script.VARIABLE_DEFINITION
-      || data.format === Script.FUNCTION_DEFINITION) {
-        //don't allow function return types or parameter types to be automaticly detected
-        if (data.format === Script.FUNCTION_DEFINITION
-        || (this.findItem(row, this.ITEMS.FUNC) < 1
-        && (this.getItem(row, 1) !== this.ITEMS.VAR || this.getItem(row, 3) === this.ITEMS.EQUALS))) {
-          let option = {text: "", style: "comment", payload: Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: this.CLASSES.VOID})};
-          option.text = (data.format === Script.FUNCTION_DEFINITION) ? "void" : "auto";
-          options.push(option);
+      if (data.format === Script.FUNCTION_DEFINITION) {
+        options.push({text: "void", style: "comment", payload: Script.makeItem({meta: this.CLASSES.VOID, value: this.PAYLOADS.CHANGE_TYPE})});
+        options.push(...this.getSizedClasses(0, this.PAYLOADS.CHANGE_TYPE));
+      }
+
+      if (data.format === Script.VARIABLE_DEFINITION) {
+        if (this.getItem(row, 3) === this.ITEMS.EQUALS) {
+          options.push({text: "auto", style: "comment", payload: Script.makeItem({meta: this.CLASSES.VOID, value: this.PAYLOADS.CHANGE_TYPE})});
         }
 
-        for (const id of this.classes.getIDs()) {
-          const c = this.classes.get(id);
-          if (c.size > 0)
-            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.FUNCTION_DEFINITION, flag: 1, meta: id})});
-        }
+        options.push(...this.getSizedClasses(1, this.PAYLOADS.CHANGE_TYPE));
       }
 
       const prevItem = this.getItem(row, col - 1);
@@ -406,7 +407,7 @@ class Script {
       || prevItem === this.ITEMS.IN
       || prevItem === this.ITEMS.RETURN)) {
         options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
-        options.push( {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN} );
+        options.push( {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTIONS_WITH_RETURN} );
 
         if (!this.UNARY_OPERATORS.includes(prevItem)) {
           options.push(...this.UNARY_OPERATORS.getMenuItems());
@@ -458,7 +459,7 @@ class Script {
         ];
       } else {
         options = [
-          {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTION_REFERENCE},
+          {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTIONS},
           {text: "print", style: "function-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.PRINT).scope, value: this.FUNCS.PRINT})},
           {text: "func", style: "keyword", payload: this.ITEMS.FUNC},
           {text: "let", style: "keyword", payload: this.ITEMS.LET},
@@ -508,16 +509,21 @@ class Script {
     }
 
     if (this.getItem(row, 1) === this.ITEMS.VAR) {
+      const previousType = this.getData(row, itemCount - 1).meta;
+      const ditto = {text: "ditto", style: "comment", payload: Script.makeItem({flag: 1, meta: previousType, value: this.PAYLOADS.DEFINE_ANOTHER_VAR})};
+
       if (itemCount === 3) {
         return [
-          {text: "=", style: "", payload: this.ITEMS.EQUALS},
-          {text: ",", style: "", payload: this.ITEMS.COMMA}
+          {text: "=", style: "", payload: this.PAYLOADS.ASSIGN_VALUE},
+          ditto,
+          ...this.getSizedClasses(1, this.PAYLOADS.DEFINE_ANOTHER_VAR)
         ];
       }
 
-      if (itemCount > 3) {
+      if (this.getItem(row, itemCount - 1) !== this.ITEMS.EQUALS) {
         return [
-          {text: ",", style: "", payload: this.ITEMS.COMMA}
+          ditto,
+          ...this.getSizedClasses(1, this.PAYLOADS.DEFINE_ANOTHER_VAR)
         ];
       }
     }
@@ -526,17 +532,8 @@ class Script {
       return null;
     }
 
-    const index = this.findItem(row, this.ITEMS.FUNC);
-    if (index > 0) {
-      let options = [];
-
-      for (const id of this.classes.getIDs()) {
-        const c = this.classes.get(id);
-        if (c.size > 0)
-          options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.ARGUMENT_HINT, meta: id})});
-      }
-
-      return options;
+    if (this.getItem(row, 1) === this.ITEMS.FUNC) {
+      return this.getSizedClasses(0, this.PAYLOADS.APPEND_PARAMETER);
     }
 
     return null;
@@ -547,21 +544,73 @@ class Script {
     if (col === -1)
       col = row < this.getRowCount() ? this.getItemCount(row) : 0;
 
-    switch (payload) {
-      case this.ITEMS.CASE:
+    const payloadData = Script.getItemData(payload);
+
+    if (payloadData.format === Script.VARIABLE_REFERENCE) {      
+      this.appendRowsUpTo(row);
+      if (this.getItemCount(row) === 1) {
+        this.pushItems(row, payload, this.ITEMS.EQUALS);
+      } else {
+        const [start, end] = this.getExpressionBounds(row, col);
+        this.spliceRow(row, start, end - start + 1, payload);
+      }
+
+      return Script.RESPONSE.ROW_UPDATED;
+    }
+
+    if (payloadData.format === Script.FUNCTION_REFERENCE) {
+      const func = this.functions.get(payloadData.value);
+      let replacementItems = [payload];
+
+      for (let i = 0; i < func.parameters.length; ++i) {
+        replacementItems.push(this.ITEMS.COMMA);
+        replacementItems.push(Script.makeItem({format: Script.ARGUMENT_HINT, meta: i, value: payloadData.value}));
+      }
+
+      replacementItems[1] = this.ITEMS.START_PARENTHESIS;
+      replacementItems.push(this.ITEMS.END_PARENTHESIS);
+
+      this.appendRowsUpTo(row);
+      const [start, end] = col === 0 ? [1,1] : this.getExpressionBounds(row, col);
+      this.spliceRow(row, start, end - start + 1, ...replacementItems);
+      
+      return Script.RESPONSE.ROW_UPDATED;
+    }
+
+    if (payloadData.format === Script.SYMBOL) {
+      const item = this.getItem(row, col);
+      if (this.OPERATORS.includes(item)) {
+        this.setItem(row, col, payload);
+      } else {
+        if (this.UNARY_OPERATORS.includes(payload))
+          this.spliceRow(row, col, 0, payload);
+        else {
+          if (col + 1 < this.getItemCount(row)) {
+            this.spliceRow(row, col + 1, 0, payload, this.ITEMS.BLANK);
+          } else {
+            this.pushItems(row, payload);
+          }
+        }
+      }
+      
+      return Script.RESPONSE.ROW_UPDATED;
+    }
+
+    switch (payloadData.value) {
+      case this.ITEMS.CASE & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload, this.ITEMS.BLANK);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
-      case this.ITEMS.DEFAULT:
+      case this.ITEMS.DEFAULT & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
-      case this.ITEMS.LET:
-      case this.ITEMS.VAR: {
+      case this.ITEMS.LET & 0xFFFF:
+      case this.ITEMS.VAR & 0xFFFF: {
         const varId = this.variables.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
         if (name) {
@@ -576,24 +625,13 @@ class Script {
 
       case this.PAYLOADS.VAR_OPTIONS: {
         let options = [{text: "= expression", style: "comment", payload: this.ITEMS.VAR}];
-
-        for (const id of this.classes.getIDs()) {
-          const c = this.classes.get(id);
-          if (c.size > 0)
-            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: id})});
-        }
-
+        options.push(...this.getSizedClasses(0, this.PAYLOADS.VARIABLE_DEFINITION));
         return options;
       }
       
-      case this.ITEMS.IF:
-      case this.ITEMS.WHILE:
-        this.appendRowsUpTo(row);
-        this.setIsStartingScope(row, true);
-        this.pushItems(row, payload);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
-      
-      case this.ITEMS.ELSE:
+      case this.ITEMS.IF & 0xFFFF:
+      case this.ITEMS.WHILE & 0xFFFF:
+      case this.ITEMS.ELSE & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload);
@@ -612,7 +650,7 @@ class Script {
         this.spliceRow(row, col, 0, this.ITEMS.ELSE);
         return Script.RESPONSE.ROW_UPDATED;
 
-      case this.ITEMS.FOR: {
+      case this.ITEMS.FOR & 0xFFFF: {
         let name = prompt("Enter for loop variable name:", "index");
         if (name) {
           this.appendRowsUpTo(row);
@@ -636,13 +674,13 @@ class Script {
         return Script.RESPONSE.NO_CHANGE;
       }
 
-      case this.ITEMS.SWITCH:
+      case this.ITEMS.SWITCH & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
-      case this.ITEMS.RETURN: {
+      case this.ITEMS.RETURN & 0xFFFF: {
         this.appendRowsUpTo(row);
         let returnType = 0;
         for (let r = row - 1; r >= 0; --r) {
@@ -656,27 +694,21 @@ class Script {
         return Script.RESPONSE.ROW_UPDATED;
       }
 
-      case this.ITEMS.FUNC: {
-        let options = [{text: "none", style: "comment", payload: Script.makeItem({format: Script.LITERAL, meta: 0})}];
-
-        for (const id of this.classes.getIDs()) {
-          const c = this.classes.get(id);
-          if (c.size > 0)
-            options.push({text: c.name, style: "keyword", payload: Script.makeItem({format: Script.LITERAL, meta: id})});
-        }
-
+      case this.ITEMS.FUNC & 0xFFFF: {
+        let options = [{text: "none", style: "comment", payload: Script.makeItem({meta: this.CLASSES.VOID, value: this.PAYLOADS.FUNCTION_DEFINITION})}];
+        options.push(...this.getSizedClasses(0, this.PAYLOADS.FUNCTION_DEFINITION));
         return options;
       }
 
-      case this.ITEMS.EQUALS:
+      case this.PAYLOADS.ASSIGN_VALUE:
         this.pushItems(row, this.ITEMS.EQUALS);
         return Script.RESPONSE.ROW_UPDATED;
 
-      case this.ITEMS.COMMA: {
+      case this.PAYLOADS.DEFINE_ANOTHER_VAR: {
         let varId = this.variables.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
         if (name) {
-          let type = this.getData(row, this.getItemCount(row) - 1).meta;
+          let type = payloadData.meta;
           this.variables.set(varId, {name, type, scope: this.CLASSES.VOID});
           this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
           return Script.RESPONSE.ROW_UPDATED;
@@ -746,12 +778,12 @@ class Script {
         let metadata = container.get(data.value);
         let input = prompt("Enter new name:", metadata.name);
 
-        if (input === null)
-          return Script.RESPONSE.NO_CHANGE;
-        else {
+        if (input) {
           metadata.name = input;
           container.set(data.value, metadata);
           return Script.RESPONSE.SCRIPT_CHANGED;
+        } else {
+          return Script.RESPONSE.NO_CHANGE;
         }
       }
 
@@ -781,7 +813,6 @@ class Script {
               this.spliceRow(row, start, end - start + 1);
             }
           } else {
-            //if the removed item 
             let paramIndex = 0;
             let funcID = -1;
 
@@ -828,171 +859,93 @@ class Script {
         return Script.RESPONSE.ROW_UPDATED;
       }
 
-      case this.PAYLOADS.FUNCTION_REFERENCE:
-      case this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN: {
-        const requireReturn = payload === this.PAYLOADS.FUNCTION_REFERENCE_WITH_RETURN;
-        return this.getFunctionList(requireReturn);
-      }
+      case this.PAYLOADS.FUNCTIONS:
+        return this.getFunctionList(false);
+
+      case this.PAYLOADS.FUNCTIONS_WITH_RETURN:
+        return this.getFunctionList(true);
 
       case this.PAYLOADS.WRAP_IN_PARENTHESIS: {
         const [start, end] = this.getExpressionBounds(row, col);
-
         this.spliceRow(row, end + 1, 0, this.ITEMS.END_PARENTHESIS);
         this.spliceRow(row, start, 0, this.ITEMS.START_PARENTHESIS);
-
-        return Script.RESPONSE.ROW_UPDATED;
-      }
-    }
-
-    const payloadData = Script.getItemData(payload);
-
-    //if a specific variable reference is provided
-    if (payloadData.format === Script.VARIABLE_REFERENCE) {
-      let varId = payloadData.value;
-      const variable = this.variables.get(varId);
-      
-      this.appendRowsUpTo(row);
-      if (this.getItemCount(row) === 1) {
-        this.pushItems(row,
-          Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: variable.scope, value: varId}),
-          this.ITEMS.EQUALS
-        );
         return Script.RESPONSE.ROW_UPDATED;
       }
 
-      const [start, end] = this.getExpressionBounds(row, col);
-      this.spliceRow(row, start, end - start + 1, payload);
+      case this.PAYLOADS.VARIABLE_DEFINITION: {
+        const varId = this.variables.nextId();
+        const name = prompt("Enter variable name:", `var${varId}`);
 
-      return Script.RESPONSE.ROW_UPDATED;
-    }
+        if (name) {
+          const type = payloadData.meta;
+          this.appendRowsUpTo(row);
+          this.variables.set(varId, {name, type, flag: 1, scope: this.CLASSES.VOID});
+          this.pushItems(row, this.ITEMS.VAR, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
 
-    //user chose a type for a variable declaration
-    if (payloadData.format === Script.VARIABLE_DEFINITION) {
-      const varId = this.variables.nextId();
-      const name = prompt("Enter variable name:", `var${varId}`);
-      if (name) {
-        const type = payloadData.meta;
-        this.appendRowsUpTo(row);
-        this.variables.set(varId, {name, type, flag: 1, scope: this.CLASSES.VOID});
-        this.pushItems(row, this.ITEMS.VAR, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
-        return Script.RESPONSE.ROW_UPDATED;
-      } else {
-        return Script.RESPONSE.NO_CHANGE;
-      }
-    }
-
-    //user chose a type for a function declaration
-    if (payloadData.format === Script.LITERAL) {
-      let funcId = this.functions.nextId();
-      const returnType = payloadData.meta;
-      const name = prompt(`Enter function name`, `f${funcId}`);
-      if (name) {
-        let newFunc = {name, returnType, scope: this.CLASSES.VOID, parameters: []};
-        this.appendRowsUpTo(row);
-        this.functions.set(funcId, newFunc);
-        this.setIsStartingScope(row, true);
-        this.pushItems(row, this.ITEMS.FUNC, Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: returnType, value: funcId}));
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
-      } else {
-        return Script.RESPONSE.NO_CHANGE;
-      }
-    }
-
-    //user chose a specific function call
-    if (payloadData.format === Script.FUNCTION_REFERENCE) {
-      const func = this.functions.get(payloadData.value);
-      let replacementItems = [payload];
-
-      for (let i = 0; i < func.parameters.length; ++i) {
-        replacementItems.push(this.ITEMS.COMMA);
-        replacementItems.push(Script.makeItem({format: Script.ARGUMENT_HINT, meta: i, value: payloadData.value}));
-      }
-
-      replacementItems[1] = this.ITEMS.START_PARENTHESIS;
-      replacementItems.push(this.ITEMS.END_PARENTHESIS);
-
-      this.appendRowsUpTo(row);
-      const [start, end] = col === 0 ? [1,1] : this.getExpressionBounds(row, col);
-      this.spliceRow(row, start, end - start + 1, ...replacementItems);
-      
-      return Script.RESPONSE.ROW_UPDATED;
-    }
-
-    //appending additional parameters
-    if (payloadData.format === Script.ARGUMENT_HINT) {
-      let varId = this.variables.nextId();
-      let type = payloadData.meta;
-      const name = prompt(`Enter name for ${this.classes.get(type).name} parameter:`, `var${varId}`);
-
-      if (name) {
-        this.variables.set(varId, {name, type, scope: this.CLASSES.VOID});
-        this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
-
-        const index = this.findItem(row, this.ITEMS.FUNC);
-        const funcId = this.getData(row, index + 1).value;
-        const func = this.functions.get(funcId);
-        func.parameters.push({name, type})
-        this.functions.set(funcId, func);
-
-        return Script.RESPONSE.ROW_UPDATED;
-      } else {
-        return Script.RESPONSE.NO_CHANGE;
-      }
-    }
-
-    //user chose a symbol to insert into the script
-    if (payloadData.format === Script.SYMBOL) {
-      const item = this.getItem(row, col);
-      if (this.OPERATORS.includes(item)) {
-        this.setItem(row, col, payload);
-      } else {
-        if (this.UNARY_OPERATORS.includes(payload))
-          this.spliceRow(row, col, 0, payload);
-        else {
-          if (col + 1 < this.getItemCount(row)) {
-            this.spliceRow(row, col + 1, 0, payload, this.ITEMS.BLANK);
-          } else {
-            this.pushItems(row, payload);
-          }
+          return Script.RESPONSE.ROW_UPDATED;
+        } else {
+          return Script.RESPONSE.NO_CHANGE;
         }
       }
-      
-      return Script.RESPONSE.ROW_UPDATED;
-    }
 
-    //user updated the type annotation of a variable or function
-    if (payloadData.format === Script.FUNCTION_DEFINITION) {
-      const {format, value} = this.getData(row, col);
-      const {flag, meta} = payloadData;
-      const newItem = Script.makeItem({format, flag, meta, value});
-      this.setItem(row, col, newItem, true);
+      case this.PAYLOADS.FUNCTION_DEFINITION: {
+        let funcId = this.functions.nextId();
+        const name = prompt(`Enter function name`, `f${funcId}`);
 
-      if (format === Script.FUNCTION_DEFINITION) {
-        let indentation = this.getIndentation(row);
-        for (let r = row + 1; r < this.getRowCount(); ++r) {
-          if (this.getIndentation(r) === indentation)
-            break;
-          
-          if (this.getItem(r, 1) === this.ITEMS.RETURN) {
-            this.spliceRow(r, 2, this.getItemCount(r) - 2);
-          }
+        if (name) {
+          const returnType = payloadData.meta;
+          this.functions.set(funcId, {name, returnType, scope: this.CLASSES.VOID, parameters: []});
+          this.appendRowsUpTo(row);
+          this.setIsStartingScope(row, true);
+          this.pushItems(row, this.ITEMS.FUNC, Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: returnType, value: funcId}));
+
+          return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        } else {
+          return Script.RESPONSE.NO_CHANGE;
+        }
+      }
+
+      case this.PAYLOADS.APPEND_PARAMETER: {
+        let varId = this.variables.nextId();
+        let type = payloadData.meta;
+        const name = prompt(`Enter name for ${this.classes.get(type).name} parameter:`, `var${varId}`);
+  
+        if (name) {
+          const varMeta = {name, type, scope: this.CLASSES.VOID};
+          this.variables.set(varId, varMeta);
+          this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
+          const funcId = this.getData(row, 2).value;
+          const func = this.functions.get(funcId);
+          func.parameters.push(varMeta)
+
+          return Script.RESPONSE.ROW_UPDATED;
+        } else {
+          return Script.RESPONSE.NO_CHANGE;
+        }
+      }
+
+      case this.PAYLOADS.CHANGE_TYPE: {
+        const {format, value} = this.getData(row, col);
+        const {flag, meta} = payloadData;
+        const newItem = Script.makeItem({format, flag, meta, value});
+        this.setItem(row, col, newItem, true);
+
+        if (format === Script.FUNCTION_DEFINITION) {
+          const func = this.functions.get(value);
+          func.returnType = payloadData.meta;
+          this.functions.set(value, func);
+        } else {
+          const v = this.variables.get(value);
+          v.type = payloadData.meta;
+          this.variables.set(value, v);
         }
 
-        const func = this.functions.get(value);
-        func.returnType = payloadData.meta;
-        this.functions.set(value, func);
-
-        return Script.RESPONSE.SCRIPT_CHANGED;
-      } else {
-        const v = this.variables.get(value);
-        v.type = payloadData.meta;
-        this.variables.set(value, v);
+        return Script.RESPONSE.ROW_UPDATED;
       }
-      
-      return Script.RESPONSE.ROW_UPDATED;
-    }
 
-    return Script.RESPONSE.NO_CHANGE;
+      default:
+        return Script.RESPONSE.NO_CHANGE;
+    }
   }
 
   getVisibleVariables(row, requiresMutable) {
@@ -1039,6 +992,18 @@ class Script {
     }
 
     options.sort((a, b) => a.text.localeCompare(b.text));
+    return options;
+  }
+
+  getSizedClasses(flag, value) {
+    const options = [];
+
+    for (const id of this.classes.getIDs()) {
+      const c = this.classes.get(id);
+      if (c.size > 0)
+        options.push({text: c.name, style: "keyword", payload: Script.makeItem({flag, meta: id, value})});
+    }
+
     return options;
   }
 
