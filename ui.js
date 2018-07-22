@@ -94,6 +94,15 @@ menu.addEventListener("touchcancel", function(event) {
   this.touchId = undefined;
 });
 
+menu.addEventListener("transitionend", function(event) {
+  if (this.row === -1) {
+    while (this.hasChildNodes()) {
+      itemPool.push(this.lastChild);
+      this.removeChild(this.lastChild);
+    }
+  }
+})
+
 
 
 document.body.onresize = function () {
@@ -472,11 +481,6 @@ function configureMenu(options) {
 }
 
 function closeMenu() {
-  while (menu.hasChildNodes()) {
-    itemPool.push(menu.lastChild);
-    menu.removeChild(menu.lastChild);
-  }
-
   if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
     const outerDiv = list.childNodes[menu.row % loadedCount];
     if (outerDiv) {
