@@ -536,6 +536,8 @@ document.addEventListener("keydown", function(event) {
         deleteRow(menu.row);
       }
       selectPreviousLine();
+
+      event.preventDefault();
     }
 
     if (event.key === "Backspace") {
@@ -552,6 +554,8 @@ document.addEventListener("keydown", function(event) {
       } else {
         selectPreviousLine();
       }
+
+      event.preventDefault();
     }
 
     if (event.key === "Enter") {
@@ -563,6 +567,8 @@ document.addEventListener("keydown", function(event) {
         }
       }
       itemClicked(menu.row + 1, -1);
+
+      event.preventDefault();
     }
   }
 });
