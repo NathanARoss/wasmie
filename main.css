@@ -141,6 +141,15 @@ button {
   color: white;
 }
 
+.menu-item {
+  width: 100%;
+  padding: 0.5em;
+  height: auto;
+  min-height: var(--line-height);
+  color: white;
+  overflow-wrap: break-word;
+}
+
 .global-var {
   color: #9876AA;
 }
@@ -170,19 +179,19 @@ button {
 }
 
 .text-input {
-  background: url(baseline-keyboard-24px.svg) no-repeat left;
+  background: url(baseline-keyboard-24px.svg) no-repeat center;
   background-origin: content-box;
 }
 .rename {
-  background: url(rename-box.svg) no-repeat left;
+  background: url(rename-box.svg) no-repeat center;
   background-origin: content-box;
 }
 .delete {
-  background: url(ic_delete_white_24px.svg) no-repeat left;
+  background: url(ic_delete_white_24px.svg) no-repeat center;
   background-origin: content-box;
 }
 .delete-outline {
-  background: url(baseline-delete_outline-24px.svg) no-repeat left;
+  background: url(baseline-delete_outline-24px.svg) no-repeat center;
   background-origin: content-box;
 }
 
@@ -282,22 +291,16 @@ button {
 #menu {
   position: fixed;
   top: 0;
-  right: 0;
+  right: -100px;
   bottom: 0;
-  width: 0;
-  transition: width 0.25s;
+  width: 100px;
+  transition: right 0.25s;
   background-color: var(--primary-color);
   overflow-y: auto;
 }
 
 .selected #menu {
-  width: 100px;
-}
-
-.menu-item {
-  text-align: left;
-  width: 100%;
-  padding: 1em;
+  right: 0;
 }
 
 .project-list-entry {

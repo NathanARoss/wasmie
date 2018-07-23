@@ -75,7 +75,10 @@ menu.addEventListener("touchstart", function(event) {
   }
 });
 
-menu.addEventListener("touchend", function(event) {
+menu.addEventListener("touchend", detectMenuCloseGesture);
+menu.addEventListener("touchcancel", detectMenuCloseGesture);
+
+function detectMenuCloseGesture(event) {
   for (const touch of event.changedTouches) {
     if (touch.identifier === this.touchId) {
       const travelX = touch.pageX - this.touchStartX;
@@ -84,15 +87,11 @@ menu.addEventListener("touchend", function(event) {
       if (travelX > 50 && travelX > Math.abs(travelY)) {
         closeMenu();
       }
+
+      this.touchId = undefined;
     }
   }
-
-  this.touchId = undefined;
-});
-
-menu.addEventListener("touchcancel", function(event) {
-  this.touchId = undefined;
-});
+}
 
 
 
@@ -331,9 +330,6 @@ function createRow() {
   slideMenu.appendChild(lineNumberItem);
   slideMenu.appendChild(newlineItem);
   slideMenu.appendChild(deleteLineItem);
-  slideMenu.addEventListener("mousedown", slideMenuClickHandler);
-  slideMenu.addEventListener("contextmenu", preventDefault);
-  slideMenu.addEventListener("touchstart", preventDefault);
 
   let append = document.createElement("button");
   append.classList.add("append");
@@ -465,18 +461,13 @@ function configureMenu(options) {
 
   for (const option of options) {
     let button = getItem(option.text);
-    button.className = "item menu-item no-select " + option.style;
+    button.className = "menu-item no-select " + option.style;
     button.position = option.payload;
     menu.appendChild(button);
   }
 }
 
 function closeMenu() {
-  while (menu.hasChildNodes()) {
-    itemPool.push(menu.lastChild);
-    menu.removeChild(menu.lastChild);
-  }
-
   if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
     const outerDiv = list.childNodes[menu.row % loadedCount];
     if (outerDiv) {
@@ -505,7 +496,10 @@ function menuItemClicked(payload) {
         loadRow(menu.row, outerDiv);
         if (menu.col === -1) {
           outerDiv.childNodes[1].scrollLeft = 1e10;
+        } else {
+          menu.col = Math.min(menu.col, script.getItemCount(menu.row) - 1);
         }
+        list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.add("selected");
         list.style.height = getRowCount() * rowHeight + "px";
       }
     }
@@ -516,14 +510,17 @@ function menuItemClicked(payload) {
     
     if (response === Script.RESPONSE.ROW_DELETED) {
       deleteRow(menu.row);
+      selectPreviousLine();
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
       reloadAllRows();
+      menu.col = -1;
     }
   }
 
-  closeMenu();
+  const options = script.itemClicked(menu.row, menu.col);
+  configureMenu(options);
 }
 
 
@@ -532,11 +529,43 @@ document.addEventListener("keydown", function(event) {
   if (event.key === "Escape") {
     closeMenu();
   }
-});
 
-function preventDefault(event) {
-  event.preventDefault();
-}
+  if (menu.row !== -1) {
+    if (event.key === "Delete") {
+      if (menu.row < script.getRowCount()) {
+        deleteRow(menu.row);
+      }
+      selectPreviousLine();
+    }
+
+    if (event.key === "Backspace") {
+      if (menu.row < script.getRowCount()) {
+        if (script.getItemCount(menu.row) === 1) {
+          deleteRow(menu.row);
+          selectPreviousLine();
+        } else {
+          menuItemClicked(script.PAYLOADS.DELETE_ITEM);
+          if (menu.col !== -1 && menu.col !== script.getItemCount(menu.row) - 1) {
+            --menu.col;
+          }
+        }
+      } else {
+        selectPreviousLine();
+      }
+    }
+
+    if (event.key === "Enter") {
+      if (menu.row < script.getRowCount()) {
+        if (menu.col >= 0 && menu.col <= 1) {
+          insertRow(menu.row);
+        } else {
+          insertRow(menu.row + 1);
+        }
+      }
+      itemClicked(menu.row + 1, -1);
+    }
+  }
+});
 
 menu.addEventListener("click", function (event) {
   if (event.target !== this) {
@@ -546,22 +575,6 @@ menu.addEventListener("click", function (event) {
   }
 });
 
-function slideMenuClickHandler(event) {
-  let position = this.nextSibling.position;
-  if (position <= script.getRowCount()) {
-    switch (event.button) {
-      case 0:
-        insertRow(position);
-        break;
-      
-      case 2:
-        if (position < script.getRowCount())
-          deleteRow(position);
-        break;
-    }
-  }
-}
-
 function rowClickHandler(event) {
   if (menuButton.toggled) {
     menuButton.toggled = false;
@@ -569,24 +582,31 @@ function rowClickHandler(event) {
     return;
   }
 
-  let row = this.position|0;
-  let col = event.target.position|0;
+  itemClicked(this.position|0, event.target.position|0);
+  document.activeElement.blur();
+  document.body.classList.add("selected");
+}
+
+function itemClicked(row, col) {
   let options = script.itemClicked(row, col);
 
-  if (typeof options[Symbol.iterator] === 'function') {
-    if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
-      list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.remove("selected");
-    }
-
-    menu.row = row;
-    menu.col = col;
-    configureMenu(options);
-    document.body.classList.add("selected");
-    event.target.classList.add("selected");
+  if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
+    list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.remove("selected");
   }
-  else {
-    event.target.firstChild.nodeValue = options.text;
-    event.target.className = "item " + options.style;
+  list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col].classList.add("selected");
+
+  menu.row = row;
+  menu.col = col;
+
+  configureMenu(options);
+}
+
+function selectPreviousLine() {
+  menu.col = -1;
+  if (menu.row === 0) {
+    itemClicked(0, -1);
+  } else {
+    itemClicked(menu.row - 1, -1);
   }
 }
 
