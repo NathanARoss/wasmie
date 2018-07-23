@@ -201,8 +201,8 @@ class Script {
 
     this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
     this.BINARY_OPERATORS = new Operator(13, 31);
-    this.UNARY_OPERATORS = new Operator(31, 35);
-    this.OPERATORS = new Operator(0, 35);
+    this.UNARY_OPERATORS = new Operator(34, 37);
+    this.OPERATORS = new Operator(0, 38);
   }
 
   static makeItem({format = 0, flag = 0, flag2 = 0, meta = 0, value = 0}) {
@@ -295,9 +295,12 @@ class Script {
       if (item !== this.ITEMS.VAR || this.getItem(row, 3) === this.ITEMS.EQUALS) {
         const i = this.toggles.indexOf(item);
         if (i !== -1) {
-          this.setItem(row, col, this.toggles[i ^ 1]);
-          let newKeyword = this.keywords[this.getData(row, col).value].name;
-          return {text: newKeyword, style: "keyword"};
+          const replacement = Script.getItemData(this.toggles[i ^ 1]).value;
+          const newKeyword = this.keywords[replacement].name;
+          return [
+            {text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM},
+            {text: newKeyword, style: "keyword", payload: Script.makeItem({format: 15, value: replacement})}
+          ];
         }
       }
     }
@@ -306,23 +309,17 @@ class Script {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
-    let options = [];
+    let options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM}];
 
     if (((data.format === Script.VARIABLE_REFERENCE || data.format === Script.VARIABLE_DEFINITION) && this.variables.isUserDefined(data.value))
     || ((data.format === Script.FUNCTION_REFERENCE || data.format === Script.FUNCTION_DEFINITION) && this.functions.isUserDefined(data.value))) {
       options.push({text: "", style: "rename", payload: this.PAYLOADS.RENAME});
     }
 
-    if ((item === this.ITEMS.IF || item === this.ITEMS.ELSE)
-    && this.getItemCount(row) > 2) {
-      options.push({text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM});
-    }
-
     if (col === 1) {
       if (data.format === Script.VARIABLE_REFERENCE)
         options.push(...this.getVisibleVariables(row, true));
       else if (data.format === Script.FUNCTION_REFERENCE) {
-        options.push({text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM});
         options.push(...this.getFunctionList(false));
       }
       else if (item === this.ITEMS.IF) {
@@ -341,16 +338,6 @@ class Script {
         }
       }
     } else {
-      //don't allow the user to delete the item if it is a binary operator followed by anything meaningful
-      if (data.format !== Script.VARIABLE_DEFINITION
-      && data.format !== Script.FUNCTION_DEFINITION
-      && data.format !== Script.KEYWORD) {
-        if (!this.BINARY_OPERATORS.includes(item)
-        || (this.getItem(row, col + 1) === undefined
-        || this.getItem(row, col + 1) === this.ITEMS.BLANK))
-          options.push({text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM});
-      }
-
       if (item === this.ITEMS.START_PARENTHESIS
       || item === this.ITEMS.END_PARENTHESIS) {
         let beginParenthesis = col;
@@ -470,7 +457,7 @@ class Script {
           if (this.getIndentation(r) < indentation)
             break;
           
-          if (this.getItemCount(r) !== 1) {
+          if (this.getIndentation(r) === indentation && this.getItemCount(r) !== 1) {
             if (this.getItem(r, 1) === this.ITEMS.IF
             || this.getItem(r, 2) === this.ITEMS.IF) {
               let preceedsElse = false;
@@ -478,10 +465,11 @@ class Script {
                 if (this.getIndentation(r) < indentation)
                   break;
 
-                if (this.getItemCount(r) !== 1) {
+                if (this.getIndentation(r) === indentation && this.getItemCount(r) !== 1) {
                   if (this.getItem(r, 1) === this.ITEMS.ELSE) {
                     preceedsElse = true;
                   }
+                  break;
                 }
               }
 
@@ -492,6 +480,7 @@ class Script {
                 break;
               }
             }
+            break;
           }
         }
 
@@ -520,7 +509,7 @@ class Script {
         ];
       }
 
-      if (this.getItem(row, itemCount - 1) !== this.ITEMS.EQUALS) {
+      if (this.getData(row, itemCount - 1) === Script.VARIABLE_DEFINITION) {
         return [
           ditto,
           ...this.getSizedClasses(1, this.PAYLOADS.DEFINE_ANOTHER_VAR)
@@ -545,6 +534,13 @@ class Script {
       col = row < this.getRowCount() ? this.getItemCount(row) : 0;
 
     const payloadData = Script.getItemData(payload);
+
+    //replacement rules
+    if (payloadData.format === 15) {
+      payloadData.format = Script.KEYWORD;
+      this.setItem(row, col, Script.makeItem(payloadData));
+      return Script.RESPONSE.ROW_UPDATED;
+    }
 
     if (payloadData.format === Script.VARIABLE_REFERENCE) {      
       this.appendRowsUpTo(row);
@@ -600,7 +596,7 @@ class Script {
       case this.ITEMS.CASE & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
-        this.pushItems(row, payload, this.ITEMS.BLANK);
+        this.pushItems(row, payload);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
       case this.ITEMS.DEFAULT & 0xFFFF:
@@ -788,9 +784,31 @@ class Script {
       }
 
       case this.PAYLOADS.DELETE_ITEM: {
-        const item = this.getItem(row, col);
+        if (arguments[1] === -1) {
+          col = row < this.getRowCount() ? this.getItemCount(row) - 1 : 0;
+        }
+        
+        if (col === 0) {
+          return Script.RESPONSE.ROW_DELETED;
+        }
 
-        if (this.UNARY_OPERATORS.includes(item)) {
+        const item = this.getItem(row, col);
+        const data = Script.getItemData(item);
+
+        if (col === 1 || data.format === Script.KEYWORD
+        || data.format === Script.FUNCTION_DEFINITION
+        || this.ASSIGNMENT_OPERATORS.includes(item)
+        || (data.format === Script.VARIABLE_DEFINITION && this.ASSIGNMENT_OPERATORS.includes(this.getItem(row, col + 1)))) {
+          this.spliceRow(row, 1, this.getItemCount(row) - 1);
+          const oldRowCount = this.getRowCount();
+          this.deleteRow(row, true);
+
+          return this.getRowCount() === oldRowCount ? Script.RESPONSE.ROW_UPDATED : Script.RESPONSE.SCRIPT_CHANGED;
+        }
+
+        if (this.UNARY_OPERATORS.includes(item)
+        || (col === this.getItemCount(row) - 1 && item === this.ITEMS.BLANK)
+        || data.format === Script.VARIABLE_DEFINITION) {
           this.spliceRow(row, col, 1);
         }
         else if (this.BINARY_OPERATORS.includes(item)) {
@@ -836,11 +854,7 @@ class Script {
             if (funcID > -1) {
               this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
             } else {
-              if (end + 1 >= this.getItemCount(row)) {
-                this.spliceRow(row, start, end - start + 1);
-              } else {
-                this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
-              }
+              this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
             }
           }
         }
@@ -1136,7 +1150,7 @@ class Script {
     return row;
   }
 
-  deleteRow(row) {
+  deleteRow(row, keepIfNotLastRow = false) {
     const indentation = this.getIndentation(row);
     let r = row;
     do {
@@ -1172,11 +1186,19 @@ class Script {
       count = r - startRow;
     }
 
-    const keyRange = IDBKeyRange.bound(this.lineKeys[startRow], this.lineKeys[startRow + count - 1]);
-    this.modifyObjStore("lines", IDBObjectStore.prototype.delete, keyRange);
+    if (startRow === row && keepIfNotLastRow) {
+      ++startRow;
+      --count;
+    }
 
-    this.lines.splice(startRow, count);
-    this.lineKeys.splice(startRow, count);
+    if (count > 0) {
+      const keyRange = IDBKeyRange.bound(this.lineKeys[startRow], this.lineKeys[startRow + count - 1]);
+      this.modifyObjStore("lines", IDBObjectStore.prototype.delete, keyRange);
+  
+      this.lines.splice(startRow, count);
+      this.lineKeys.splice(startRow, count);
+    }
+
     return startRow;
   }
 

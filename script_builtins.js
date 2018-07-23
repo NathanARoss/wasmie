@@ -122,10 +122,14 @@ function BuiltIns() {
     ">>",
     "&&", //boolean binary operators
     "||",
+    "+", //string concatenation
+    "*", //string repetition
+    "U", //union operator
     "+", //unary operators
     "-",
     "!", //boolean unary operator
     "~", //bitwise unary operator
+    "*", //spread operator
     "(", //misc
     ")",
     "[",
