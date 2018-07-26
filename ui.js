@@ -472,6 +472,9 @@ function closeMenu() {
   menu.row = -1;
   document.body.classList.remove("selected");
   document.activeElement.blur();
+
+  fabMenu.classList.remove("expanded");
+  menuButton.toggled = false;
 }
 
 function menuItemClicked(payload) {
