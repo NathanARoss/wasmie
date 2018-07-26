@@ -24,10 +24,6 @@ body {
   color: white;
 }
 
-button.selected {
-  border: solid thin rgb(143, 111, 61);
-}
-
 .outer-row {
   position: relative;
   height: var(--line-height);
@@ -130,15 +126,33 @@ button {
 }
 
 .indentation {
-  border-right: 6px;
-  border-color: var(--secondary-color);
-  border-style: solid;
+  position: relative;
+  z-index: -1;
+  width: 12px;
+  height: var(--line-height);
+  margin-left: calc(12px * var(--indentation) - 12px);
+  background-color: var(--secondary-color);
+  flex-shrink: 0;
+}
+
+.starting-scope > .indentation {
+  width: 24px;
+  clip-path: polygon(0 0, 50% 0, 50% 50%, 100% 100%, 50% 100%, 0 50%);
+}
+
+.starting-scope > .item:nth-child(3) {
+  margin-left: -12px;
 }
 
 .item {
   padding: 0 4px;
   white-space: pre;
   color: white;
+}
+
+.item:focus, .append:focus {
+  outline: var(--secondary-color) medium solid;
+  outline-offset: -2px;
 }
 
 .menu-item {

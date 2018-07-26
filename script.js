@@ -97,7 +97,7 @@ class Script {
     this.ITEMS.START_PARENTHESIS = makeSymbol("(");
     this.ITEMS.END_PARENTHESIS   = makeSymbol(")");
     this.ITEMS.COMMA             = makeSymbol(",");
-    this.ITEMS.BLANK             = makeSymbol("____");
+    this.ITEMS.UNDERSCORE        = makeSymbol("____");
 
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
@@ -280,12 +280,16 @@ class Script {
   }
 
   itemClicked(row, col) {
-    if (col === -1) {
+    if (col === 0) {
       let options = this.appendClicked(row);
       if (options)
         return options;
       
       col = this.getItemCount(row);
+
+      if (this.getItem(row, col - 1) === this.ITEMS.UNDERSCORE) {
+        --col;
+      }
     }
 
     const [item = 0xFFFFFFFF] = [this.getItem(row, col)];
@@ -394,7 +398,7 @@ class Script {
       || prevItem === this.ITEMS.IN
       || prevItem === this.ITEMS.RETURN)) {
         options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
-        options.push( {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTIONS_WITH_RETURN} );
+        options.push( {text: "f(x)", style: "function-definition", payload: this.PAYLOADS.FUNCTIONS_WITH_RETURN} );
 
         if (!this.UNARY_OPERATORS.includes(prevItem)) {
           options.push(...this.UNARY_OPERATORS.getMenuItems());
@@ -446,8 +450,8 @@ class Script {
         ];
       } else {
         options = [
-          {text: "f(x)", style: "function-call", payload: this.PAYLOADS.FUNCTIONS},
-          {text: "print", style: "function-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.PRINT).scope, value: this.FUNCS.PRINT})},
+          {text: "f(x)", style: "function-definition", payload: this.PAYLOADS.FUNCTIONS},
+          {text: "print", style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.PRINT).scope, value: this.FUNCS.PRINT})},
           {text: "func", style: "keyword", payload: this.ITEMS.FUNC},
           {text: "let", style: "keyword", payload: this.ITEMS.LET},
           {text: "var", style: "keyword", payload: this.PAYLOADS.VAR_OPTIONS},
@@ -530,8 +534,16 @@ class Script {
 
   //0 -> no change, 1 -> click item changed, 2-> row changed, 3 -> row(s) inserted
   menuItemClicked(row, col, payload) {
-    if (col === -1)
-      col = row < this.getRowCount() ? this.getItemCount(row) : 0;
+    if (col === 0) {
+      if (row >= this.getRowCount()) {
+        col = 0;
+      } else {
+        col = this.getItemCount(row);
+        if (this.getItem(row, col - 1) === this.ITEMS.UNDERSCORE) {
+          --col;
+        }
+      }
+    }
 
     const payloadData = Script.getItemData(payload);
 
@@ -582,7 +594,7 @@ class Script {
           this.spliceRow(row, col, 0, payload);
         else {
           if (col + 1 < this.getItemCount(row)) {
-            this.spliceRow(row, col + 1, 0, payload, this.ITEMS.BLANK);
+            this.spliceRow(row, col + 1, 0, payload, this.ITEMS.UNDERSCORE);
           } else {
             this.pushItems(row, payload);
           }
@@ -596,7 +608,7 @@ class Script {
       case this.ITEMS.CASE & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
-        this.pushItems(row, payload);
+        this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
 
       case this.ITEMS.DEFAULT & 0xFFFF:
@@ -627,6 +639,11 @@ class Script {
       
       case this.ITEMS.IF & 0xFFFF:
       case this.ITEMS.WHILE & 0xFFFF:
+        this.appendRowsUpTo(row);
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
+        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+      
       case this.ITEMS.ELSE & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
@@ -673,7 +690,7 @@ class Script {
       case this.ITEMS.SWITCH & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
-        this.pushItems(row, payload);
+        this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
         return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
       
       case this.ITEMS.RETURN & 0xFFFF: {
@@ -784,18 +801,18 @@ class Script {
       }
 
       case this.PAYLOADS.DELETE_ITEM: {
-        if (arguments[1] === -1) {
+        if (arguments[1] === 0) {
           col = row < this.getRowCount() ? this.getItemCount(row) - 1 : 0;
         }
         
-        if (col === 0) {
+        if (col === -1) {
           return Script.RESPONSE.ROW_DELETED;
         }
 
         const item = this.getItem(row, col);
         const data = Script.getItemData(item);
 
-        if (col === 1 || data.format === Script.KEYWORD
+        if (col === 0 || data.format === Script.KEYWORD
         || data.format === Script.FUNCTION_DEFINITION
         || this.ASSIGNMENT_OPERATORS.includes(item)
         || (data.format === Script.VARIABLE_DEFINITION && this.ASSIGNMENT_OPERATORS.includes(this.getItem(row, col + 1)))) {
@@ -807,14 +824,14 @@ class Script {
         }
 
         if (this.UNARY_OPERATORS.includes(item)
-        || (col === this.getItemCount(row) - 1 && item === this.ITEMS.BLANK)
+        || (col === this.getItemCount(row) - 1 && item === this.ITEMS.UNDERSCORE)
         || data.format === Script.VARIABLE_DEFINITION) {
           this.spliceRow(row, col, 1);
         }
         else if (this.BINARY_OPERATORS.includes(item)) {
           this.spliceRow(row, col, 2);
         }
-        else if (item === this.ITEMS.BLANK && this.BINARY_OPERATORS.includes(this.getItem(row, col - 1))) {
+        else if (item === this.ITEMS.UNDERSCORE && this.BINARY_OPERATORS.includes(this.getItem(row, col - 1))) {
           this.spliceRow(row, col - 1, 2);
         }
         else if (item === this.ITEMS.IF) {
@@ -854,7 +871,7 @@ class Script {
             if (funcID > -1) {
               this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
             } else {
-              this.spliceRow(row, start, end - start + 1, this.ITEMS.BLANK);
+              this.spliceRow(row, start, end - start + 1, this.ITEMS.UNDERSCORE);
             }
           }
         }
@@ -1001,7 +1018,7 @@ class Script {
     for (const id of this.functions.getIDs()) {
       let func = this.functions.get(id);
       if (!requireReturn || func.returnType !== 0) {
-        options.push({text: func.name, style: "function-call", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
+        options.push({text: func.name, style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
       }
     }
 
