@@ -173,6 +173,9 @@ button {
 .literal {
   color: #6897BB;
 }
+.string-literal {
+  color: #A5C25C;
+}
 .comment {
   color: #808080;
 }

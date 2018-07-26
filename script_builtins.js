@@ -102,14 +102,6 @@ function BuiltIns() {
     "|=",
     "<<=",
     ">>=",
-    "===", //reference-specific comparison operators
-    "!==",
-    "==", //comparison operators
-    "!=",
-    ">",
-    ">=",
-    "<",
-    "<=",
     "+", //arithmetic operators
     "-",
     "*",
@@ -122,6 +114,14 @@ function BuiltIns() {
     ">>",
     "&&", //boolean binary operators
     "||",
+    "===", //reference-specific comparison operators
+    "!==",
+    "==", //comparison operators
+    "!=",
+    ">",
+    ">=",
+    "<",
+    "<=",
     "+", //string concatenation
     "*", //string repetition
     "U", //union operator

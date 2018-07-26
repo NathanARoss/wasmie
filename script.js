@@ -186,6 +186,7 @@ class Script {
       constructor(start, end) {
         this.start = Script.makeItem({format: Script.SYMBOL, value: start});
         this.end = Script.makeItem({format: Script.SYMBOL, value: end});
+        this.postfix = "";
       }
 
       includes(item) {
@@ -194,15 +195,17 @@ class Script {
 
       *getMenuItems() {
         for (let payload = this.start; payload < this.end; ++payload) {
-          yield {text: symbols[payload & 0xFFFF], style: "", payload};
+          yield {text: symbols[payload & 0xFFFF] + this.postfix, style: "", payload};
         }
       }
     }
 
     this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
-    this.BINARY_OPERATORS = new Operator(13, 31);
-    this.UNARY_OPERATORS = new Operator(34, 37);
+    this.BINARY_OPERATORS = new Operator(11, 31);
+    this.UNARY_OPERATORS = new Operator(35, 38);
     this.OPERATORS = new Operator(0, 38);
+
+    this.UNARY_OPERATORS.postfix = " ____"
   }
 
   static makeItem({format = 0, flag = 0, flag2 = 0, meta = 0, value = 0}) {
@@ -736,9 +739,15 @@ class Script {
         const data = this.getData(row, col);
         if (data.format == Script.LITERAL) {
           hint = this.literals.get(data.value);
+
+          if (data.meta === 1) {
+            if (hint === "true" || hint === "false" || (hint.trim().length !== 0 && !isNaN(hint))) {
+              hint = '"' + hint + '"';
+            }
+          }
         }
 
-        let input = prompt("Enter a string or a number:", hint);
+        let input = prompt("Enter a string, number, or boolean:", hint);
         if (input === null)
           return Script.RESPONSE.NO_CHANGE;
 
@@ -755,11 +764,11 @@ class Script {
             input = input.trim();
             payload = Script.makeItem({format: Script.LITERAL, meta: 2, value: id});
           } else {
-            if (!input.startsWith('"'))
-              input = '"' + input;
+            if (input.startsWith('"'))
+              input = input.substring(1);
             
-            if (!input.endsWith('"') || input.length < 2)
-              input = input + '"';
+            if (input.endsWith('"'))
+              input = input.substring(0, input.length - 1);
 
             payload = Script.makeItem({format: Script.LITERAL, meta: 1, value: id});
           }
@@ -1398,8 +1407,12 @@ class Script {
       case Script.KEYWORD:
         return [this.keywords[value].name, "keyword"];
 
-      case Script.LITERAL:
-        return [this.literals.get(value), "literal"];
+      case Script.LITERAL: {
+        if (meta === 1)
+          return [`"${this.literals.get(value)}"`, "string-literal"];
+        else
+          return [this.literals.get(value), "literal"];
+      }
 
       default:
         return [`format\n${format}`, "error"];
@@ -1589,7 +1602,10 @@ class Script {
             break;
 
           case Script.LITERAL:
-            js += `${this.literals.get(value)} `;
+            if (meta === 1)
+              js += `"${this.literals.get(value)}" `;
+            else
+              js += `${this.literals.get(value)} `;
             break;
 
           default:
