@@ -493,7 +493,9 @@ function menuItemClicked(payload) {
         } else {
           menu.col = Math.min(menu.col, script.getItemCount(menu.row) - 1);
         }
-        list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.add("selected");
+        const selectedItem = list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col];
+        if (selectedItem)
+          selectedItem.focus();
         list.style.height = getRowCount() * rowHeight + "px";
       }
     }
@@ -591,14 +593,14 @@ function rowClickHandler(event) {
 }
 
 function itemClicked(row, col) {
-  let options = script.itemClicked(row, col);
-
   const selectedItem = list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col];
-  selectedItem.focus();
+  if (selectedItem)
+    selectedItem.focus();
 
   menu.row = row;
   menu.col = col;
 
+  let options = script.itemClicked(row, col);
   configureMenu(options);
 }
 
