@@ -333,17 +333,16 @@ function createRow() {
 
   let append = document.createElement("button");
   append.classList.add("append");
-  append.position = -1;
-  
-  let indentation = document.createElement("button");
+  append.position = 0;
+
+  let indentation = document.createElement("div");
   indentation.classList.add("indentation");
-  indentation.position = 0;
   
   let innerDiv = document.createElement("div");
   innerDiv.classList.add("inner-row");
   innerDiv.addEventListener("click", rowClickHandler, {passive: true});
-  innerDiv.appendChild(append);
   innerDiv.appendChild(indentation);
+  innerDiv.appendChild(append);
   
   let outerDiv = document.createElement("div");
   outerDiv.classList.add("outer-row");
@@ -395,7 +394,8 @@ function loadRow(position, outerDiv) {
   }
 
   if (position >= script.getRowCount()) {
-    innerRow.childNodes[1].style.display = "none";
+    innerRow.style.setProperty("--indentation", 0);
+    innerRow.classList.remove("starting-scope");
   } else {
     let itemCount = script.getItemCount(position);
     for (let col = 1; col < itemCount; ++col) {
@@ -408,8 +408,13 @@ function loadRow(position, outerDiv) {
     }
     
     const indentation = script.getIndentation(position);
-    innerRow.childNodes[1].style.width = 6 * indentation + "px";
-    innerRow.childNodes[1].style.display = (indentation === 0) ? "none" : "";
+    innerRow.style.setProperty("--indentation", indentation);
+
+    if (script.isStartingScope(position)) {
+      innerRow.classList.add("starting-scope");
+    } else {
+      innerRow.classList.remove("starting-scope");
+    }
   }
 
   if (innerRow.position !== position) {
@@ -420,11 +425,7 @@ function loadRow(position, outerDiv) {
     let button = innerRow.childNodes[1 + menu.col];
 
     if (menu.row === position) {
-      button.classList.add("selected");
       innerRow.scrollLeft = button.offsetLeft - window.innerWidth / 2;
-    } else {
-      if (button)
-        button.classList.remove("selected");
     }
   }
 }
@@ -468,19 +469,12 @@ function configureMenu(options) {
 }
 
 function closeMenu() {
-  if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
-    const outerDiv = list.childNodes[menu.row % loadedCount];
-    if (outerDiv) {
-      outerDiv.classList.remove("selected");
-  
-      const button = outerDiv.childNodes[1].childNodes[1 + menu.col];
-      if (button)
-        button.classList.remove("selected");
-    }
-  }
-
   menu.row = -1;
   document.body.classList.remove("selected");
+  document.activeElement.blur();
+
+  fabMenu.classList.remove("expanded");
+  menuButton.toggled = false;
 }
 
 function menuItemClicked(payload) {
@@ -494,12 +488,14 @@ function menuItemClicked(payload) {
       if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
         const outerDiv = list.childNodes[menu.row % loadedCount];
         loadRow(menu.row, outerDiv);
-        if (menu.col === -1) {
+        if (menu.col === 0) {
           outerDiv.childNodes[1].scrollLeft = 1e10;
         } else {
           menu.col = Math.min(menu.col, script.getItemCount(menu.row) - 1);
         }
-        list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.add("selected");
+        const selectedItem = list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col];
+        if (selectedItem)
+          selectedItem.focus();
         list.style.height = getRowCount() * rowHeight + "px";
       }
     }
@@ -515,7 +511,7 @@ function menuItemClicked(payload) {
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
       reloadAllRows();
-      menu.col = -1;
+      menu.col = 0;
     }
   }
 
@@ -535,7 +531,6 @@ document.addEventListener("keydown", function(event) {
       if (menu.row < script.getRowCount()) {
         deleteRow(menu.row);
       }
-      selectPreviousLine();
 
       event.preventDefault();
     }
@@ -547,7 +542,7 @@ document.addEventListener("keydown", function(event) {
           selectPreviousLine();
         } else {
           menuItemClicked(script.PAYLOADS.DELETE_ITEM);
-          if (menu.col !== -1 && menu.col !== script.getItemCount(menu.row) - 1) {
+          if (menu.col !== 0 && menu.col !== script.getItemCount(menu.row) - 1) {
             --menu.col;
           }
         }
@@ -560,14 +555,17 @@ document.addEventListener("keydown", function(event) {
 
     if (event.key === "Enter") {
       if (menu.row < script.getRowCount()) {
-        if (menu.col >= 0 && menu.col <= 1) {
+        if (menu.col === 1) {
           insertRow(menu.row);
+          itemClicked(menu.row + 1, menu.col);
         } else {
           insertRow(menu.row + 1);
+          itemClicked(menu.row + 1, 0);
         }
+      } else {
+        itemClicked(menu.row + 1, 0);
       }
-      itemClicked(menu.row + 1, -1);
-
+      
       event.preventDefault();
     }
   }
@@ -588,31 +586,30 @@ function rowClickHandler(event) {
     return;
   }
 
-  itemClicked(this.position|0, event.target.position|0);
-  document.activeElement.blur();
-  document.body.classList.add("selected");
+  if (event.target.nodeName === "BUTTON") {
+    itemClicked(this.position|0, event.target.position|0);
+    document.body.classList.add("selected");
+  }
 }
 
 function itemClicked(row, col) {
-  let options = script.itemClicked(row, col);
-
-  if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
-    list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col].classList.remove("selected");
-  }
-  list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col].classList.add("selected");
+  const selectedItem = list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col];
+  if (selectedItem)
+    selectedItem.focus();
 
   menu.row = row;
   menu.col = col;
 
+  let options = script.itemClicked(row, col);
   configureMenu(options);
 }
 
 function selectPreviousLine() {
-  menu.col = -1;
+  menu.col = 0;
   if (menu.row === 0) {
-    itemClicked(0, -1);
+    itemClicked(0, 0);
   } else {
-    itemClicked(menu.row - 1, -1);
+    itemClicked(menu.row - 1, 0);
   }
 }
 

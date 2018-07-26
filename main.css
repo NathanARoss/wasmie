@@ -24,10 +24,6 @@ body {
   color: white;
 }
 
-button.selected {
-  border: solid thin rgb(143, 111, 61);
-}
-
 .outer-row {
   position: relative;
   height: var(--line-height);
@@ -130,15 +126,30 @@ button {
 }
 
 .indentation {
-  border-right: 6px;
-  border-color: var(--secondary-color);
-  border-style: solid;
+  height: var(--line-height);
+  width: calc(12px * var(--indentation));
+  background: repeating-linear-gradient(to right, #2B2B2B, #2B2B2B 8px, var(--primary-color) 8px, var(--primary-color) 12px);
+  flex-shrink: 0;
+}
+
+.starting-scope > .indentation {
+  width: calc(12px * var(--indentation) + 12px);
+  clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%, calc(12px * var(--indentation)) 70%, calc(12px * var(--indentation)) 0);
+}
+
+.starting-scope > .item:nth-child(3) {
+  margin-left: -12px;
 }
 
 .item {
   padding: 0 4px;
   white-space: pre;
   color: white;
+}
+
+.item:focus, .append:focus {
+  outline: var(--secondary-color) medium solid;
+  outline-offset: -2px;
 }
 
 .menu-item {
@@ -223,8 +234,13 @@ button {
   bottom: 20px;
   width: 50px;
   height: 50px;
-  transition: height 0.5s;
+  transition-property: right height;
+  transition-duration: 0.25s;
   overflow: hidden;
+}
+
+.selected #FAB-menu {
+  right: 120px;
 }
 
 #FAB-menu.expanded {
@@ -264,7 +280,7 @@ button {
   background-image: url(baseline-add-24px.svg);
 }
 
-.selected #debug, .selected #FAB-menu {
+.selected #debug {
   display: none;
 }
 
