@@ -174,7 +174,7 @@ class Script {
     this.PAYLOADS.APPEND_IF = payloads--;
     this.PAYLOADS.INSERT_ELSE = payloads--;
     this.PAYLOADS.ELSE_IF = payloads--;
-    this.PAYLOADS.VARIABLE_DEFINITION = payloads--;
+    this.PAYLOADS.TYPED_VARIABLE_DEFINITION = payloads--;
     this.PAYLOADS.FUNCTION_DEFINITION = payloads--;
     this.PAYLOADS.APPEND_PARAMETER = payloads--;
     this.PAYLOADS.CHANGE_TYPE = payloads--;
@@ -561,12 +561,12 @@ class Script {
       this.appendRowsUpTo(row);
       if (this.getItemCount(row) === 1) {
         this.pushItems(row, payload, this.ITEMS.EQUALS);
+        return Script.RESPONSE.ROW_UPDATED | (1 << 24);
       } else {
         const [start, end] = this.getExpressionBounds(row, col);
         this.spliceRow(row, start, end - start + 1, payload);
+        return Script.RESPONSE.ROW_UPDATED;
       }
-
-      return Script.RESPONSE.ROW_UPDATED;
     }
 
     if (payloadData.format === Script.FUNCTION_REFERENCE) {
@@ -582,10 +582,14 @@ class Script {
       replacementItems.push(this.ITEMS.END_PARENTHESIS);
 
       this.appendRowsUpTo(row);
+      const oldItemCount = this.getItemCount(row);
       const [start, end] = col === 0 ? [1,1] : this.getExpressionBounds(row, col);
       this.spliceRow(row, start, end - start + 1, ...replacementItems);
       
-      return Script.RESPONSE.ROW_UPDATED;
+      if (oldItemCount === 1)
+        return Script.RESPONSE.ROW_UPDATED | (1 << 24);
+      else
+        return Script.RESPONSE.ROW_UPDATED;
     }
 
     if (payloadData.format === Script.SYMBOL) {
@@ -612,13 +616,13 @@ class Script {
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
 
       case this.ITEMS.DEFAULT & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
       
       case this.ITEMS.LET & 0xFFFF:
       case this.ITEMS.VAR & 0xFFFF: {
@@ -628,7 +632,7 @@ class Script {
           this.appendRowsUpTo(row);
           this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
           this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.EQUALS);
-          return Script.RESPONSE.ROW_UPDATED;
+          return Script.RESPONSE.ROW_UPDATED | (1 << 24);
         } else {
           return Script.RESPONSE.NO_CHANGE;
         }
@@ -636,7 +640,7 @@ class Script {
 
       case this.PAYLOADS.VAR_OPTIONS: {
         let options = [{text: "= expression", style: "comment", payload: this.ITEMS.VAR}];
-        options.push(...this.getSizedClasses(0, this.PAYLOADS.VARIABLE_DEFINITION));
+        options.push(...this.getSizedClasses(0, this.PAYLOADS.TYPED_VARIABLE_DEFINITION));
         return options;
       }
       
@@ -645,18 +649,18 @@ class Script {
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
       
       case this.ITEMS.ELSE & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
 
       case this.PAYLOADS.ELSE_IF:
         this.setIsStartingScope(row, true);
         this.pushItems(row, this.ITEMS.ELSE, this.ITEMS.IF);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
       
       case this.PAYLOADS.APPEND_IF:
         this.pushItems(row, this.ITEMS.IF);
@@ -684,7 +688,7 @@ class Script {
             this.ITEMS.COMMA,
             Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.RANGE}),
             this.ITEMS.END_PARENTHESIS);
-          return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+          return Script.RESPONSE.ROW_UPDATED | (2 << 24);
         }
 
         return Script.RESPONSE.NO_CHANGE;
@@ -694,7 +698,7 @@ class Script {
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
       
       case this.ITEMS.RETURN & 0xFFFF: {
         this.appendRowsUpTo(row);
@@ -707,7 +711,7 @@ class Script {
         }
 
         this.pushItems(row, payload);
-        return Script.RESPONSE.ROW_UPDATED;
+        return Script.RESPONSE.ROW_UPDATED | (1 << 24);
       }
 
       case this.ITEMS.FUNC & 0xFFFF: {
@@ -741,7 +745,7 @@ class Script {
           hint = this.literals.get(data.value);
 
           if (data.meta === 1) {
-            if (hint === "true" || hint === "false" || (hint.trim().length !== 0 && !isNaN(hint))) {
+            if (hint === "true" || hint === "false" || !isNaN(hint)) {
               hint = '"' + hint + '"';
             }
           }
@@ -753,9 +757,9 @@ class Script {
 
         let payload;
         
-        if (input === "true") {
+        if (input.toLowerCase() === "true") {
           payload = this.ITEMS.TRUE;
-        } else if (input === "false") {
+        } else if (input.toLowerCase() === "false") {
           payload = this.ITEMS.FALSE;
         } else {
           const id = this.literals.nextId();
@@ -813,15 +817,12 @@ class Script {
         if (arguments[1] === 0) {
           col = row < this.getRowCount() ? this.getItemCount(row) - 1 : 0;
         }
-        
-        if (col === -1) {
-          return Script.RESPONSE.ROW_DELETED;
-        }
 
         const item = this.getItem(row, col);
         const data = Script.getItemData(item);
 
-        if (col === 0 || data.format === Script.KEYWORD
+        if ((col === 1 && item !== this.ITEMS.ELSE)
+        || (col > 1 && data.format === Script.KEYWORD && item !== this.ITEMS.IF)
         || data.format === Script.FUNCTION_DEFINITION
         || this.ASSIGNMENT_OPERATORS.includes(item)
         || (data.format === Script.VARIABLE_DEFINITION && this.ASSIGNMENT_OPERATORS.includes(this.getItem(row, col + 1)))) {
@@ -912,7 +913,7 @@ class Script {
         return Script.RESPONSE.ROW_UPDATED;
       }
 
-      case this.PAYLOADS.VARIABLE_DEFINITION: {
+      case this.PAYLOADS.TYPED_VARIABLE_DEFINITION: {
         const varId = this.variables.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
 
@@ -922,7 +923,7 @@ class Script {
           this.variables.set(varId, {name, type, flag: 1, scope: this.CLASSES.VOID});
           this.pushItems(row, this.ITEMS.VAR, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
 
-          return Script.RESPONSE.ROW_UPDATED;
+          return Script.RESPONSE.ROW_UPDATED | (1 << 24);
         } else {
           return Script.RESPONSE.NO_CHANGE;
         }
@@ -939,7 +940,7 @@ class Script {
           this.setIsStartingScope(row, true);
           this.pushItems(row, this.ITEMS.FUNC, Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: returnType, value: funcId}));
 
-          return Script.RESPONSE.ROW_UPDATED | Script.RESPONSE.ROWS_INSERTED;
+          return Script.RESPONSE.ROW_UPDATED | (2 << 24);
         } else {
           return Script.RESPONSE.NO_CHANGE;
         }
@@ -1105,7 +1106,6 @@ class Script {
 
   appendRowsUpTo(row) {
     let oldLength = this.getRowCount();
-    let inserted = 0;
 
     let key = this.lines.length === 0 ? new ArrayBuffer(1) : this.lineKeys[this.lines.length - 1];
     const header = Script.makeItem({format: 0xF});
@@ -1113,8 +1113,8 @@ class Script {
       key = Script.incrementKey(key);
       this.lines.push([header]);
       this.lineKeys.push(key);
-      ++inserted;
     }
+
     this.saveRow(this.lines.slice(oldLength), this.lineKeys.slice(oldLength));
   }
 
@@ -1212,7 +1212,10 @@ class Script {
       count = r - startRow;
     }
 
-    if (startRow === row && keepIfNotLastRow) {
+    //if a scope starter is cleared, delete its body.  However, if the line and its body aren't at the end
+    //of the script, clear the line but don't delete it.  Otherwise, one too many lines would be deleted
+    if (startRow + count !== this.getRowCount() && keepIfNotLastRow) {
+      this.setIsStartingScope(startRow, false);
       ++startRow;
       --count;
     }
@@ -1660,5 +1663,4 @@ Script.RESPONSE = {};
 Script.RESPONSE.NO_CHANGE      = 0;
 Script.RESPONSE.ROW_UPDATED    = 1;
 Script.RESPONSE.ROW_DELETED    = 2;
-Script.RESPONSE.ROWS_INSERTED  = 4;
-Script.RESPONSE.SCRIPT_CHANGED = 8;
+Script.RESPONSE.SCRIPT_CHANGED = 4;

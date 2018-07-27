@@ -126,6 +126,8 @@ button {
 }
 
 .indentation {
+  position: relative;
+  z-index: -1;
   height: var(--line-height);
   width: calc(12px * var(--indentation));
   background: repeating-linear-gradient(to right, #2B2B2B, #2B2B2B 8px, var(--primary-color) 8px, var(--primary-color) 12px);
@@ -281,10 +283,6 @@ button {
 }
 #new-button {
   background-image: url(baseline-add-24px.svg);
-}
-
-.selected #debug {
-  display: none;
 }
 
 #console-output {

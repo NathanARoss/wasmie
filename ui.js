@@ -361,10 +361,14 @@ function createRow() {
 
 
 
-function insertRow(position) {
-  const pos = script.insertRow(position);
-  if (pos !== -1)
-    refreshRows(pos, script.getRowCount());
+function insertRow(position, count = 1) {
+  let firstEffectedRow = -1 & 0x7FFFFFFF;
+  for (let i = 0; i < count; ++i) {
+    firstEffectedRow = Math.min(firstEffectedRow, script.insertRow(position + i) & 0x7FFFFFFF);
+  }
+  
+  if (firstEffectedRow !== -1 & 0x7FFFFFFF)
+    refreshRows(firstEffectedRow, script.getRowCount());
 }
 
 function deleteRow(position) {
@@ -500,13 +504,16 @@ function menuItemClicked(payload) {
       }
     }
 
-    if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
-      insertRow(menu.row + 1);
+    if (response >>> 24) {
+      insertRow(menu.row + 1, response >>> 24);
     }
-    
+
     if (response === Script.RESPONSE.ROW_DELETED) {
       deleteRow(menu.row);
-      selectPreviousLine();
+      menu.col = 0;
+      if (menu.row > 0) {
+        menu.row = menu.row - 1;
+      }
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
@@ -515,8 +522,7 @@ function menuItemClicked(payload) {
     }
   }
 
-  const options = script.itemClicked(menu.row, menu.col);
-  configureMenu(options);
+  itemClicked(menu.row, menu.col);
 }
 
 
@@ -530,6 +536,8 @@ document.addEventListener("keydown", function(event) {
     if (event.key === "Delete") {
       if (menu.row < script.getRowCount()) {
         deleteRow(menu.row);
+        menu.col = 0;
+        itemClicked(menu.row, 0);
       }
 
       event.preventDefault();
@@ -554,8 +562,8 @@ document.addEventListener("keydown", function(event) {
     }
 
     if (event.key === "Enter") {
-      if (menu.row < script.getRowCount()) {
-        if (menu.col === 1) {
+      if (menu.row <= script.getRowCount()) {
+        if (menu.col === 1 || menu.row === script.getRowCount() || script.getItemCount(menu.row) === 1) {
           insertRow(menu.row);
           itemClicked(menu.row + 1, menu.col);
         } else {
