@@ -45,6 +45,7 @@ createButton.addEventListener("click", function(event) {
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
   reloadAllRows();
+  closeMenu();
 });
 
 loadButton.addEventListener("click", function(event) {
@@ -191,17 +192,6 @@ window.onpopstate = function(event) {
     document.title = "TouchScript Project Manager"
 
     performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
-      function projectClicked(event) {
-        const projectID = event.currentTarget.projectId;
-        const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
-        if (projectID !== oldActiveProject) {
-          localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
-          script = new Script();
-          reloadAllRows();
-        }
-        window.history.back();
-      }
-
       objStore.getAll().onsuccess = function(event) {
         for (const project of event.target.result) {
           const label = document.createElement("span");
@@ -221,7 +211,7 @@ window.onpopstate = function(event) {
           const deleteButton = document.createElement("button");
           deleteButton.classList.add("delete");
           deleteButton.classList.add("delete-project-button");
-          deleteButton.addEventListener("click", deleteProject, {passive: false});
+          deleteButton.addEventListener("click", deleteProject);
 
           const entry = document.createElement("div");
           entry.classList.add("project-list-entry");
@@ -230,7 +220,11 @@ window.onpopstate = function(event) {
           entry.appendChild(projectName);
           entry.appendChild(dateCreated);
           entry.appendChild(dateLastModified);
-          entry.addEventListener("click", projectClicked);
+          entry.addEventListener("click", selectProject);
+
+          if (script.projectID === project.id) {
+            entry.classList.add("open");
+          }
 
           entry.projectId = project.id;
           programList.appendChild(entry);
@@ -242,18 +236,70 @@ window.onpopstate = function(event) {
 window.onpopstate();
 
 
+function selectProject(event) {
+  if (event.target.nodeName === "BUTTON" || event.target.nodeName === "INPUT")
+    return;
+
+  const projectID = event.currentTarget.projectId;
+  const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+  if (projectID !== oldActiveProject) {
+    localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
+    script = new Script();
+    reloadAllRows();
+    closeMenu();
+  }
+  window.history.back();
+}
+
 function deleteProject(event) {
-  event.stopPropagation();
-  
   const entry = this.parentElement;
   const id = entry.projectId;
+
+  if (script.projectID === id) {
+    if (!confirm("Delete active project?")) {
+      return;
+    }
+  }
   
   performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
     objStore.delete(id).onsuccess = function(event) {
       console.log("Successfully deleted project ID " + id);
       entry.parentElement.removeChild(entry);
+
+      indexedDB.deleteDatabase("TouchScript-" + id);
+
+      if (script.projectID === id) {
+        localStorage.removeItem(ACTIVE_PROJECT_KEY);
+        script = new Script();
+        reloadAllRows();
+        closeMenu();
+      }
+    }
+
+    objStore.count().onsuccess = function(event) {
+      if (event.target.result === 0) {
+        window.history.back();
+        setTimeout(deleteProjectListDatabase, 1);
+      }
     }
   });
+}
+
+function deleteProjectListDatabase() {
+  console.log("delete request");
+
+  //if every project is deleted, delete the database so the project ID counter resets
+  //NOTE: the counter does not reset on iOS
+  let request = indexedDB.deleteDatabase("TouchScript-project-list");
+
+  request.onblocked = function(event) {
+    console.log("blocked: " + event);
+    location.reload();
+  };
+  
+  request.onsuccess = function(event) {
+    console.log("Success deleting database");
+  };
 }
 
 function renameProject(event) {

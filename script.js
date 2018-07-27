@@ -1483,15 +1483,23 @@ class Script {
             objStore.put(projectListing);
             this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
           } else {
+            //project ID is not known until after it's inserted into the DB
             const now = new Date();
-            const newProject = {name: getDateString(now), created: now, lastModified: now};
+            const newProject = {name: `Unnamed`, created: now, lastModified: now};
       
             objStore.add(newProject).onsuccess = (event) => {
               console.log("Successfully created new project listing.  ID is", event.target.result);
               this.projectID = event.target.result;
-              localStorage.setItem(ACTIVE_PROJECT_KEY, event.target.result);
-      
-              this.queuedDBwrites = {scope: new Set(), actions: []};
+              localStorage.setItem(ACTIVE_PROJECT_KEY, event.target.result);              
+
+              //update the project's default name to contain its ID
+              performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
+                objStore.get(this.projectID).onsuccess = (event) => {
+                  const thisProject = event.target.result;
+                  thisProject.name = `Project ${this.projectID}`
+                  objStore.put(thisProject);
+                }
+              });
 
               function saveAllMetadata(container) {
                 for (let id = container.builtinCount; id < container.data.length; ++id) {
@@ -1501,6 +1509,8 @@ class Script {
                   }
                 }
               };
+
+              this.queuedDBwrites = {scope: new Set(), actions: []};
 
               for (let container of [this.variables, this.classes, this.functions, this.literals]) {
                 this.queuedDBwrites.scope.add(container.storeName);

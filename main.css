@@ -333,6 +333,14 @@ button {
   margin: 8px 0 0 0;
 }
 
+.project-list-entry.open::after {
+  content: "ACTIVE";
+  display: block;
+  text-align: right;
+  color: goldenrod;
+  font-weight: bold;
+}
+
 #no-projects-message {
   display: none;
 }
