@@ -545,15 +545,7 @@ document.addEventListener("keydown", function(event) {
 
     if (event.key === "Backspace") {
       if (menu.row < script.getRowCount()) {
-        if (script.getItemCount(menu.row) === 1) {
-          deleteRow(menu.row);
-          selectPreviousLine();
-        } else {
-          menuItemClicked(script.PAYLOADS.DELETE_ITEM);
-          if (menu.col !== 0 && menu.col !== script.getItemCount(menu.row) - 1) {
-            --menu.col;
-          }
-        }
+        menuItemClicked(script.PAYLOADS.DELETE_ITEM);
       } else {
         selectPreviousLine();
       }

@@ -285,8 +285,11 @@ class Script {
   itemClicked(row, col) {
     if (col === 0) {
       let options = this.appendClicked(row);
-      if (options)
+      if (options) {
+        if (row < this.getRowCount())
+          options.unshift({text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM});
         return options;
+      }
       
       col = this.getItemCount(row);
 
@@ -818,6 +821,10 @@ class Script {
           col = row < this.getRowCount() ? this.getItemCount(row) - 1 : 0;
         }
 
+        if (this.getItemCount(row) === 1) {
+          return Script.RESPONSE.ROW_DELETED;
+        }
+
         const item = this.getItem(row, col);
         const data = Script.getItemData(item);
 
@@ -1214,7 +1221,7 @@ class Script {
 
     //if a scope starter is cleared, delete its body.  However, if the line and its body aren't at the end
     //of the script, clear the line but don't delete it.  Otherwise, one too many lines would be deleted
-    if (startRow + count !== this.getRowCount() && keepIfNotLastRow) {
+    if ((indentation > 0 || startRow + count !== this.getRowCount()) && keepIfNotLastRow) {
       this.setIsStartingScope(startRow, false);
       ++startRow;
       --count;
