@@ -45,6 +45,7 @@ createButton.addEventListener("click", function(event) {
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
   reloadAllRows();
+  closeMenu();
 });
 
 loadButton.addEventListener("click", function(event) {
@@ -191,17 +192,6 @@ window.onpopstate = function(event) {
     document.title = "TouchScript Project Manager"
 
     performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
-      function projectClicked(event) {
-        const projectID = event.currentTarget.projectId;
-        const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
-        if (projectID !== oldActiveProject) {
-          localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
-          script = new Script();
-          reloadAllRows();
-        }
-        window.history.back();
-      }
-
       objStore.getAll().onsuccess = function(event) {
         for (const project of event.target.result) {
           const label = document.createElement("span");
@@ -221,7 +211,7 @@ window.onpopstate = function(event) {
           const deleteButton = document.createElement("button");
           deleteButton.classList.add("delete");
           deleteButton.classList.add("delete-project-button");
-          deleteButton.addEventListener("click", deleteProject, {passive: false});
+          deleteButton.addEventListener("click", deleteProject);
 
           const entry = document.createElement("div");
           entry.classList.add("project-list-entry");
@@ -230,7 +220,11 @@ window.onpopstate = function(event) {
           entry.appendChild(projectName);
           entry.appendChild(dateCreated);
           entry.appendChild(dateLastModified);
-          entry.addEventListener("click", projectClicked);
+          entry.addEventListener("click", selectProject);
+
+          if (script.projectID === project.id) {
+            entry.classList.add("open");
+          }
 
           entry.projectId = project.id;
           programList.appendChild(entry);
@@ -242,18 +236,70 @@ window.onpopstate = function(event) {
 window.onpopstate();
 
 
+function selectProject(event) {
+  if (event.target.nodeName === "BUTTON" || event.target.nodeName === "INPUT")
+    return;
+
+  const projectID = event.currentTarget.projectId;
+  const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+  if (projectID !== oldActiveProject) {
+    localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
+    script = new Script();
+    reloadAllRows();
+    closeMenu();
+  }
+  window.history.back();
+}
+
 function deleteProject(event) {
-  event.stopPropagation();
-  
   const entry = this.parentElement;
   const id = entry.projectId;
+
+  if (script.projectID === id) {
+    if (!confirm("Delete active project?")) {
+      return;
+    }
+  }
   
   performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
     objStore.delete(id).onsuccess = function(event) {
       console.log("Successfully deleted project ID " + id);
       entry.parentElement.removeChild(entry);
+
+      indexedDB.deleteDatabase("TouchScript-" + id);
+
+      if (script.projectID === id) {
+        localStorage.removeItem(ACTIVE_PROJECT_KEY);
+        script = new Script();
+        reloadAllRows();
+        closeMenu();
+      }
+    }
+
+    objStore.count().onsuccess = function(event) {
+      if (event.target.result === 0) {
+        window.history.back();
+        setTimeout(deleteProjectListDatabase, 1);
+      }
     }
   });
+}
+
+function deleteProjectListDatabase() {
+  console.log("delete request");
+
+  //if every project is deleted, delete the database so the project ID counter resets
+  //NOTE: the counter does not reset on iOS
+  let request = indexedDB.deleteDatabase("TouchScript-project-list");
+
+  request.onblocked = function(event) {
+    console.log("blocked: " + event);
+    location.reload();
+  };
+  
+  request.onsuccess = function(event) {
+    console.log("Success deleting database");
+  };
 }
 
 function renameProject(event) {
@@ -361,10 +407,14 @@ function createRow() {
 
 
 
-function insertRow(position) {
-  const pos = script.insertRow(position);
-  if (pos !== -1)
-    refreshRows(pos, script.getRowCount());
+function insertRow(position, count = 1) {
+  let firstEffectedRow = -1 & 0x7FFFFFFF;
+  for (let i = 0; i < count; ++i) {
+    firstEffectedRow = Math.min(firstEffectedRow, script.insertRow(position + i) & 0x7FFFFFFF);
+  }
+  
+  if (firstEffectedRow !== -1 & 0x7FFFFFFF)
+    refreshRows(firstEffectedRow, script.getRowCount());
 }
 
 function deleteRow(position) {
@@ -500,13 +550,16 @@ function menuItemClicked(payload) {
       }
     }
 
-    if ((response & Script.RESPONSE.ROWS_INSERTED) !== 0) {
-      insertRow(menu.row + 1);
+    if (response >>> 24) {
+      insertRow(menu.row + 1, response >>> 24);
     }
-    
+
     if (response === Script.RESPONSE.ROW_DELETED) {
       deleteRow(menu.row);
-      selectPreviousLine();
+      menu.col = 0;
+      if (menu.row > 0) {
+        menu.row = menu.row - 1;
+      }
     }
 
     if (response === Script.RESPONSE.SCRIPT_CHANGED) {
@@ -515,8 +568,7 @@ function menuItemClicked(payload) {
     }
   }
 
-  const options = script.itemClicked(menu.row, menu.col);
-  configureMenu(options);
+  itemClicked(menu.row, menu.col);
 }
 
 
@@ -530,6 +582,8 @@ document.addEventListener("keydown", function(event) {
     if (event.key === "Delete") {
       if (menu.row < script.getRowCount()) {
         deleteRow(menu.row);
+        menu.col = 0;
+        itemClicked(menu.row, 0);
       }
 
       event.preventDefault();
@@ -537,15 +591,7 @@ document.addEventListener("keydown", function(event) {
 
     if (event.key === "Backspace") {
       if (menu.row < script.getRowCount()) {
-        if (script.getItemCount(menu.row) === 1) {
-          deleteRow(menu.row);
-          selectPreviousLine();
-        } else {
-          menuItemClicked(script.PAYLOADS.DELETE_ITEM);
-          if (menu.col !== 0 && menu.col !== script.getItemCount(menu.row) - 1) {
-            --menu.col;
-          }
-        }
+        menuItemClicked(script.PAYLOADS.DELETE_ITEM);
       } else {
         selectPreviousLine();
       }
@@ -554,8 +600,8 @@ document.addEventListener("keydown", function(event) {
     }
 
     if (event.key === "Enter") {
-      if (menu.row < script.getRowCount()) {
-        if (menu.col === 1) {
+      if (menu.row <= script.getRowCount()) {
+        if (menu.col === 1 || menu.row === script.getRowCount() || script.getItemCount(menu.row) === 1) {
           insertRow(menu.row);
           itemClicked(menu.row + 1, menu.col);
         } else {

@@ -126,6 +126,8 @@ button {
 }
 
 .indentation {
+  position: relative;
+  z-index: -1;
   height: var(--line-height);
   width: calc(12px * var(--indentation));
   background: repeating-linear-gradient(to right, #2B2B2B, #2B2B2B 8px, var(--primary-color) 8px, var(--primary-color) 12px);
@@ -172,6 +174,9 @@ button {
 }
 .literal {
   color: #6897BB;
+}
+.string-literal {
+  color: #A5C25C;
 }
 .comment {
   color: #808080;
@@ -280,10 +285,6 @@ button {
   background-image: url(baseline-add-24px.svg);
 }
 
-.selected #debug {
-  display: none;
-}
-
 #console-output {
   white-space: pre-wrap;
   font-family: monospace;
@@ -330,6 +331,14 @@ button {
 
 .project-list-entry p {
   margin: 8px 0 0 0;
+}
+
+.project-list-entry.open::after {
+  content: "ACTIVE";
+  display: block;
+  text-align: right;
+  color: goldenrod;
+  font-weight: bold;
 }
 
 #no-projects-message {
