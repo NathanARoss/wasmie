@@ -246,8 +246,8 @@ function selectProject(event) {
     localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
     script = new Script();
     reloadAllRows();
-    closeMenu();
   }
+  closeMenu();
   window.history.back();
 }
 
