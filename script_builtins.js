@@ -87,7 +87,7 @@ function BuiltIns() {
     parseFunction("Math.round", "Double", "Math", "round", "Double", "number", undefined),
     parseFunction("Math.floor", "Double", "Math", "floor", "Double", "number", undefined),
     parseFunction("Math.ceil", "Double", "Math", "ceil", "Double", "number", undefined),
-    parseFunction("print", "void", "System", "print", "Any", "item", "", "String", "terminator", "\n"),
+    parseFunction("print", "void", "System", "print", "Any", "item", "", "String", "terminator", "\n", "Boolean", "word wrap", false),
   ].reverse();
   
   this.symbols = [
@@ -119,8 +119,8 @@ function BuiltIns() {
     "==", //comparison operators
     "!=",
     ">",
-    ">=",
     "<",
+    ">=",
     "<=",
     "+", //string concatenation
     "*", //string repetition
