@@ -204,6 +204,8 @@ class Script {
     this.BINARY_OPERATORS = new Operator(11, 31);
     this.UNARY_OPERATORS = new Operator(35, 38);
     this.OPERATORS = new Operator(0, 38);
+    this.ARITHMETIC_OPERATORS = new Operator(11, 23);
+    this.COMPARRISON_OPERATORS = new Operator(25, 31);
 
     this.UNARY_OPERATORS.postfix = " ____"
   }
@@ -417,12 +419,14 @@ class Script {
       || data.format === Script.LITERAL
       || item === this.ITEMS.END_PARENTHESIS) {
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
-        options.push(...this.BINARY_OPERATORS.getMenuItems());
+        options.push(...this.ARITHMETIC_OPERATORS.getMenuItems());
+        options.push(...this.COMPARRISON_OPERATORS.getMenuItems());
       }
       else if (prevData.format === Script.VARIABLE_REFERENCE
       || prevData.format === Script.LITERAL
       || prevItem === this.ITEMS.END_PARENTHESIS) {
-        options.push(...this.BINARY_OPERATORS.getMenuItems());
+        options.push(...this.ARITHMETIC_OPERATORS.getMenuItems());
+        options.push(...this.COMPARRISON_OPERATORS.getMenuItems());
       }
 
       if (item !== this.ITEMS.IF && prevItem === this.ITEMS.ELSE) {

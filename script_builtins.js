@@ -119,8 +119,8 @@ function BuiltIns() {
     "==", //comparison operators
     "!=",
     ">",
-    ">=",
     "<",
+    ">=",
     "<=",
     "+", //string concatenation
     "*", //string repetition
