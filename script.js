@@ -1419,7 +1419,7 @@ class Script {
 
       case Script.LITERAL: {
         if (meta === 1)
-          return [`"${this.literals.get(value)}"`, "string-literal"];
+        return [`"${this.literals.get(value)}"`, "string-literal"];
         else
           return [this.literals.get(value), "literal"];
       }

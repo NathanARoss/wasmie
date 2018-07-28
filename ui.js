@@ -748,20 +748,15 @@ function* stride(start, end, by) {
   }
 }
 
-function print(value, terminator) {
-  const text = String(value) + terminator;
-  const segments = text.split("\n");
-  const lastSegment = segments.pop();
+function print(value, terminator, wordWrap) {
+  const textNode = document.createTextNode(value + terminator);
 
-  for (const segment of segments) {
-    const textNode = document.createTextNode(segment);
-    const lineBreak = document.createElement("BR");
-    consoleOutput.appendChild(textNode);
-    consoleOutput.appendChild(lineBreak);
-  }
-
-  if (lastSegment) {
-    const textNode = document.createTextNode(lastSegment);
+  if (wordWrap) {
+    const span = document.createElement("SPAN");
+    span.classList.add('wordwrap');
+    span.appendChild(textNode);
+    consoleOutput.appendChild(span);
+  } else {
     consoleOutput.appendChild(textNode);
   }
 }
