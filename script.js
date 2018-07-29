@@ -386,12 +386,13 @@ class Script {
       || prevItem === this.ITEMS.WHILE
       || prevItem === this.ITEMS.DO_WHILE
       || prevItem === this.ITEMS.SWITCH
+      || prevItem === this.ITEMS.CASE
       || prevItem === this.ITEMS.IF
       || prevItem === this.ITEMS.START_SUBEXPRESSION
       || prevItem === this.ITEMS.START_ARGUMENTS
       || prevItem === this.ITEMS.COMMA
       || prevItem === this.ITEMS.IN
-      || prevItem === this.ITEMS.RETURN)) {
+      || (prevItem === this.ITEMS.RETURN && this.getReturnType(row) !== this.CLASSES.VOID))) {
         options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
         options.push( {text: "f(x)", style: "function-definition", payload: this.PAYLOADS.FUNCTIONS_WITH_RETURN} );
 
@@ -512,7 +513,7 @@ class Script {
         ];
       }
 
-      if (this.getData(row, itemCount - 1) === Script.VARIABLE_DEFINITION) {
+      if (this.getData(row, itemCount - 1).format === Script.VARIABLE_DEFINITION) {
         return [
           ditto,
           ...this.getSizedClasses(1, this.PAYLOADS.DEFINE_ANOTHER_VAR)
@@ -533,14 +534,18 @@ class Script {
 
   //0 -> no change, 1 -> click item changed, 2-> row changed, 3 -> row(s) inserted
   menuItemClicked(row, col, payload) {
-    if (col === 0) {
-      if (row >= this.getRowCount()) {
-        col = 0;
-      } else {
-        col = this.getItemCount(row);
+    let isAppending = false;
+
+    if (row < this.getRowCount()) {
+      const itemCount = this.getItemCount(row);
+      if (col === 0) {
+        isAppending = true;
+        col = itemCount;
         if (this.getItem(row, col - 1) === this.ITEMS.UNDERSCORE) {
           --col;
         }
+      } else if (col === itemCount - 1 && this.getItem(row, col) === this.ITEMS.UNDERSCORE) {
+        isAppending = true;
       }
     }
 
@@ -550,18 +555,18 @@ class Script {
     if (payloadData.format === 15) {
       payloadData.format = Script.KEYWORD;
       this.setItem(row, col, Script.makeItem(payloadData));
-      return Script.RESPONSE.ROW_UPDATED;
+      return {rowUpdated: true};
     }
 
-    if (payloadData.format === Script.VARIABLE_REFERENCE) {      
+    if (payloadData.format === Script.VARIABLE_REFERENCE) {
       this.appendRowsUpTo(row);
       if (this.getItemCount(row) === 1) {
         this.pushItems(row, payload, this.ITEMS.EQUALS);
-        return Script.RESPONSE.ROW_UPDATED | (1 << 24);
+        return {rowUpdated: true, rowsInserted: 1};
       } else {
         const [start, end] = this.getExpressionBounds(row, col);
         this.spliceRow(row, start, end - start + 1, payload);
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true, selectedCol: isAppending ? 0 : start};
       }
     }
 
@@ -583,28 +588,30 @@ class Script {
       this.spliceRow(row, start, end - start + 1, ...replacementItems);
       
       if (oldItemCount === 1)
-        return Script.RESPONSE.ROW_UPDATED | (1 << 24);
+        return {rowUpdated: true, rowsInserted: 1};
       else
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true, selectedCol: start + 2};
     }
 
     if (payloadData.format === Script.SYMBOL) {
       const item = this.getItem(row, col);
       if (this.OPERATORS.includes(item)) {
         this.setItem(row, col, payload);
+        return {rowUpdated: true};
       } else {
-        if (this.UNARY_OPERATORS.includes(payload))
+        if (this.UNARY_OPERATORS.includes(payload)) {
           this.spliceRow(row, col, 0, payload);
-        else {
+          return {rowUpdated: true, selectedCol: isAppending ? 0 : col + 1};
+        } else {
           if (col + 1 < this.getItemCount(row)) {
             this.spliceRow(row, col + 1, 0, payload, this.ITEMS.UNDERSCORE);
+            return {rowUpdated: true, selectedCol: isAppending ? 0 : col + 2};
           } else {
             this.pushItems(row, payload);
+            return {rowUpdated: true, selectedCol: 0};
           }
         }
       }
-      
-      return Script.RESPONSE.ROW_UPDATED;
     }
 
     switch (payloadData.value) {
@@ -612,13 +619,13 @@ class Script {
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+        return {rowUpdated: true, rowsInserted: 2, selectedCol: 2};
 
       case this.ITEMS.DEFAULT & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload);
-        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+        return {rowUpdated: true, rowsInserted: 2, selectNextRow: true};
       
       case this.ITEMS.LET & 0xFFFF:
       case this.ITEMS.VAR & 0xFFFF: {
@@ -628,9 +635,9 @@ class Script {
           this.appendRowsUpTo(row);
           this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
           this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.EQUALS);
-          return Script.RESPONSE.ROW_UPDATED | (1 << 24);
+          return {rowUpdated: true, rowsInserted: 1};
         } else {
-          return Script.RESPONSE.NO_CHANGE;
+          return {};
         }
       }
 
@@ -645,26 +652,26 @@ class Script {
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+        return {rowUpdated: true, rowsInserted: 2, selectedCol: 2};
       
       case this.ITEMS.ELSE & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload);
-        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+        return {rowUpdated: true, rowsInserted: 2};
 
       case this.PAYLOADS.ELSE_IF:
         this.setIsStartingScope(row, true);
         this.pushItems(row, this.ITEMS.ELSE, this.ITEMS.IF);
-        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+        return {rowUpdated: true, rowsInserted: 2};
       
       case this.PAYLOADS.APPEND_IF:
         this.pushItems(row, this.ITEMS.IF);
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true};
       
       case this.PAYLOADS.INSERT_ELSE:
         this.spliceRow(row, col, 0, this.ITEMS.ELSE);
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true};
 
       case this.ITEMS.FOR & 0xFFFF: {
         let name = prompt("Enter for loop variable name:", "index");
@@ -684,30 +691,29 @@ class Script {
             this.ITEMS.COMMA,
             Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.RANGE}),
             this.ITEMS.END_ARGUMENTS);
-          return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+          return {rowUpdated: true, rowsInserted: 2, selectedCol: 8};
         }
 
-        return Script.RESPONSE.NO_CHANGE;
+        return {};
       }
 
       case this.ITEMS.SWITCH & 0xFFFF:
         this.appendRowsUpTo(row);
         this.setIsStartingScope(row, true);
         this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+        return {rowUpdated: true, rowsInserted: 2, selectedCol: 2};
       
       case this.ITEMS.RETURN & 0xFFFF: {
         this.appendRowsUpTo(row);
-        let returnType = 0;
-        for (let r = row - 1; r >= 0; --r) {
-          if (this.getItem(r, 1) === this.ITEMS.FUNC) {
-            returnType = this.getData(r, 2).meta;
-            break;
-          }
-        }
+        const returnType = this.getReturnType(row);
 
-        this.pushItems(row, payload);
-        return Script.RESPONSE.ROW_UPDATED | (1 << 24);
+        if (returnType === this.CLASSES.VOID) {
+          this.pushItems(row, payload);
+          return {rowUpdated: true, selectedCol: 1};
+        } else {
+          this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
+          return {rowUpdated: true, selectedCol: 2};
+        }
       }
 
       case this.ITEMS.FUNC & 0xFFFF: {
@@ -718,7 +724,7 @@ class Script {
 
       case this.PAYLOADS.ASSIGN_VALUE:
         this.pushItems(row, this.ITEMS.EQUALS);
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true};
 
       case this.PAYLOADS.DEFINE_ANOTHER_VAR: {
         let varId = this.variables.nextId();
@@ -727,9 +733,9 @@ class Script {
           let type = payloadData.meta;
           this.variables.set(varId, {name, type, scope: this.CLASSES.VOID});
           this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
-          return Script.RESPONSE.ROW_UPDATED;
+          return {rowUpdated: true};
         } else {
-          return Script.RESPONSE.NO_CHANGE;
+          return {};
         }
       }
 
@@ -749,7 +755,7 @@ class Script {
 
         let input = prompt("Enter a string, number, or boolean:", hint);
         if (input === null)
-          return Script.RESPONSE.NO_CHANGE;
+          return {};
 
         let payload;
         
@@ -778,7 +784,7 @@ class Script {
 
         const [start, end] = this.getExpressionBounds(row, col);
         this.spliceRow(row, start, end - start + 1, payload);
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true, selectedCol: isAppending ? 0 : start};
       }
 
       case this.PAYLOADS.RENAME: {
@@ -803,19 +809,19 @@ class Script {
         if (input) {
           metadata.name = input;
           container.set(data.value, metadata);
-          return Script.RESPONSE.SCRIPT_CHANGED;
+          return {scriptChanged: true};
         } else {
-          return Script.RESPONSE.NO_CHANGE;
+          return {};
         }
       }
 
       case this.PAYLOADS.DELETE_ITEM: {
-        if (arguments[1] === 0) {
-          col = row < this.getRowCount() ? this.getItemCount(row) - 1 : 0;
+        if (this.getItemCount(row) === 1) {
+          return {rowDeleted: true};
         }
 
-        if (this.getItemCount(row) === 1) {
-          return Script.RESPONSE.ROW_DELETED;
+        if (isAppending) {
+          col = row < this.getRowCount() ? this.getItemCount(row) - 1 : 0;
         }
 
         const item = this.getItem(row, col);
@@ -830,22 +836,31 @@ class Script {
           const oldRowCount = this.getRowCount();
           this.deleteRow(row, true);
 
-          return this.getRowCount() === oldRowCount ? Script.RESPONSE.ROW_UPDATED : Script.RESPONSE.SCRIPT_CHANGED;
+          return this.getRowCount() === oldRowCount ? {rowUpdated: true, selectedCol: 0} : {scriptChanged: true};
         }
 
         if (this.UNARY_OPERATORS.includes(item)
         || (col === this.getItemCount(row) - 1 && item === this.ITEMS.UNDERSCORE)
         || data.format === Script.VARIABLE_DEFINITION) {
           this.spliceRow(row, col, 1);
+          return {rowUpdated: true, selectedCol: isAppending ? 0 : col - 1};
         }
         else if (this.BINARY_OPERATORS.includes(item)) {
           this.spliceRow(row, col, 2);
+          return {rowUpdated: true, selectedCol: isAppending ? 0 : col - 1};
         }
-        else if (item === this.ITEMS.UNDERSCORE && this.BINARY_OPERATORS.includes(this.getItem(row, col - 1))) {
-          this.spliceRow(row, col - 1, 2);
+        else if (item === this.ITEMS.UNDERSCORE) {
+          if (this.BINARY_OPERATORS.includes(this.getItem(row, col - 1))) {
+            this.spliceRow(row, col - 1, 2);
+            return {rowUpdated: true, selectedCol: col - 2};
+          } else if (this.UNARY_OPERATORS.includes(this.getItem(row, col - 1))) {
+            this.spliceRow(row, col - 1, 1);
+            return {rowUpdated: true, selectedCol: col - 1};
+          }
         }
         else if (item === this.ITEMS.IF) {
-          this.spliceRow(row, 2, this.getItemCount(row) - 2);
+          this.spliceRow(row, col, this.getItemCount(row) - col);
+          return {rowUpdated: true, selectedCol: 0};
         }
         else {
           const [start, end] = this.getExpressionBounds(row, col);
@@ -853,7 +868,7 @@ class Script {
           //assumes any selection that reaches the first item spans the whole line
           if (start === 1) {
             if (this.getIndentation(row) === 0 && row + 1 === this.getRowCount()) {
-              return Script.RESPONSE.ROW_DELETED;
+              return {rowDeleted: true};
             } else {
               this.spliceRow(row, start, end - start + 1);
             }
@@ -881,12 +896,16 @@ class Script {
             if (funcID > -1) {
               this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
             } else {
-              this.spliceRow(row, start, end - start + 1, this.ITEMS.UNDERSCORE);
+              if (end + 1 === this.getItemCount(row)) {
+                this.spliceRow(row, start, end - start + 1);
+                return {rowUpdated: true, selectedCol: 0};
+              } else {
+                this.spliceRow(row, start, end - start + 1, this.ITEMS.UNDERSCORE);
+              }
             }
           }
+          return {rowUpdated: true, selectedCol: isAppending ? 0 : start};
         }
-
-        return Script.RESPONSE.ROW_UPDATED;
       }
 
       case this.PAYLOADS.UNWRAP_PARENTHESIS: {
@@ -897,7 +916,7 @@ class Script {
         
         this.spliceRow(row, end, 1);
         this.spliceRow(row, start, removeFromBeginning);
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true, selectedCol: col === start ? col : col - 2};
       }
 
       case this.PAYLOADS.FUNCTIONS:
@@ -910,7 +929,7 @@ class Script {
         const [start, end] = this.getExpressionBounds(row, col);
         this.spliceRow(row, end + 1, 0, this.ITEMS.END_SUBEXPRESSION);
         this.spliceRow(row, start, 0, this.ITEMS.START_SUBEXPRESSION);
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true, selectedCol: col + 1};
       }
 
       case this.PAYLOADS.TYPED_VARIABLE_DEFINITION: {
@@ -923,9 +942,9 @@ class Script {
           this.variables.set(varId, {name, type, flag: 1, scope: this.CLASSES.VOID});
           this.pushItems(row, this.ITEMS.VAR, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
 
-          return Script.RESPONSE.ROW_UPDATED | (1 << 24);
+          return {rowUpdated: true, rowsInserted: 1};
         } else {
-          return Script.RESPONSE.NO_CHANGE;
+          return {};
         }
       }
 
@@ -940,9 +959,9 @@ class Script {
           this.setIsStartingScope(row, true);
           this.pushItems(row, this.ITEMS.FUNC, Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: returnType, value: funcId}));
 
-          return Script.RESPONSE.ROW_UPDATED | (2 << 24);
+          return {rowUpdated: true, rowsInserted: 2};
         } else {
-          return Script.RESPONSE.NO_CHANGE;
+          return {};
         }
       }
 
@@ -959,9 +978,9 @@ class Script {
           const func = this.functions.get(funcId);
           func.parameters.push(varMeta)
 
-          return Script.RESPONSE.ROW_UPDATED;
+          return {rowUpdated: true};
         } else {
-          return Script.RESPONSE.NO_CHANGE;
+          return {};
         }
       }
 
@@ -981,12 +1000,22 @@ class Script {
           this.variables.set(value, v);
         }
 
-        return Script.RESPONSE.ROW_UPDATED;
+        return {rowUpdated: true};
       }
 
       default:
-        return Script.RESPONSE.NO_CHANGE;
+        return {};
     }
+  }
+
+  getReturnType(row) {
+    for (let r = row - 1; r >= 0; --r) {
+      if (this.getItem(r, 1) === this.ITEMS.FUNC) {
+        return this.getData(r, 2).meta;
+      }
+    }
+
+    return this.CLASSES.VOID;
   }
 
   getVisibleVariables(row, requiresMutable) {
@@ -1058,7 +1087,7 @@ class Script {
     let start = col;
     let end = col;
 
-    if (this.getData(row, col).data === Script.FUNCTION_REFERENCE) {
+    if (this.getData(row, col).format === Script.FUNCTION_REFERENCE) {
       ++end;
     }
 
@@ -1668,9 +1697,3 @@ class Script {
   Script.KEYWORD             = i++;
   Script.LITERAL             = i++;
 }
-
-Script.RESPONSE = {};
-Script.RESPONSE.NO_CHANGE      = 0;
-Script.RESPONSE.ROW_UPDATED    = 1;
-Script.RESPONSE.ROW_DELETED    = 2;
-Script.RESPONSE.SCRIPT_CHANGED = 4;
