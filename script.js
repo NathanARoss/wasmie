@@ -95,9 +95,9 @@ class Script {
 
     this.ITEMS.EQUALS              = makeSymbol("=");
     this.ITEMS.START_SUBEXPRESSION = makeSymbol("(");
+    this.ITEMS.START_ARGUMENTS     = this.ITEMS.START_SUBEXPRESSION + 1;
     this.ITEMS.END_SUBEXPRESSION   = makeSymbol(")");
-    this.ITEMS.START_ARGUMENTS     = makeSymbol("⟨");
-    this.ITEMS.END_ARGUMENTS       = makeSymbol("⟩");
+    this.ITEMS.END_ARGUMENTS       = this.ITEMS.END_SUBEXPRESSION + 1;
     this.ITEMS.COMMA               = makeSymbol(",");
     this.ITEMS.UNDERSCORE          = makeSymbol("____");
 
@@ -588,7 +588,7 @@ class Script {
       this.spliceRow(row, start, end - start + 1, ...replacementItems);
       
       if (oldItemCount === 1)
-        return {rowUpdated: true, rowsInserted: 1};
+        return {rowUpdated: true, rowsInserted: 1, selectedCol: start + 2};
       else
         return {rowUpdated: true, selectedCol: start + 2};
     }

@@ -140,12 +140,12 @@ function BuiltIns() {
     "?", //first part of ternary conditional operator
     ":", //second part of ternary conditional operator
     "(", //subexpression start
-    "⟨", //function arguments start
+    "(", //function arguments start
     "[", //subscript start
     "【", //array literal start
     "{", //dictionary literal start
     ")", //subexpression end
-    "⟩", //function arguments end
+    ")", //function arguments end
     "]", //subscript end
     "】", //array literal end
     "}", //dictionary literal end
