@@ -125,25 +125,30 @@ function BuiltIns() {
     "+", //string concatenation
     "*", //string repetition
     "U", //union operator
+    "??", //nil-coalescing operator
+    "...", //half-open range operator
+    "..", //closed range operator
+    ":", //range step operator
     "+", //unary operators
     "-",
     "!", //boolean unary operator
     "~", //bitwise unary operator
     "*", //spread operator
-    "(", //misc
-    ")",
-    "[",
-    "]",
-    "{",
-    "}",
-    ".",
-    ",",
-    "____",
-    "?",
-    ":",
-    "??",
-    "...",
-    ".."
+    "____", //misc
+    ",", //argument separator
+    ".", //property accessor
+    "?", //first part of ternary conditional operator
+    ":", //second part of ternary conditional operator
+    "(", //subexpression start
+    "⟨", //function arguments start
+    "[", //subscript start
+    "【", //array literal start
+    "{", //dictionary literal start
+    ")", //subexpression end
+    "⟩", //function arguments end
+    "]", //subscript end
+    "】", //array literal end
+    "}", //dictionary literal end
   ];
   
   this.keywords = [

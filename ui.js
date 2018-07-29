@@ -528,20 +528,19 @@ function closeMenu() {
 }
 
 function menuItemClicked(payload) {
+  const oldItemCount = menu.row < script.getRowCount() ? script.getItemCount(menu.row) : 1;
   let response = script.menuItemClicked(menu.row, menu.col, payload);
 
   if (Array.isArray(response) && response.length > 0) {
     configureMenu(response);
     return;
-  } else if (typeof response === 'number') {
-    if ((response & Script.RESPONSE.ROW_UPDATED) !== 0) {
+  } else  {
+    if ("rowUpdated" in response) {
       if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
         const outerDiv = list.childNodes[menu.row % loadedCount];
         loadRow(menu.row, outerDiv);
         if (menu.col === 0) {
           outerDiv.childNodes[1].scrollLeft = 1e10;
-        } else {
-          menu.col = Math.min(menu.col, script.getItemCount(menu.row) - 1);
         }
         const selectedItem = list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col];
         if (selectedItem)
@@ -550,11 +549,15 @@ function menuItemClicked(payload) {
       }
     }
 
-    if (response >>> 24) {
-      insertRow(menu.row + 1, response >>> 24);
+    if ("rowsInserted" in response) {
+      insertRow(menu.row + 1, response.rowsInserted);
     }
 
-    if (response === Script.RESPONSE.ROW_DELETED) {
+    if ("selectedCol" in response) {
+      itemClicked(menu.row, response.selectedCol);
+    }
+
+    if ("rowDeleted" in response) {
       deleteRow(menu.row);
       menu.col = 0;
       if (menu.row > 0) {
@@ -562,7 +565,7 @@ function menuItemClicked(payload) {
       }
     }
 
-    if (response === Script.RESPONSE.SCRIPT_CHANGED) {
+    if ("scriptChanged" in response) {
       reloadAllRows();
       menu.col = 0;
     }
