@@ -93,11 +93,13 @@ class Script {
     this.ITEMS.RETURN   = makeKeyword("return");
     this.toggles = [this.ITEMS.VAR, this.ITEMS.LET, this.ITEMS.WHILE, this.ITEMS.DO_WHILE, makeKeyword("continue"), makeKeyword("break")];
 
-    this.ITEMS.EQUALS            = makeSymbol("=");
-    this.ITEMS.START_PARENTHESIS = makeSymbol("(");
-    this.ITEMS.END_PARENTHESIS   = makeSymbol(")");
-    this.ITEMS.COMMA             = makeSymbol(",");
-    this.ITEMS.UNDERSCORE        = makeSymbol("____");
+    this.ITEMS.EQUALS              = makeSymbol("=");
+    this.ITEMS.START_SUBEXPRESSION = makeSymbol("(");
+    this.ITEMS.END_SUBEXPRESSION   = makeSymbol(")");
+    this.ITEMS.START_ARGUMENTS     = makeSymbol("⟨");
+    this.ITEMS.END_ARGUMENTS       = makeSymbol("⟩");
+    this.ITEMS.COMMA               = makeSymbol(",");
+    this.ITEMS.UNDERSCORE          = makeSymbol("____");
 
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
@@ -202,10 +204,12 @@ class Script {
 
     this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
     this.BINARY_OPERATORS = new Operator(11, 31);
-    this.UNARY_OPERATORS = new Operator(35, 38);
-    this.OPERATORS = new Operator(0, 38);
+    this.UNARY_OPERATORS = new Operator(39, 42);
     this.ARITHMETIC_OPERATORS = new Operator(11, 23);
     this.COMPARRISON_OPERATORS = new Operator(25, 31);
+    this.START_BRACKETS = new Operator(48, 53);
+    this.END_BRACKETS = new Operator(53, 58);
+    this.OPERATORS = new Operator(0, 42);
 
     this.UNARY_OPERATORS.postfix = " ____"
   }
@@ -350,33 +354,14 @@ class Script {
         }
       }
     } else {
-      if (item === this.ITEMS.START_PARENTHESIS
-      || item === this.ITEMS.END_PARENTHESIS) {
-        let beginParenthesis = col;
-        let depth = 0;
-        while (beginParenthesis > 1) {
-          if (this.getItem(row, beginParenthesis) === this.ITEMS.END_PARENTHESIS) {
-            --depth;
-          }
-  
-          if (this.getItem(row, beginParenthesis) === this.ITEMS.START_PARENTHESIS) {
-            ++depth;
-            if (depth >= 0)
-              break;
-          }
-  
-          --beginParenthesis;
-        }
-
-        if (this.getData(row, beginParenthesis - 1).format !== Script.FUNCTION_REFERENCE) {
-          options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
-        }
-
-        if (item !== this.ITEMS.END_PARENTHESIS)
-          options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
+      if (item === this.ITEMS.START_SUBEXPRESSION
+      || item === this.ITEMS.END_SUBEXPRESSION) {
+        options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
       }
 
-      if (data.format === Script.FUNCTION_REFERENCE)
+      if (data.format === Script.FUNCTION_REFERENCE
+      || item === this.ITEMS.START_SUBEXPRESSION
+      || item === this.ITEMS.START_ARGUMENTS)
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
 
       if (data.format === Script.FUNCTION_DEFINITION) {
@@ -395,13 +380,15 @@ class Script {
       const prevItem = this.getItem(row, col - 1);
       const prevData = Script.getItemData(prevItem);
 
-      if (item !== this.ITEMS.END_PARENTHESIS
+      if (item !== this.ITEMS.END_SUBEXPRESSION
+      && item !== this.ITEMS.END_ARGUMENTS
       && (this.OPERATORS.includes(prevItem)
       || prevItem === this.ITEMS.WHILE
       || prevItem === this.ITEMS.DO_WHILE
       || prevItem === this.ITEMS.SWITCH
       || prevItem === this.ITEMS.IF
-      || prevItem === this.ITEMS.START_PARENTHESIS
+      || prevItem === this.ITEMS.START_SUBEXPRESSION
+      || prevItem === this.ITEMS.START_ARGUMENTS
       || prevItem === this.ITEMS.COMMA
       || prevItem === this.ITEMS.IN
       || prevItem === this.ITEMS.RETURN)) {
@@ -417,14 +404,16 @@ class Script {
 
       if (data.format === Script.VARIABLE_REFERENCE
       || data.format === Script.LITERAL
-      || item === this.ITEMS.END_PARENTHESIS) {
+      || item === this.ITEMS.END_SUBEXPRESSION
+      || item === this.ITEMS.END_ARGUMENTS) {
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
         options.push(...this.ARITHMETIC_OPERATORS.getMenuItems());
         options.push(...this.COMPARRISON_OPERATORS.getMenuItems());
       }
       else if (prevData.format === Script.VARIABLE_REFERENCE
       || prevData.format === Script.LITERAL
-      || prevItem === this.ITEMS.END_PARENTHESIS) {
+      || prevItem === this.ITEMS.END_SUBEXPRESSION
+      || prevItem === this.ITEMS.END_ARGUMENTS) {
         options.push(...this.ARITHMETIC_OPERATORS.getMenuItems());
         options.push(...this.COMPARRISON_OPERATORS.getMenuItems());
       }
@@ -585,8 +574,8 @@ class Script {
         replacementItems.push(Script.makeItem({format: Script.ARGUMENT_HINT, meta: i, value: payloadData.value}));
       }
 
-      replacementItems[1] = this.ITEMS.START_PARENTHESIS;
-      replacementItems.push(this.ITEMS.END_PARENTHESIS);
+      replacementItems[1] = this.ITEMS.START_ARGUMENTS;
+      replacementItems.push(this.ITEMS.END_ARGUMENTS);
 
       this.appendRowsUpTo(row);
       const oldItemCount = this.getItemCount(row);
@@ -688,13 +677,13 @@ class Script {
   
           this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.IN,
             Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.RANGE).scope, value: this.FUNCS.RANGE}),
-            this.ITEMS.START_PARENTHESIS,
+            this.ITEMS.START_ARGUMENTS,
             Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.RANGE}),
             this.ITEMS.COMMA,
             Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.RANGE}),
             this.ITEMS.COMMA,
             Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.RANGE}),
-            this.ITEMS.END_PARENTHESIS);
+            this.ITEMS.END_ARGUMENTS);
           return Script.RESPONSE.ROW_UPDATED | (2 << 24);
         }
 
@@ -874,8 +863,8 @@ class Script {
 
             const nextItem = this.getItem(row, end + 1);
             const prevItem = this.getItem(row, start - 1);
-            if ((nextItem === this.ITEMS.COMMA || nextItem === this.ITEMS.END_PARENTHESIS)
-            && (prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.START_PARENTHESIS)) {
+            if ((nextItem === this.ITEMS.COMMA || nextItem === this.ITEMS.END_ARGUMENTS)
+            && (prevItem === this.ITEMS.COMMA || prevItem === this.ITEMS.START_ARGUMENTS)) {
               for (let c = start - 1; c > 0; --c) {
                 const data = this.getData(row, c);
                 if (data.format === Script.FUNCTION_REFERENCE) {
@@ -919,8 +908,8 @@ class Script {
 
       case this.PAYLOADS.WRAP_IN_PARENTHESIS: {
         const [start, end] = this.getExpressionBounds(row, col);
-        this.spliceRow(row, end + 1, 0, this.ITEMS.END_PARENTHESIS);
-        this.spliceRow(row, start, 0, this.ITEMS.START_PARENTHESIS);
+        this.spliceRow(row, end + 1, 0, this.ITEMS.END_SUBEXPRESSION);
+        this.spliceRow(row, start, 0, this.ITEMS.START_SUBEXPRESSION);
         return Script.RESPONSE.ROW_UPDATED;
       }
 
@@ -1069,47 +1058,47 @@ class Script {
     let start = col;
     let end = col;
 
-    const item = this.getItem(row, col);
-    const data = Script.getItemData(item);
-
-    if (data.format === Script.FUNCTION_REFERENCE || item === this.ITEMS.START_PARENTHESIS) {
-      let depth = 0;
-      while (end < this.getItemCount(row)) {
-        if (this.getItem(row, end) === this.ITEMS.START_PARENTHESIS) {
-          ++depth;
-        }
-
-        if (this.getItem(row, end) === this.ITEMS.END_PARENTHESIS) {
-          --depth;
-          if (depth === 0)
-            break;
-        }
-
-        ++end;
-      }
+    if (this.getData(row, col).data === Script.FUNCTION_REFERENCE) {
+      ++end;
     }
 
-    if (item === this.ITEMS.END_PARENTHESIS) {
+    let step = 0;
+    let symbol = this.getItem(row, end);
+    let matchingSymbol = symbol;
+
+    if (this.START_BRACKETS.includes(symbol)) {
+      step = 1;
+      matchingSymbol = symbol + 5;
+    } else if (this.END_BRACKETS.includes(symbol)) {
+      step = -1;
+      matchingSymbol = symbol - 5;
+    }
+
+    if (step !== 0) {
+      let matchingIndex = end;
       let depth = 0;
-      while (start > 1) {
-        if (this.getItem(row, start) === this.ITEMS.END_PARENTHESIS) {
+      while (matchingIndex > 1 && matchingIndex < this.getItemCount(row)) {
+        if (this.getItem(row, matchingIndex) === symbol) {
           ++depth;
         }
 
-        if (this.getItem(row, start) === this.ITEMS.START_PARENTHESIS) {
+        if (this.getItem(row, matchingIndex) === matchingSymbol) {
           --depth;
           if (depth === 0)
             break;
         }
 
-        --start;
+        matchingIndex += step;
+      }
+
+      if (step < 0) {
+        start = matchingIndex;
+      } else {
+        end = matchingIndex;
       }
     }
 
     if (this.getData(row, start - 1).format === Script.FUNCTION_REFERENCE)
-      --start;
-
-    if (this.UNARY_OPERATORS.includes(this.getItem(row, start - 1)))
       --start;
 
     return [start, end];
