@@ -254,12 +254,6 @@ function selectProject(event) {
 function deleteProject(event) {
   const entry = this.parentElement;
   const id = entry.projectId;
-
-  if (script.projectID === id) {
-    if (!confirm("Delete active project?")) {
-      return;
-    }
-  }
   
   performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
     objStore.delete(id).onsuccess = function(event) {
@@ -279,27 +273,9 @@ function deleteProject(event) {
     objStore.count().onsuccess = function(event) {
       if (event.target.result === 0) {
         window.history.back();
-        setTimeout(deleteProjectListDatabase, 1);
       }
     }
   });
-}
-
-function deleteProjectListDatabase() {
-  console.log("delete request");
-
-  //if every project is deleted, delete the database so the project ID counter resets
-  //NOTE: the counter does not reset on iOS
-  let request = indexedDB.deleteDatabase("TouchScript-project-list");
-
-  request.onblocked = function(event) {
-    console.log("blocked: " + event);
-    location.reload();
-  };
-  
-  request.onsuccess = function(event) {
-    console.log("Success deleting database");
-  };
 }
 
 function renameProject(event) {
@@ -327,7 +303,7 @@ function performActionOnProjectListDatabase(mode, action) {
   openRequest.onupgradeneeded = function(event) {
     console.log("upgrading project list database");
     let db = event.target.result;
-    db.createObjectStore("project-list", {keyPath: "id", autoIncrement: true});
+    db.createObjectStore("project-list", {keyPath: "id"});
   };
   openRequest.onsuccess = function(event) {
     //console.log("Successfully opened project list database in " + mode + " mode");
@@ -713,14 +689,26 @@ function touchMoved(outerDiv, touch) {
 function touchEnded(outerDiv, touch) {
   if (outerDiv.touchCaptured) {
     const position = outerDiv.childNodes[1].position;
-    if (position <= script.getRowCount()) {
-      let travel = touch.pageX - outerDiv.touchStartX;
-      
-      if (travel > 200) {
-        if (position < script.getRowCount())
-          deleteRow(position);
-      } else if (travel > 80) {
+    const travel = touch.pageX - outerDiv.touchStartX;
+    
+    if (travel > 200) {
+      if (position < script.getRowCount()) {
+        deleteRow(position);
+        if (position === menu.row) {
+          menu.col = 0;
+        } else if (menu.row > position) {
+          --menu.row;
+        }
+        itemClicked(menu.row, menu.col);
+      }
+    }
+    else if (travel > 80) {
+      if (position <= script.getRowCount()) {
         insertRow(position);
+        if (menu.row >= position) {
+          ++menu.row;
+        }
+        itemClicked(menu.row, menu.col);
       }
     }
   }
