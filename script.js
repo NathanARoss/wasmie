@@ -19,6 +19,7 @@ class Script {
         if (this.isUserDefined(id)) {
           this.data[id + this.builtinCount] = undefined;
           this.gaps.push(id);
+          this.gaps.sort();
           parent.modifyObjStore(this.storeName, IDBObjectStore.prototype.delete, id);
         }
       }
@@ -1505,48 +1506,45 @@ class Script {
             objStore.put(projectListing);
             this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
           } else {
-            //project ID is not known until after it's inserted into the DB
-            const now = new Date();
-            const newProject = {name: `Unnamed`, created: now, lastModified: now};
-      
-            objStore.add(newProject).onsuccess = (event) => {
-              console.log("Successfully created new project listing.  ID is", event.target.result);
-              this.projectID = event.target.result;
-              localStorage.setItem(ACTIVE_PROJECT_KEY, event.target.result);              
-
-              //update the project's default name to contain its ID
-              performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
-                objStore.get(this.projectID).onsuccess = (event) => {
-                  const thisProject = event.target.result;
-                  thisProject.name = `Project ${this.projectID}`
-                  objStore.put(thisProject);
-                }
-              });
-
-              function saveAllMetadata(container) {
-                for (let id = container.builtinCount; id < container.data.length; ++id) {
-                  const meta = container.data[id];
-                  if (meta) {
-                    this.put(typeof meta === "string" ? meta : meta.name, id - container.builtinCount);
-                  }
-                }
-              };
-
-              this.queuedDBwrites = {scope: new Set(), actions: []};
-
-              for (let container of [this.variables, this.classes, this.functions, this.literals]) {
-                this.queuedDBwrites.scope.add(container.storeName);
-                this.queuedDBwrites.actions.push({storeName: container.storeName, arguments: [container], function: saveAllMetadata});
+            objStore.getAllKeys().onsuccess = (event) => {
+              let id = 1;
+              while (event.target.result[id - 1] === id) {
+                ++id;
               }
 
-              this.queuedDBwrites.scope.add("lines");
-              this.queuedDBwrites.actions.push({storeName: "lines", arguments: [this.lines, this.lineKeys], function: function(lines, lineKeys) {
-                for (let i = 0; i < lines.length; ++i) {
-                  this.put(lines[i], lineKeys[i]);
-                }
-              }});
+              const now = new Date();
+              const newProject = {id, name: `Project ${id}`, created: now, lastModified: now};
+        
+              objStore.put(newProject).onsuccess = (event) => {
+                console.log("Successfully created new project listing.  ID is", event.target.result);
+                this.projectID = event.target.result;
+                localStorage.setItem(ACTIVE_PROJECT_KEY, event.target.result);
 
-              this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
+                function saveAllMetadata(container) {
+                  for (let id = container.builtinCount; id < container.data.length; ++id) {
+                    const meta = container.data[id];
+                    if (meta) {
+                      this.put(typeof meta === "string" ? meta : meta.name, id - container.builtinCount);
+                    }
+                  }
+                };
+
+                this.queuedDBwrites = {scope: new Set(), actions: []};
+
+                for (let container of [this.variables, this.classes, this.functions, this.literals]) {
+                  this.queuedDBwrites.scope.add(container.storeName);
+                  this.queuedDBwrites.actions.push({storeName: container.storeName, arguments: [container], function: saveAllMetadata});
+                }
+
+                this.queuedDBwrites.scope.add("lines");
+                this.queuedDBwrites.actions.push({storeName: "lines", arguments: [this.lines, this.lineKeys], function: function(lines, lineKeys) {
+                  for (let i = 0; i < lines.length; ++i) {
+                    this.put(lines[i], lineKeys[i]);
+                  }
+                }});
+
+                this.performTransaction(this.queuedDBwrites.scope, "readwrite", this.queuedDBwrites.actions);
+              }
             }
           }
         }
