@@ -739,68 +739,7 @@ function* stride(start, end, by) {
   }
 }
 
-function print(value, terminator, wordWrap) {
-  const textNode = document.createTextNode(value + terminator);
-
-  if (wordWrap) {
-    const span = document.createElement("SPAN");
-    span.classList.add('wordwrap');
-    span.appendChild(textNode);
-    consoleOutput.appendChild(span);
-  } else {
-    consoleOutput.appendChild(textNode);
-  }
+function print(value) {
+  const textNode = document.createTextNode(value);  
+  consoleOutput.appendChild(textNode);
 }
-
-// let httpRequest = new XMLHttpRequest();
-// httpRequest.open("GET", "https://api.github.com/gists/2e3aa951f6c3bc5e25f62055075fd67b");
-// httpRequest.onreadystatechange = function() {
-//   if (httpRequest.readyState === XMLHttpRequest.DONE) {
-//       if (httpRequest.status === 200) {
-//         console.log(httpRequest.responseText);
-//       } else {
-//           // There was a problem with the request.
-//           // For example, the response may have a 404 (Not Found)
-//           // or 500 (Internal Server Error) response code.
-//       }
-//   } else {
-//       // Not ready yet.
-//   }
-// }
-// httpRequest.send();
-
-
-
-// let postData = {};
-// postData.description = "New test gist";
-// postData.files = {};
-// postData.files["Jeff"] = {content: "A new challenger"};
-
-// let token = localStorage.getItem("access-token");
-// if (!token) {
-//   token = prompt("Enter GitHub authorization token with gist permission");
-// }
-
-// let httpRequest = new XMLHttpRequest();
-// httpRequest.open("POST", "https://api.github.com/gists");
-// httpRequest.setRequestHeader('Authorization', 'token ' + token);
-// httpRequest.onreadystatechange = function() {
-//   console.log("readyState: " + httpRequest.readyState);
-
-//   if (httpRequest.readyState === XMLHttpRequest.DONE) {
-//     if (httpRequest.status === 200 || httpRequest.status === 201) {
-//       console.log("status: " + httpRequest.status + "\n" + JSON.parse(httpRequest.responseText));
-//       localStorage.setItem("access-token", token);
-//     }
-
-//     else if (httpRequest.status === 401) {
-//       localStorage.removeItem("access-token");
-//       alert("Acces token is no longer valid.  Forgetting token.");
-//     }
-
-//     else {
-//       alert("status: " + httpRequest.status + "\n" + httpRequest.responseText);
-//     }
-//   }
-// }
-// httpRequest.send(JSON.stringify(postData));

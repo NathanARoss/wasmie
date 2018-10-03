@@ -31,7 +31,6 @@ function BuiltIns() {
   this.variables = [
     {name: "E",        type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.E"},
     {name: "PI",       type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.PI"},
-    {name: "non-breaking space", type: classMap.get("String"), scope: classMap.get("System"), js: '"\xa0"'},
   ].reverse();
   
   function parseFunction(js, returnType, scope, name, ...parameters) {
@@ -87,7 +86,7 @@ function BuiltIns() {
     parseFunction("Math.round", "Double", "Math", "round", "Double", "number", undefined),
     parseFunction("Math.floor", "Double", "Math", "floor", "Double", "number", undefined),
     parseFunction("Math.ceil", "Double", "Math", "ceil", "Double", "number", undefined),
-    parseFunction("print", "void", "System", "print", "Any", "item", "", "String", "terminator", "\n", "Boolean", "word wrap", false),
+    parseFunction("print", "void", "System", "print", "Any", "item", undefined),
   ].reverse();
   
   this.symbols = [
@@ -122,33 +121,18 @@ function BuiltIns() {
     "<",
     ">=",
     "<=",
-    "+", //string concatenation
-    "*", //string repetition
-    "U", //union operator
-    "??", //nil-coalescing operator
-    "...", //half-open range operator
-    "..", //closed range operator
-    ":", //range step operator
+    "..", //half-open range operator
+    "..=", //closed range operator
     "+", //unary operators
-    "-",
-    "!", //boolean unary operator
-    "~", //bitwise unary operator
-    "*", //spread operator
+    "-", //arithmetic negation operator
+    "!", //binary negation operator
     "____", //misc
     ",", //argument separator
     ".", //property accessor
-    "?", //first part of ternary conditional operator
-    ":", //second part of ternary conditional operator
     "(", //subexpression start
     "(", //function arguments start
-    "[", //subscript start
-    "【", //array literal start
-    "{", //dictionary literal start
     ")", //subexpression end
     ")", //function arguments end
-    "]", //subscript end
-    "】", //array literal end
-    "}", //dictionary literal end
   ];
   
   this.keywords = [

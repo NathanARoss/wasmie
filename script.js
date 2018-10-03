@@ -205,12 +205,12 @@ class Script {
 
     this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
     this.BINARY_OPERATORS = new Operator(11, 31);
-    this.UNARY_OPERATORS = new Operator(39, 42);
+    this.UNARY_OPERATORS = new Operator(33, 36);
     this.ARITHMETIC_OPERATORS = new Operator(11, 23);
     this.COMPARRISON_OPERATORS = new Operator(25, 31);
-    this.START_BRACKETS = new Operator(48, 53);
-    this.END_BRACKETS = new Operator(53, 58);
-    this.OPERATORS = new Operator(0, 42);
+    this.START_BRACKETS = new Operator(39, 41);
+    this.END_BRACKETS = new Operator(41, 43);
+    this.OPERATORS = new Operator(0, 36);
 
     this.UNARY_OPERATORS.postfix = " ____"
   }

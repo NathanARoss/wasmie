@@ -299,10 +299,6 @@ button {
   height: 100%;
 }
 
-span.wordwrap {
-  white-space: pre-wrap;
-}
-
 #list {
   width: 100%;
   transition: width 0.25s;
