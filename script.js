@@ -689,8 +689,6 @@ class Script {
             Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.RANGE}),
             this.ITEMS.COMMA,
             Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.RANGE}),
-            this.ITEMS.COMMA,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.RANGE}),
             this.ITEMS.END_ARGUMENTS);
           return {rowUpdated: true, rowsInserted: 2, selectedCol: 8};
         }

@@ -66,7 +66,7 @@ function BuiltIns() {
   
   /* The .js property prepresents the equivalent javascript function to use when translating. */
   this.functions = [
-    parseFunction("stride", "Iterable", "Iterable", "range", "Int32", "start", 0, "Int32", "end", undefined, "Int32", "step", 1),
+    parseFunction("stride", "Iterable", "Iterable", "range", "Int32", "start", 0, "Int32", "end", undefined),
     parseFunction("Math.cos", "Double", "Math", "cos", "Double", "angle", undefined),
     parseFunction("Math.sin", "Double", "Math", "sin", "Double", "angle", undefined),
     parseFunction("Math.tan", "Double", "Math", "tan", "Double", "angle", undefined),

@@ -726,17 +726,9 @@ function touchCanceled(outerDiv) {
 }
 
 
-function* stride(start, end, by) {
-  if (by === 0)
-    return;
-  
-  by = Math.abs(by);
-
-  if (start < end) {
-    for (let i = start; i < end; i += by) yield i;
-  } else {
-    for (let i = start; i > end; i -= by) yield i;
-  }
+function* stride(start, end) {
+  for (let i = start; i < end; ++i)
+    yield i;
 }
 
 function print(value) {
