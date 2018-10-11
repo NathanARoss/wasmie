@@ -64,7 +64,7 @@ viewCodeButton.addEventListener("click", function(event) {
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
-  alert(script.getJavaScript());
+  //alert(script.getJavaScript());
 });
 
 menu.addEventListener("touchstart", function(event) {
@@ -171,8 +171,12 @@ window.onpopstate = function(event) {
   }
   else if (event.state.action === "run") {    
     try {
-      const js = script.getJavaScript();
-      (new Function(js)) ();
+      const wasm = script.getWasm();
+      const imports = { debugging: { println: arg1 => print(arg1 + "\n") } };
+      WebAssembly.compile(wasm)
+      .then(m => new WebAssembly.Instance(m, imports))
+      .then(instance => instance.exports.init())
+      .catch(error => console.log(error));
     } catch (e) {
       //alert(e);
       console.log(e);

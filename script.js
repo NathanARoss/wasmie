@@ -1551,133 +1551,136 @@ class Script {
   }
 
   /*
-  Generates a Function object from the binary script.
-  Run the function with an object argument to attach .initialize(), .onResize(), and .onDraw() to the object
+  Generates a Wasm binary from the script contents
   */
-  getJavaScript() {
-    let js = "";
-    for (let row = 0; row < this.getRowCount(); ++row) {
-      let indentation = this.getIndentation(row);
-      js += " ".repeat(indentation);
+  getWasm() {
+    //language types
+    const i32 = 0x7F;
+    const i64 = 0x7E;
+    const f32 = 0x7D;
+    const f64 = 0x7C;
+    const anyfunc = 0x70;
+    const func = 0x60;
 
-      let needsEndParenthesis = false;
-      let needsEndColon = false;
-      let needsCommas = false;
+    //section codes
+    const TYPE = 1;
+    const IMPORT = 2;
+    const FUNCTION = 3;
+    const TABLE = 4;
+    const MEMORY = 5;
+    const GLOBAL = 6;
+    const EXPORT = 7;
+    const START = 8;
+    const ELEMENT = 9;
+    const CODE = 10;
+    const DATA = 11;
 
-      //check the first symbol
-      let firstItem = this.getItem(row, 1);
-      const firstData = this.getData(row, 1);
-      if (firstItem === this.ITEMS.CASE || firstItem === this.ITEMS.DEFAULT) {
-        needsEndColon = true;
-      } else if (firstData.format === Script.KEYWORD) {
-        if (this.keywords[firstData.value].js.endsWith("(")) {
-          needsEndParenthesis = true;
-        }
-      }
+    let typeSection = [];
+    typeSection.push(2); //count of type entries
 
-      for (let col = 1, end = this.getItemCount(row); col < end; ++col) {
-        const {format, meta, value} = this.getData(row, col);
+    typeSection.push(func); //the form of the type
+    typeSection.push(0x00); //parameter count TODO should be varuint32
+    typeSection.push(0); //return count (0 or 1)
 
-        //append an end parenthesis to the end of the line
-        switch (format) {
-          case Script.VARIABLE_DEFINITION:
-          case Script.VARIABLE_REFERENCE:
-            if ("js" in this.variables.get(value)) {
-              js += this.variables.get(value).js;
-            } else {
-              js += `v${value}`;
-            }
-            
-            js += (needsCommas) ? ", " : " ";
-            break;
+    typeSection.push(func); //the form of the type
+    typeSection.push(0x01); //parameter count TODO should be varuint32
+    typeSection.push(i32); //parameter types
+    typeSection.push(0); //return count (0 or 1)
 
-          case Script.FUNCTION_DEFINITION:
-          {
-            let func = this.functions.get(value);
+    let importSection = [];
+    importSection.push(1); //count of things to import
+    importSection.push("debugging".length);
+    importSection.push(...Script.getStringBytes("debugging"));
+    importSection.push("println".length);
+    importSection.push(...Script.getStringBytes("println"));
+    importSection.push(0); //importing a function
+    importSection.push(1); //index of the function we declared in the TYPE section
 
-            if ("js" in func) {
-              js += `${func.js} = function ( `;
-            }
-            else {
-              js += `function f${value} (`;
-            }
+    let functionSection = [];
+    functionSection.push(1); //count of function
+    functionSection.push(0); //indicies of types that refine the functions
 
-            needsEndParenthesis = true;
-            needsCommas = true;
-            break;
-          }
+    let memorySection = [];
+    memorySection.push(1); //defines 1 memory
+    memorySection.push(1); //max pages is defined
+    memorySection.push(1); //initially 1 page allocated TODO use varuint32
+    memorySection.push(1); //max 1 page of memory TODO use varuint32
 
-          case Script.FUNCTION_REFERENCE:
-          {
-            let func = this.functions.get(value);
-            let funcName;
-            if ("js" in func) {
-              funcName = func.js;
-            }
-            else {
-              funcName = `f${value}`;
-            }
-            js += `${funcName} `;
-            break;
-          }
+    let exportSection = [];
+    exportSection.push(2); //count of exports
 
-          case Script.ARGUMENT_HINT: {
-            let val = this.functions.get(value).parameters[meta].default;
-            if (typeof val === "string") {
-              val = `"${val.replace("\n", "\\n")}"`;
-            }
+    exportSection.push("init".length); //length of function name
+    exportSection.push(...Script.getStringBytes("init")); //bytes of function name
+    exportSection.push(0); //exporting a function (as opposed to a table or memory)
+    exportSection.push(0); //exporting function 0
 
-            js += `${val} `;
-            break;
-          }
+    exportSection.push("mem".length); //name length of export
+    exportSection.push(...Script.getStringBytes("mem")); //bytes of export name
+    exportSection.push(2); //exporting a memory
+    exportSection.push(0); //exporting memory 0
 
-          case Script.SYMBOL:
-            js += `${this.symbols[value]} `;
-            break;
+    //opcodes
+    const GET_LOCAL = 0x20;
+    const i32_CONST = 0x41;
+    const i32_ADD = 0x6a;
+    const END = 0x0b;
+    const CALL = 0x10;
+    const DROP = 0x1A;
 
-          case Script.KEYWORD:
-            js += `${this.keywords[value].js} `;
-            break;
+    let codeSection = [];
+    codeSection.push(1); //count of functions to define
 
-          case Script.LITERAL:
-            if (meta === 1)
-              js += `"${this.literals.get(value)}" `;
-            else
-              js += `${this.literals.get(value)} `;
-            break;
+    let addFunction = [];
+    addFunction.push(0); //count of local entries
+    addFunction.push(i32_CONST, 0x05);
+    addFunction.push(i32_CONST, 0x06);
+    addFunction.push(CALL, 1);
+    addFunction.push(DROP);
+    addFunction.push(DROP);
+    addFunction.push(END);
 
-          default:
-            js += `/*format ${format}*/ `;
-        }
-      }
+    codeSection.push(addFunction.length);
+    codeSection.push(...addFunction);
 
-      if (needsEndParenthesis)
-        js += ") ";
 
-      if (needsEndColon)
-        js += ": ";
+    let wasm = [];
+    wasm.push(0x00, 0x61, 0x73, 0x6d); //magic numbers
+    wasm.push(0x01, 0x00, 0x00, 0x00); //binary version
 
-      if (this.isStartingScope(row))
-        js += "{ ";
+    wasm.push(TYPE); //id of section
+    wasm.push(typeSection.length); //size in bytes of section TODO use varuint32
+    wasm.push(...typeSection);
 
-      if (row < this.getRowCount() - 1) {
-        let nextIndentation = this.getIndentation(row + 1);
-        let expectedIndentation = indentation + this.isStartingScope(row);
-        if (nextIndentation < expectedIndentation) {
-          js += "}".repeat(expectedIndentation - nextIndentation);
-        }
-      }
+    wasm.push(IMPORT); //id of section
+    wasm.push(importSection.length); //size in bytes of section TODO use varuint32
+    wasm.push(...importSection);
 
-      js += "\n";
-    }
+    //console.log("length before functions", wasm.length);
+    wasm.push(FUNCTION); //id of section
+    wasm.push(functionSection.length); //size in bytes of section TODO use varuint32
+    wasm.push(...functionSection);
 
-    if (this.getRowCount() > 0) {
-      let lastIndentation = this.getIndentation(this.getRowCount() - 1);
-      if (lastIndentation > 0)
-        js += "}".repeat(lastIndentation);
-    }
+    //console.log("length before memory", wasm.length);
+    wasm.push(MEMORY); //id of section
+    wasm.push(memorySection.length); //size in bytes of section TODO use varuint32
+    wasm.push(...memorySection);
 
-    return js;
+    //console.log("length before exports", wasm.length);
+    wasm.push(EXPORT); //id of section
+    wasm.push(exportSection.length); //size in bytes of section TODO use varuint32
+    wasm.push(...exportSection);
+
+    //console.log("length before code", wasm.length);
+    wasm.push(CODE); //id of section
+    wasm.push(codeSection.length); //size in bytes of section TODO use varuint32
+    wasm.push(...codeSection);
+
+    return (new Uint8Array(wasm)).buffer;
+  }
+
+  //converts a string into an array of ASCII bytes
+  static getStringBytes(string) {
+    return string.split('').map(a => a.charCodeAt());
   }
 }
 
