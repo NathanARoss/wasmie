@@ -170,19 +170,22 @@ window.onpopstate = function(event) {
     document.title = "TouchScript"
   }
   else if (event.state.action === "run") {    
-    try {
+    // try {
       const wasm = script.getWasm();
-      const imports = { debugging: { println: arg1 => print(arg1 + "\n") } };
+      const enviornment = new RuntimeEnvironment();
       WebAssembly.compile(wasm)
-      .then(m => new WebAssembly.Instance(m, imports))
-      .then(instance => instance.exports.init())
+      .then(m => new WebAssembly.Instance(m, enviornment))
+      .then(instance => {
+        enviornment.setMemory(instance.exports.mem);
+        instance.exports.init();
+      })
       .catch(error => console.log(error));
-    } catch (e) {
-      //alert(e);
-      console.log(e);
-      history.back();
-      return;
-    }
+    // } catch (e) {
+    //   //alert(e);
+    //   console.log(e);
+    //   history.back();
+    //   return;
+    // }
     
     editor.style.display = "none";
     runtime.style.display = "";

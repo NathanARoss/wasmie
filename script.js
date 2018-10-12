@@ -1575,49 +1575,51 @@ class Script {
     const CODE = 10;
     const DATA = 11;
 
-    let typeSection = [];
-    typeSection.push(2); //count of type entries
+    let typeSection = [
+      ...Script.varuint(2), //count of type entries
+    
+      func, //the form of the type
+      ...Script.varuint(0), //parameter count
+      0, //return count (0 or 1)
+    
+      func, //the form of the type
+      ...Script.varuint(2), //parameter count
+      i32, i32, //parameter types
+      0, //return count (0 or 1)  
+    ];
 
-    typeSection.push(func); //the form of the type
-    typeSection.push(0x00); //parameter count TODO should be varuint32
-    typeSection.push(0); //return count (0 or 1)
+    let importSection = [
+      1, //count of things to import
+      ...Script.getStringBytes("debugging"),
+      ...Script.getStringBytes("println"),
+      0, //importing a function
+      1, //index of the function signiture we defined in the TYPE section
+    ];
 
-    typeSection.push(func); //the form of the type
-    typeSection.push(0x01); //parameter count TODO should be varuint32
-    typeSection.push(i32); //parameter types
-    typeSection.push(0); //return count (0 or 1)
+    let functionSection = [
+      ...Script.varuint(1), //count of function
+      ...Script.varuint(0), //indicies of types that define the functions  
+    ];
 
-    let importSection = [];
-    importSection.push(1); //count of things to import
-    importSection.push("debugging".length);
-    importSection.push(...Script.getStringBytes("debugging"));
-    importSection.push("println".length);
-    importSection.push(...Script.getStringBytes("println"));
-    importSection.push(0); //importing a function
-    importSection.push(1); //index of the function we declared in the TYPE section
 
-    let functionSection = [];
-    functionSection.push(1); //count of function
-    functionSection.push(0); //indicies of types that refine the functions
+    let memorySection = [
+      1, //defines 1 memory
+      1, //flag that max pages is defined
+      ...Script.varuint(1), //initially 1 page allocated
+      ...Script.varuint(1), //max 1 page of memory
+    ];
 
-    let memorySection = [];
-    memorySection.push(1); //defines 1 memory
-    memorySection.push(1); //max pages is defined
-    memorySection.push(1); //initially 1 page allocated TODO use varuint32
-    memorySection.push(1); //max 1 page of memory TODO use varuint32
+    let exportSection = [
+      ...Script.varuint(2), //count of exports
 
-    let exportSection = [];
-    exportSection.push(2); //count of exports
-
-    exportSection.push("init".length); //length of function name
-    exportSection.push(...Script.getStringBytes("init")); //bytes of function name
-    exportSection.push(0); //exporting a function (as opposed to a table or memory)
-    exportSection.push(0); //exporting function 0
-
-    exportSection.push("mem".length); //name length of export
-    exportSection.push(...Script.getStringBytes("mem")); //bytes of export name
-    exportSection.push(2); //exporting a memory
-    exportSection.push(0); //exporting memory 0
+      ...Script.getStringBytes("init"), //length and bytes of function name
+      0, //exporting a function (as opposed to a table or memory)
+      ...Script.varuint(1), //exporting function 1
+  
+      ...Script.getStringBytes("mem"), //length and bytes of export name
+      2, //exporting a memory
+      0, //exporting memory 0
+    ];
 
     //opcodes
     const GET_LOCAL = 0x20;
@@ -1626,61 +1628,110 @@ class Script {
     const END = 0x0b;
     const CALL = 0x10;
     const DROP = 0x1A;
+    const i32_STORE = 0x36;
+    const i32_STORE8 = 0x3a;
 
-    let codeSection = [];
-    codeSection.push(1); //count of functions to define
+    let addFunction = [
+      0, //count of local entries
+    ];
+    
+    const helloWorld = "Test string that may or may not be meaningful to any person.\n1234567890!@#$%^&*()\n-=_+`~[]{};':\",./<>?".split('').map(a => a.charCodeAt());
+    for (let i = 0; i < helloWorld.length; ++i) {
+      addFunction.push(
+        i32_CONST, ...Script.varint(i), //address
+        i32_CONST, ...Script.varint(helloWorld[i]), //value
+        i32_STORE8, 0, ...Script.varuint(0), //store byte alligned with offset 0
+      )
+    }
+    
+    addFunction.push(
+      i32_CONST, 0x00,
+      i32_CONST, ...Script.varint(helloWorld.length),
+      CALL, 0,
+      END,
+    );
 
-    let addFunction = [];
-    addFunction.push(0); //count of local entries
-    addFunction.push(i32_CONST, 0x05);
-    addFunction.push(i32_CONST, 0x06);
-    addFunction.push(CALL, 1);
-    addFunction.push(DROP);
-    addFunction.push(DROP);
-    addFunction.push(END);
+    let codeSection = [
+      1, //count of functions to define
+      ...Script.varuint(addFunction.length),
+      ...addFunction,
+    ];
 
-    codeSection.push(addFunction.length);
-    codeSection.push(...addFunction);
-
-
-    let wasm = [];
-    wasm.push(0x00, 0x61, 0x73, 0x6d); //magic numbers
-    wasm.push(0x01, 0x00, 0x00, 0x00); //binary version
-
-    wasm.push(TYPE); //id of section
-    wasm.push(typeSection.length); //size in bytes of section TODO use varuint32
-    wasm.push(...typeSection);
-
-    wasm.push(IMPORT); //id of section
-    wasm.push(importSection.length); //size in bytes of section TODO use varuint32
-    wasm.push(...importSection);
-
-    //console.log("length before functions", wasm.length);
-    wasm.push(FUNCTION); //id of section
-    wasm.push(functionSection.length); //size in bytes of section TODO use varuint32
-    wasm.push(...functionSection);
-
-    //console.log("length before memory", wasm.length);
-    wasm.push(MEMORY); //id of section
-    wasm.push(memorySection.length); //size in bytes of section TODO use varuint32
-    wasm.push(...memorySection);
-
-    //console.log("length before exports", wasm.length);
-    wasm.push(EXPORT); //id of section
-    wasm.push(exportSection.length); //size in bytes of section TODO use varuint32
-    wasm.push(...exportSection);
-
-    //console.log("length before code", wasm.length);
-    wasm.push(CODE); //id of section
-    wasm.push(codeSection.length); //size in bytes of section TODO use varuint32
-    wasm.push(...codeSection);
+    
+    let wasm = [
+      0x00, 0x61, 0x73, 0x6d, //magic numbers
+      0x01, 0x00, 0x00, 0x00, //binary version
+  
+      TYPE, //id of section
+      ...Script.varuint(typeSection.length), //size in bytes of section
+      ...typeSection,
+  
+      IMPORT,
+      ...Script.varuint(importSection.length),
+      ...importSection,
+  
+      FUNCTION,
+      ...Script.varuint(functionSection.length),
+      ...functionSection,
+  
+      MEMORY,
+      ...Script.varuint(memorySection.length),
+      ...memorySection,
+  
+      EXPORT,
+      ...Script.varuint(exportSection.length),
+      ...exportSection,
+  
+      CODE,
+      ...Script.varuint(codeSection.length),
+      ...codeSection,
+    ];
+    
+    console.log(wasm);
 
     return (new Uint8Array(wasm)).buffer;
   }
 
   //converts a string into an array of ASCII bytes
   static getStringBytes(string) {
-    return string.split('').map(a => a.charCodeAt());
+    return [...Script.varuint(string.length), ...string.split('').map(a => a.charCodeAt())];
+  }
+  
+  static varint(value) {
+    const bytes = [];
+    
+    let more = true;
+    
+    while(more) {
+      let byte = value & 0x7F;
+      value >>= 7;
+    
+      /* sign bit of byte is second high order bit (0x40) */
+      if ((value === 0 && (byte & 0x40) === 0) || (value === -1 && (byte & 0x40) !== 0)) {
+        more = false;
+      } else {
+        byte |= 0x80;
+      }
+      
+      bytes.push(byte);
+    }
+    
+    return bytes;
+  }
+  
+  static varuint(value) {
+    const bytes = [];
+    
+    do {
+      let byte = value & 0x7F;
+      value >>= 7;
+      if (value !== 0) /* more bytes to come */
+        byte |= 0x80;
+      
+      bytes.push(byte);
+    } while (value !== 0); 
+    
+    return bytes;
   }
 }
 
