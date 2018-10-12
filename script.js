@@ -1554,37 +1554,62 @@ class Script {
   Generates a Wasm binary from the script contents
   */
   getWasm() {
-    //language types
-    const i32 = 0x7F;
-    const i64 = 0x7E;
-    const f32 = 0x7D;
-    const f64 = 0x7C;
-    const anyfunc = 0x70;
-    const func = 0x60;
+    const section = {
+      Type: 1,
+      Import: 2,
+      Function: 3,
+      Table: 4,
+      Memory: 5,
+      Global: 6,
+      Export: 7,
+      Start: 8,
+      Element: 9,
+      Code: 10,
+      Data: 11,
+    }
 
-    //section codes
-    const TYPE = 1;
-    const IMPORT = 2;
-    const FUNCTION = 3;
-    const TABLE = 4;
-    const MEMORY = 5;
-    const GLOBAL = 6;
-    const EXPORT = 7;
-    const START = 8;
-    const ELEMENT = 9;
-    const CODE = 10;
-    const DATA = 11;
+    const types = {
+      i32: 0x7F,
+      i64: 0x7E,
+      f32: 0x7D,
+      f64: 0x7C,
+      func: 0x60,
+    }
+
+    const externalKind = {
+      Function: 0,
+      //Table: 1,
+      Memory: 2,
+      //Global: 3,
+    }
+
+    const opcodes = {
+      i32: {
+        load: 0x28,
+        load8_s: 0x2c,
+        load8_u: 0x2d,
+        load16_s: 0x2e,
+        load16_u: 0x2f,
+        store: 0x36,
+        store8: 0x3a,
+        store16: 0x3b,
+        const: 0x41,
+      },
+      call: 0x10,
+      drop: 0x1A,
+      end: 0x0b,
+    }
 
     let typeSection = [
       ...Script.varuint(2), //count of type entries
     
-      func, //the form of the type
+      types.func, //the form of the type
       ...Script.varuint(0), //parameter count
       0, //return count (0 or 1)
     
-      func, //the form of the type
+      types.func, //the form of the type
       ...Script.varuint(2), //parameter count
-      i32, i32, //parameter types
+      types.i32, types.i32, //parameter types
       0, //return count (0 or 1)  
     ];
 
@@ -1592,15 +1617,14 @@ class Script {
       1, //count of things to import
       ...Script.getStringBytes("debugging"),
       ...Script.getStringBytes("println"),
-      0, //importing a function
-      1, //index of the function signiture we defined in the TYPE section
+      externalKind.Function, //import type
+      ...Script.varuint(1), //index of the function signiture we defined in the TYPE section
     ];
 
     let functionSection = [
       ...Script.varuint(1), //count of function
       ...Script.varuint(0), //indicies of types that define the functions  
     ];
-
 
     let memorySection = [
       1, //defines 1 memory
@@ -1613,81 +1637,112 @@ class Script {
       ...Script.varuint(2), //count of exports
 
       ...Script.getStringBytes("init"), //length and bytes of function name
-      0, //exporting a function (as opposed to a table or memory)
+      externalKind.Function, //export type
       ...Script.varuint(1), //exporting function 1
   
       ...Script.getStringBytes("mem"), //length and bytes of export name
-      2, //exporting a memory
+      externalKind.Memory, //export type
       0, //exporting memory 0
     ];
 
-    //opcodes
-    const GET_LOCAL = 0x20;
-    const i32_CONST = 0x41;
-    const i32_ADD = 0x6a;
-    const END = 0x0b;
-    const CALL = 0x10;
-    const DROP = 0x1A;
-    const i32_STORE = 0x36;
-    const i32_STORE8 = 0x3a;
-
-    let addFunction = [
-      0, //count of local entries
+    let initFunction = [
+      Script.varuint(0), //count of local entries
     ];
-    
-    const helloWorld = "Test string that may or may not be meaningful to any person.\n1234567890!@#$%^&*()\n-=_+`~[]{};':\",./<>?".split('').map(a => a.charCodeAt());
-    for (let i = 0; i < helloWorld.length; ++i) {
-      addFunction.push(
-        i32_CONST, ...Script.varint(i), //address
-        i32_CONST, ...Script.varint(helloWorld[i]), //value
-        i32_STORE8, 0, ...Script.varuint(0), //store byte alligned with offset 0
-      )
+
+    const referencedStringLiterals = [];
+    const functionsBeingCalled = [];
+    let stackPointer = 0;
+
+    for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
+      for (let col = 1, endCol = this.getItemCount(row); col < endCol; ++col) {
+        const item = this.getItem(row, col);
+        const {format, meta, value} = Script.getItemData(item);
+
+        switch (format) {
+          case Script.VARIABLE_DEFINITION:
+          case Script.VARIABLE_REFERENCE:
+            break;
+          case Script.FUNCTION_REFERENCE:
+            functionsBeingCalled.push(value);
+            break;
+
+          case Script.SYMBOL:
+            if (item === this.ITEMS.END_ARGUMENTS) {
+              initFunction.push(opcodes.call, 0);
+            }
+            break;
+
+          case Script.LITERAL:
+            if (meta === 1) {
+              referencedStringLiterals.push(value);
+              const string = this.literals.get(value);
+              
+              initFunction.push(
+                opcodes.i32.const, ...Script.varint(stackPointer), //begin
+                opcodes.i32.const, ...Script.varint(stackPointer + string.length), //end
+              )
+
+              stackPointer += string.length;
+            }
+            break;
+        }
+      }
     }
-    
-    addFunction.push(
-      i32_CONST, 0x00,
-      i32_CONST, ...Script.varint(helloWorld.length),
-      CALL, 0,
-      END,
-    );
+
+    initFunction.push(opcodes.end);
 
     let codeSection = [
-      1, //count of functions to define
-      ...Script.varuint(addFunction.length),
-      ...addFunction,
+      ...Script.varuint(1), //count of functions to define
+      ...Script.varuint(initFunction.length),
+      ...initFunction,
     ];
 
-    
+    let dataSection = [
+      Script.varuint(1), //1 data segment
+
+      0, //memory index 0
+      opcodes.i32.const, Script.varint(0), opcodes.end, //place memory at address 0
+      stackPointer, //count of bytes to fill in (sum of all strings)
+    ];
+
+    for (let literalId of referencedStringLiterals) {
+      const string = this.literals.get(literalId);
+      dataSection.push(...string.split('').map(a => a.charCodeAt()));
+    }
+
+
     let wasm = [
       0x00, 0x61, 0x73, 0x6d, //magic numbers
       0x01, 0x00, 0x00, 0x00, //binary version
   
-      TYPE, //id of section
+      section.Type,
       ...Script.varuint(typeSection.length), //size in bytes of section
       ...typeSection,
   
-      IMPORT,
+      section.Import,
       ...Script.varuint(importSection.length),
       ...importSection,
   
-      FUNCTION,
+      section.Function,
       ...Script.varuint(functionSection.length),
       ...functionSection,
   
-      MEMORY,
+      section.Memory,
       ...Script.varuint(memorySection.length),
       ...memorySection,
   
-      EXPORT,
+      section.Export,
       ...Script.varuint(exportSection.length),
       ...exportSection,
   
-      CODE,
+      section.Code,
       ...Script.varuint(codeSection.length),
       ...codeSection,
+
+      section.Data,
+      ...Script.varuint(dataSection.length),
+      ...dataSection,
     ];
-    
-    console.log(wasm);
 
     return (new Uint8Array(wasm)).buffer;
   }
