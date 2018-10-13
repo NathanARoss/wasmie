@@ -2,7 +2,12 @@ class RuntimeEnvironment {
   constructor() {
     const self = this;
     this.debugging = {
-      println(begin, end) {self.println(begin, end)}
+      print(begin, end) {
+        self.print(begin, end)
+      },
+      printDouble(doubleNum) {
+        self.printDouble(doubleNum)
+      },
     }
   }
   
@@ -10,9 +15,13 @@ class RuntimeEnvironment {
     this.memory = memory;
   }
   
-  println(begin, end) {
+  print(begin, end) {
     const bytes = this.memory.buffer.slice(begin, end);
     const message = String.fromCharCode.apply(String, new Uint8Array(bytes));
-    print(message + "\n");
+    print(message);
+  }
+
+  printDouble(doubleNum) {
+    print(String(doubleNum));
   }
 }

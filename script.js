@@ -102,6 +102,10 @@ class Script {
     this.ITEMS.COMMA               = makeSymbol(",");
     this.ITEMS.UNDERSCORE          = makeSymbol("____");
 
+    this.TYPES = {};
+    this.TYPES.F64 = classes.findIndex(entry => entry.name === "f64");
+    this.TYPES.STRING = classes.findIndex(entry => entry.name === "string");
+
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
 
@@ -183,6 +187,7 @@ class Script {
     this.PAYLOADS.CHANGE_TYPE = payloads--;
     this.PAYLOADS.ASSIGN_VALUE = payloads--;
     this.PAYLOADS.DEFINE_ANOTHER_VAR = payloads--;
+    this.PAYLOADS.APPEND_ARGUMENT = payloads--;
 
 
     class Operator {
@@ -358,6 +363,10 @@ class Script {
       if (item === this.ITEMS.START_SUBEXPRESSION
       || item === this.ITEMS.END_SUBEXPRESSION) {
         options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
+      }
+
+      if (item === this.ITEMS.END_ARGUMENTS) {
+        options.push({text: ",", payload: this.PAYLOADS.APPEND_ARGUMENT});
       }
 
       if (data.format === Script.FUNCTION_REFERENCE
@@ -736,6 +745,11 @@ class Script {
         } else {
           return {};
         }
+      }
+
+      case this.PAYLOADS.APPEND_ARGUMENT: {
+        this.spliceRow(row, col, 0, this.ITEMS.COMMA, this.ITEMS.UNDERSCORE);
+        return {rowUpdated: true, selectedCol: col + 1};
       }
 
       case this.PAYLOADS.LITERAL_INPUT: {
@@ -1595,13 +1609,27 @@ class Script {
         store16: 0x3b,
         const: 0x41,
       },
+      i64: {
+        const: 0x42,
+      },
+      f32: {
+        const: 0x43,
+      },
+      f64: {
+        const: 0x44,
+      },
       call: 0x10,
       drop: 0x1A,
       end: 0x0b,
+      get_local: 0x20,
+      set_local: 0x21,
+      tee_local: 0x22,
+      get_global: 0x23,
+      set_global: 0x24,
     }
 
     let typeSection = [
-      ...Script.varuint(2), //count of type entries
+      ...Script.varuint(3), //count of type entries
     
       types.func, //the form of the type
       ...Script.varuint(0), //parameter count
@@ -1611,19 +1639,31 @@ class Script {
       ...Script.varuint(2), //parameter count
       types.i32, types.i32, //parameter types
       0, //return count (0 or 1)  
+    
+      types.func, //the form of the type
+      ...Script.varuint(1), //parameter count
+      types.f64, //parameter types
+      0, //return count (0 or 1)  
     ];
 
+    const importCount = 2;
     let importSection = [
-      1, //count of things to import
+      ...Script.varuint(importCount), //count of things to import
+
       ...Script.getStringBytes("debugging"),
-      ...Script.getStringBytes("println"),
+      ...Script.getStringBytes("print"),
       externalKind.Function, //import type
-      ...Script.varuint(1), //index of the function signiture we defined in the TYPE section
+      ...Script.varuint(1), //type index (func signiture)
+
+      ...Script.getStringBytes("debugging"),
+      ...Script.getStringBytes("printDouble"),
+      externalKind.Function, //import type
+      ...Script.varuint(2), //type index (func signiture)
     ];
 
     let functionSection = [
-      ...Script.varuint(1), //count of function
-      ...Script.varuint(0), //indicies of types that define the functions  
+      ...Script.varuint(1), //count of function bodies defined later
+      ...Script.varuint(0), //type indicies (func signitures)
     ];
 
     let memorySection = [
@@ -1638,7 +1678,7 @@ class Script {
 
       ...Script.getStringBytes("init"), //length and bytes of function name
       externalKind.Function, //export type
-      ...Script.varuint(1), //exporting function 1
+      ...Script.varuint(importCount), //exporting entry point function
   
       ...Script.getStringBytes("mem"), //length and bytes of export name
       externalKind.Memory, //export type
@@ -1646,11 +1686,12 @@ class Script {
     ];
 
     let initFunction = [
-      Script.varuint(0), //count of local entries
+      ...Script.varuint(0), //count of local entries
     ];
 
     const referencedStringLiterals = [];
     const functionsBeingCalled = [];
+    const expression = [];
     let stackPointer = 0;
 
     for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
@@ -1667,23 +1708,58 @@ class Script {
             break;
 
           case Script.SYMBOL:
-            if (item === this.ITEMS.END_ARGUMENTS) {
-              initFunction.push(opcodes.call, 0);
+            if (item === this.ITEMS.END_ARGUMENTS || item === this.ITEMS.COMMA) {
+              if (functionsBeingCalled[functionsBeingCalled.length - 1] === this.FUNCS.PRINT) {
+                //print function is a special case that calls the base function on each argument as it is received
+                //a different version of the function is called for string types and numeric types
+                const argumentType = expression[0].type; //TODO implement evaluating expression for final type, at the moment assumes expressions are a single value
+                console.log(argumentType);
+
+                //convert the high level expression into Wasm opcodes (at the moment, I assume a single value per expression)
+                initFunction.push(...expression[0].representation);
+                expression.length = 0;
+                
+                if (argumentType === this.TYPES.STRING) {
+                  initFunction.push(opcodes.call, 0);
+                } else {
+                  initFunction.push(opcodes.call, 1);
+                }
+              } else {
+                //TODO
+              }
+
+              if (item === this.ITEMS.END_ARGUMENTS) {
+                functionsBeingCalled.pop();
+              }
             }
             break;
 
           case Script.LITERAL:
             if (meta === 1) {
               referencedStringLiterals.push(value);
-              const string = this.literals.get(value);
+              const stringLength = this.literals.get(value).length;
               
-              initFunction.push(
-                opcodes.i32.const, ...Script.varint(stackPointer), //begin
-                opcodes.i32.const, ...Script.varint(stackPointer + string.length), //end
-              )
+              expression.push({
+                type: this.TYPES.STRING,
+                representation: [
+                  opcodes.i32.const, ...Script.varint(stackPointer), //begin
+                  opcodes.i32.const, ...Script.varint(stackPointer + stringLength), //end
+                ]
+              });
 
-              stackPointer += string.length;
+              stackPointer += stringLength;
+            } else if (meta === 2) {
+              const literal = this.literals.get(value);
+              const bytes = new Uint8Array(Float64Array.of(+literal).buffer);
+
+              expression.push({
+                type: this.TYPES.F64,
+                representation: [
+                  opcodes.f64.const, ...bytes,
+                ]
+              });
             }
+
             break;
         }
       }
