@@ -59,6 +59,10 @@ class Script {
       isUserDefined(id) {
         return id < (-this.builtinCount & this.mask);
       }
+
+      getIdByName(name) {
+        return (this.data.findIndex(entry => entry.name === name) - this.builtinCount) & this.mask;
+      }
     }
 
 
@@ -102,10 +106,6 @@ class Script {
     this.ITEMS.COMMA               = makeSymbol(",");
     this.ITEMS.UNDERSCORE          = makeSymbol("____");
 
-    this.TYPES = {};
-    this.TYPES.F64 = classes.findIndex(entry => entry.name === "f64");
-    this.TYPES.STRING = classes.findIndex(entry => entry.name === "string");
-
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
 
@@ -119,6 +119,13 @@ class Script {
       PRINT: (-this.functions.builtinCount + this.functions.data.findIndex(func => func.name === "print")) & this.functions.mask
     };
     this.CLASSES = {VOID: -1 & this.classes.mask};
+
+    this.TYPES = {};
+    this.TYPES.I32 = this.classes.getIdByName("i32");
+    this.TYPES.I64 = this.classes.getIdByName("i64");
+    this.TYPES.F32 = this.classes.getIdByName("f32");
+    this.TYPES.F64 = this.classes.getIdByName("f64");
+    this.TYPES.STRING = this.classes.getIdByName("string");
 
     this.lines = [];
     this.lineKeys = [];
@@ -1416,7 +1423,7 @@ class Script {
       case Script.VARIABLE_DEFINITION:
       {
         let name = this.variables.get(value).name;
-        if (!flag)
+        if (false)//!flag)
           return [name, "declaration"];
         else
           return [this.classes.get(meta).name + '\n' + name, "keyword-declaration"];
@@ -1685,23 +1692,46 @@ class Script {
       0, //exporting memory 0
     ];
 
-    let initFunction = [
-      ...Script.varuint(0), //count of local entries
-    ];
+    let initFunction = [];
 
     const referencedStringLiterals = [];
     const functionsBeingCalled = [];
     const expression = [];
     let stackPointer = 0;
+    const localVarMap = []; //maps local vars to varIDs
+    let assigningToVariable;
 
     for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
+      assigningToVariable = -1;
+
       for (let col = 1, endCol = this.getItemCount(row); col < endCol; ++col) {
         const item = this.getItem(row, col);
         const {format, meta, value} = Script.getItemData(item);
 
         switch (format) {
           case Script.VARIABLE_DEFINITION:
+            if (this.getItem(row, col + 1) === this.ITEMS.EQUALS) {
+              assigningToVariable = localVarMap.length;
+            }
+            localVarMap.push({id: value, type: meta});
+            break;
+          
           case Script.VARIABLE_REFERENCE:
+            const localIndex = localVarMap.findIndex(localVar => localVar.id === value);
+            if (localIndex === -1) {
+              throw "var" + value + " is referenced before it is declared";
+            }
+
+            if (this.getItem(row, col + 1) === this.ITEMS.EQUALS) {
+              //writing to variable
+              assigningToVariable = localIndex;
+            } else {
+              //reading from variable
+              expression.push({
+                type: localVarMap[localIndex].type,
+                representation: [opcodes.get_local, localIndex],
+              });
+            }
             break;
           case Script.FUNCTION_REFERENCE:
             functionsBeingCalled.push(value);
@@ -1710,10 +1740,12 @@ class Script {
           case Script.SYMBOL:
             if (item === this.ITEMS.END_ARGUMENTS || item === this.ITEMS.COMMA) {
               if (functionsBeingCalled[functionsBeingCalled.length - 1] === this.FUNCS.PRINT) {
-                //print function is a special case that calls the base function on each argument as it is received
+                //print function is a special case that calls the base function on each argument
                 //a different version of the function is called for string types and numeric types
-                const argumentType = expression[0].type; //TODO implement evaluating expression for final type, at the moment assumes expressions are a single value
-                console.log(argumentType);
+
+                //commas and end parenthesis delimit expressions
+                //TODO implement evaluating expression for final type
+                const argumentType = expression[0].type;
 
                 //convert the high level expression into Wasm opcodes (at the moment, I assume a single value per expression)
                 initFunction.push(...expression[0].representation);
@@ -1731,8 +1763,7 @@ class Script {
               if (item === this.ITEMS.END_ARGUMENTS) {
                 functionsBeingCalled.pop();
               }
-            }
-            break;
+            } break;
 
           case Script.LITERAL:
             if (meta === 1) {
@@ -1758,14 +1789,48 @@ class Script {
                   opcodes.f64.const, ...bytes,
                 ]
               });
-            }
-
-            break;
+            } break;
         }
+      }
+
+      //end of line delimits expression
+      //TODO convert expression into sequence of Wasm instructions
+      if (expression[0]) {
+        initFunction.push(...expression[0].representation);
+        expression.length = 0; //consume expression
+      }
+
+      if (assigningToVariable !== -1) {
+        initFunction.push(opcodes.set_local, assigningToVariable);
       }
     }
 
-    initFunction.push(opcodes.end);
+    const localVarDefinition = Script.varuint(localVarMap.length); //count of local entries (count and type pairs, not total locals)
+
+    //at the moment, I make no attempt to collapse repeating types into a single type description
+    for (let local of localVarMap) {
+      let type = 0;
+      switch (local.type) {
+        case this.TYPES.I32:
+          type = types.i32;
+          break;
+        case this.TYPES.I64:
+          type = types.i64;
+          break;
+        case this.TYPES.F32:
+          type = types.f32;
+          break;
+        case this.TYPES.F64:
+          type = types.f64;
+          break;
+        default:
+          throw "cannot find Wasm type of type " + this.classes.get(local.type).name;
+      }
+
+      localVarDefinition.push(1, type);
+    }
+
+    initFunction = [...localVarDefinition, ...initFunction, opcodes.end]
 
     let codeSection = [
       ...Script.varuint(1), //count of functions to define
