@@ -28,8 +28,8 @@ function BuiltIns() {
   
   //static variables of classes only.  no instance variables
   this.variables = [
-    {name: "E",  type: classMap.get("f64"), scope: classMap.get("Math")},
-    {name: "PI", type: classMap.get("f64"), scope: classMap.get("Math")},
+    // {name: "E",  type: classMap.get("f64"), scope: classMap.get("Math")},
+    // {name: "PI", type: classMap.get("f64"), scope: classMap.get("Math")},
   ].reverse();
   
   function parseFunction(returnType, scope, name, ...parameters) {
@@ -120,9 +120,8 @@ function BuiltIns() {
     "<=",
     "..", //half-open range operator
     "..=", //closed range operator
-    "+", //unary operators
     "-", //arithmetic negation operator
-    "!", //binary negation operator
+    "!", //binary or bitwise negation operator
     "____", //misc
     ",", //argument separator
     ".", //property accessor

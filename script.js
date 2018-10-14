@@ -57,7 +57,7 @@ class Script {
       }
 
       isUserDefined(id) {
-        return id < (-this.builtinCount & this.mask);
+        return id <= this.data.length - this.builtinCount;
       }
 
       getIdByName(name) {
@@ -217,12 +217,12 @@ class Script {
 
     this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
     this.BINARY_OPERATORS = new Operator(11, 31);
-    this.UNARY_OPERATORS = new Operator(33, 36);
+    this.UNARY_OPERATORS = new Operator(33, 35);
     this.ARITHMETIC_OPERATORS = new Operator(11, 23);
     this.COMPARRISON_OPERATORS = new Operator(25, 31);
-    this.START_BRACKETS = new Operator(39, 41);
-    this.END_BRACKETS = new Operator(41, 43);
-    this.OPERATORS = new Operator(0, 36);
+    this.START_BRACKETS = new Operator(38, 40);
+    this.END_BRACKETS = new Operator(40, 42);
+    this.OPERATORS = new Operator(0, 35);
 
     this.UNARY_OPERATORS.postfix = " ____"
   }
@@ -1639,17 +1639,15 @@ class Script {
       ...Script.varuint(3), //count of type entries
     
       types.func, //the form of the type
-      ...Script.varuint(0), //parameter count
+      0, //parameters
       0, //return count (0 or 1)
     
       types.func,
-      ...Script.varuint(2),
-      types.i32, types.i32, //parameter types
+      2, types.i32, types.i32,
       0,
     
       types.func,
-      ...Script.varuint(1),
-      types.f64,
+      1, types.f64,
       0,
     ];
 
@@ -1670,8 +1668,8 @@ class Script {
 
       ...Script.getStringBytes("environment"),
       ...Script.getStringBytes("printDouble"),
-      externalKind.Function, //import type
-      ...Script.varuint(2), //type index (func signiture)
+      externalKind.Function,
+      ...Script.varuint(2),
     ];
 
     let functionSection = [
