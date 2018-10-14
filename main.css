@@ -180,6 +180,7 @@ button {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: monospace;
 }
 .comment {
   color: #808080;
