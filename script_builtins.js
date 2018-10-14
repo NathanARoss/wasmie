@@ -4,18 +4,18 @@ function BuiltIns() {
   this.classes = [
     {name: "void", size: 0},
     {name: "Any", size: 0},
-    {name: "bool", size: 1},
-    {name: "i8", size: 1},
-    {name: "u8", size: 1},
-    {name: "i16", size: 2},
-    {name: "u16", size: 2},
+    // {name: "bool", size: 1},
+    // {name: "i8", size: 1},
+    // {name: "u8", size: 1},
+    // {name: "i16", size: 2},
+    // {name: "u16", size: 2},
     {name: "i32", size: 4},
     {name: "u32", size: 4},
     {name: "i64", size: 8},
     {name: "u64", size: 8},
     {name: "f32", size: 4},
     {name: "f64", size: 8},
-    {name: "string", size: 4},
+    {name: "string", size: 0}, //DEBUG don't allow the user to create string variables yet
     {name: "System", size: 0},
     {name: "Math", size: 0},
     {name: "Iterable", size: 0},
@@ -28,11 +28,11 @@ function BuiltIns() {
   
   //static variables of classes only.  no instance variables
   this.variables = [
-    {name: "E",        type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.E"},
-    {name: "PI",       type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.PI"},
+    {name: "E",  type: classMap.get("f64"), scope: classMap.get("Math")},
+    {name: "PI", type: classMap.get("f64"), scope: classMap.get("Math")},
   ].reverse();
   
-  function parseFunction(js, returnType, scope, name, ...parameters) {
+  function parseFunction(returnType, scope, name, ...parameters) {
     const formattedParameters = [];
     for (let i = 0; i < parameters.length; i += 3) {
       const param = {
@@ -55,7 +55,6 @@ function BuiltIns() {
     }
     
     return {
-      js,
       scope: classMap.get(scope),
       returnType: classMap.get(returnType),
       name,
@@ -65,27 +64,26 @@ function BuiltIns() {
   
   /* The .js property prepresents the equivalent javascript function to use when translating. */
   this.functions = [
-    parseFunction("stride", "Iterable", "Iterable", "range", "Int32", "start", 0, "Int32", "end", undefined),
-    parseFunction("Math.cos", "Double", "Math", "cos", "Double", "angle", undefined),
-    parseFunction("Math.sin", "Double", "Math", "sin", "Double", "angle", undefined),
-    parseFunction("Math.tan", "Double", "Math", "tan", "Double", "angle", undefined),
-    parseFunction("Math.acos", "Double", "Math", "acos", "Double", "x/r", undefined),
-    parseFunction("Math.asin", "Double", "Math", "asin", "Double", "y/r", undefined),
-    parseFunction("Math.atan", "Double", "Math", "atan", "Double", "y/x", undefined),
-    parseFunction("Math.atan2", "Double", "Math", "atan2", "Double", "y", undefined, "Double", "x", undefined),
-    parseFunction("Math.min", "Double", "Math", "min", "Double", "a", undefined, "Double", "b", undefined),
-    parseFunction("Math.max", "Double", "Math", "max", "Double", "a", undefined, "Double", "b", undefined),
-    parseFunction("Math.random", "Double", "Math", "random"),
-    parseFunction("Math.abs", "Double", "Math", "abs", "Double", "number", undefined),
-    parseFunction("Math.sign", "Double", "Math", "sign", "Double", "number", undefined),
-    parseFunction("Math.sqrt", "Double", "Math", "sqrt", "Double", "number", undefined),
-    parseFunction("Math.power", "Double", "Math", "power", "Double", "base", undefined, "Double", "exponent", undefined),
-    parseFunction("Math.exp", "Double", "Math", "exp", "Double", "exponent", undefined),
-    parseFunction("Math.log", "Double", "Math", "log", "Double", "number", undefined),
-    parseFunction("Math.round", "Double", "Math", "round", "Double", "number", undefined),
-    parseFunction("Math.floor", "Double", "Math", "floor", "Double", "number", undefined),
-    parseFunction("Math.ceil", "Double", "Math", "ceil", "Double", "number", undefined),
-    parseFunction("print", "void", "System", "print", "Any", "item", undefined),
+    // parseFunction("f64", "Math", "cos", "f64", "angle", undefined),
+    // parseFunction("f64", "Math", "sin", "f64", "angle", undefined),
+    // parseFunction("f64", "Math", "tan", "f64", "angle", undefined),
+    // parseFunction("f64", "Math", "acos", "f64", "x/r", undefined),
+    // parseFunction("f64", "Math", "asin", "f64", "y/r", undefined),
+    // parseFunction("f64", "Math", "atan", "f64", "y/x", undefined),
+    // parseFunction("f64", "Math", "atan2", "f64", "y", undefined, "f64", "x", undefined),
+    // parseFunction("f64", "Math", "min", "f64", "a", undefined, "f64", "b", undefined),
+    // parseFunction("f64", "Math", "max", "f64", "a", undefined, "f64", "b", undefined),
+    // parseFunction("f64", "Math", "random"),
+    // parseFunction("f64", "Math", "abs", "f64", "number", undefined),
+    // parseFunction("f64", "Math", "sign", "f64", "number", undefined),
+    // parseFunction("f64", "Math", "sqrt", "f64", "number", undefined),
+    // parseFunction("f64", "Math", "power", "f64", "base", undefined, "f64", "exponent", undefined),
+    // parseFunction("f64", "Math", "exp", "f64", "exponent", undefined),
+    // parseFunction("f64", "Math", "log", "f64", "number", undefined),
+    // parseFunction("f64", "Math", "round", "f64", "number", undefined),
+    // parseFunction("f64", "Math", "floor", "f64", "number", undefined),
+    // parseFunction("f64", "Math", "ceil", "f64", "number", undefined),
+    parseFunction("void", "System", "print", "Any", "item", undefined),
   ].reverse();
   
   this.symbols = [
@@ -135,20 +133,20 @@ function BuiltIns() {
   ];
   
   this.keywords = [
-    {name: "func",     js: ""},
-    {name: "let",      js: "const"},
-    {name: "var",      js: "let"},
-    {name: "if",       js: "if ("},
-    {name: "else",     js: "else"},
-    {name: "for",      js: "for ("},
-    {name: "in",       js: "of"},
-    {name: "while",    js: "while ("},
-    {name: "do while", js: "do ("},
-    {name: "switch",   js: "switch ("},
-    {name: "case",     js: "case"},
-    {name: "default",  js: "default"},
-    {name: "return",   js: "return"},
-    {name: "break",    js: "break"},
-    {name: "continue", js: "continue"},
+    {name: "func"},
+    {name: "let"},
+    {name: "var"},
+    {name: "if"},
+    {name: "else"},
+    {name: "for"},
+    {name: "in"},
+    {name: "while"},
+    {name: "do while"},
+    {name: "switch"},
+    {name: "case"},
+    {name: "default"},
+    {name: "return"},
+    {name: "break"},
+    {name: "continue"},
   ];
 }
