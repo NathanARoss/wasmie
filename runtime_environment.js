@@ -1,22 +1,20 @@
 class RuntimeEnvironment {
   constructor() {
     const self = this;
-    this.debugging = {
+    this.environment = {
       print(begin, end) {
         self.print(begin, end)
       },
       printDouble(doubleNum) {
         self.printDouble(doubleNum)
       },
+
+      memory: new WebAssembly.Memory({initial: 1}),
     }
   }
   
-  setMemory(memory) {
-    this.memory = memory;
-  }
-  
   print(begin, end) {
-    const bytes = this.memory.buffer.slice(begin, end);
+    const bytes = this.environment.memory.buffer.slice(begin, end);
     const message = String.fromCharCode.apply(String, new Uint8Array(bytes));
     print(message);
   }

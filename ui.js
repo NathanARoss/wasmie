@@ -172,10 +172,7 @@ window.onpopstate = function(event) {
   else if (event.state.action === "run") {    
     const wasm = script.getWasm();
     const environment = new RuntimeEnvironment();
-    WebAssembly.instantiate(wasm, environment).then(result => {
-      environment.setMemory(result.instance.exports.mem);
-      result.instance.exports.init();
-    })
+    WebAssembly.instantiate(wasm, environment)
     .catch(error => {
       console.log(error);
       history.back();

@@ -1642,27 +1642,33 @@ class Script {
       ...Script.varuint(0), //parameter count
       0, //return count (0 or 1)
     
-      types.func, //the form of the type
-      ...Script.varuint(2), //parameter count
+      types.func,
+      ...Script.varuint(2),
       types.i32, types.i32, //parameter types
-      0, //return count (0 or 1)  
+      0,
     
-      types.func, //the form of the type
-      ...Script.varuint(1), //parameter count
-      types.f64, //parameter types
-      0, //return count (0 or 1)  
+      types.func,
+      ...Script.varuint(1),
+      types.f64,
+      0,
     ];
 
-    const importCount = 2;
+    const importedFunctionsCount = 2;
     let importSection = [
-      ...Script.varuint(importCount), //count of things to import
+      ...Script.varuint(importedFunctionsCount + 1), //count of things to import
 
-      ...Script.getStringBytes("debugging"),
+      ...Script.getStringBytes("environment"),
+      ...Script.getStringBytes("memory"),
+      externalKind.Memory,
+      0, //flag that max pages is not specified
+      ...Script.varuint(1), //initially 1 page allocated
+
+      ...Script.getStringBytes("environment"),
       ...Script.getStringBytes("print"),
       externalKind.Function, //import type
       ...Script.varuint(1), //type index (func signiture)
 
-      ...Script.getStringBytes("debugging"),
+      ...Script.getStringBytes("environment"),
       ...Script.getStringBytes("printDouble"),
       externalKind.Function, //import type
       ...Script.varuint(2), //type index (func signiture)
@@ -1673,23 +1679,12 @@ class Script {
       ...Script.varuint(0), //type indicies (func signitures)
     ];
 
-    let memorySection = [
-      1, //defines 1 memory
-      1, //flag that max pages is defined
-      ...Script.varuint(1), //initially 1 page allocated
-      ...Script.varuint(1), //max 1 page of memory
-    ];
-
     let exportSection = [
-      ...Script.varuint(2), //count of exports
+      ...Script.varuint(0), //count of exports
 
-      ...Script.getStringBytes("init"), //length and bytes of function name
-      externalKind.Function, //export type
-      ...Script.varuint(importCount), //exporting entry point function
-  
-      ...Script.getStringBytes("mem"), //length and bytes of export name
-      externalKind.Memory, //export type
-      0, //exporting memory 0
+      // ...Script.getStringBytes("init"), //length and bytes of function name
+      // externalKind.Function, //export type
+      // ...Script.varuint(importedFunctionsCount), //exporting entry point function
     ];
 
     let initFunction = [];
@@ -1868,13 +1863,13 @@ class Script {
       ...Script.varuint(functionSection.length),
       ...functionSection,
   
-      section.Memory,
-      ...Script.varuint(memorySection.length),
-      ...memorySection,
-  
       section.Export,
       ...Script.varuint(exportSection.length),
       ...exportSection,
+
+      section.Start,
+      Script.varuint(importedFunctionsCount).length,
+      ...Script.varuint(importedFunctionsCount), //the start function is the first function after the imports
   
       section.Code,
       ...Script.varuint(codeSection.length),
