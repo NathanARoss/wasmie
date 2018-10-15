@@ -172,12 +172,19 @@ window.onpopstate = function(event) {
   else if (event.state.action === "run") {    
     const wasm = script.getWasm();
     const environment = new RuntimeEnvironment();
-    WebAssembly.instantiate(wasm, environment)
-    .catch(error => {
+
+    try {
+      WebAssembly.instantiate(wasm, environment)
+      .catch(error => {
+        console.log(error);
+        history.back();
+        return;
+      });
+    } catch (error) {
       console.log(error);
       history.back();
       return;
-    });
+    }
     
     editor.style.display = "none";
     runtime.style.display = "";

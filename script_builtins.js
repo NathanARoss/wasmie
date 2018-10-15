@@ -21,6 +21,8 @@ function BuiltIns() {
     {name: "Iterable", size: 0},
   ].reverse();
 
+
+
   const classMap = new Map();
   for (let i = 0; i < this.classes.length; ++i) {
     classMap.set(this.classes[i].name, (-this.classes.length + i) & 0x3FF);
@@ -32,59 +34,108 @@ function BuiltIns() {
     // {name: "PI", type: classMap.get("f64"), scope: classMap.get("Math")},
   ].reverse();
   
-  function parseFunction(returnType, scope, name, ...parameters) {
-    const formattedParameters = [];
-    for (let i = 0; i < parameters.length; i += 3) {
-      const param = {
-        name: parameters[i + 1],
-        type: classMap.get(parameters[i]),
-        default: parameters[i + 2]
-      };
+  const i32 = classMap.get("i32");
+  const i64 = classMap.get("i64");
+  const u32 = classMap.get("u32");
+  const u64 = classMap.get("u64");
+  const f32 = classMap.get("f32");
+  const f64 = classMap.get("f64");
+  const string = classMap.get("string");
 
-      if (param.default !== undefined) {
-        param.name += "\n= ";
+  const i32_const = 0x41;
+  const i64_const = 0x42;
+  const f32_const = 0x43;
+  const f64_const = 0x44;
 
-        if (typeof param.default === "string") {
-          param.name += `"${param.default.replace("\n", "\\n")}"`;
-        } else {
-          param.name += param.default;
-        }
+  function parseFunction(scope, name, specializations, ...overloads) {
+    const formattedOverloads = [];
+
+    for (const overload of overloads) {
+      const formattedOverload = {
+        importedFuncIndex: overload[0],
+        returnType: classMap.get(overload[1]),
+        parameters: [],
       }
 
-      formattedParameters.push(param);
+      for (let i = 2; i < overload.length; i += 3) {
+        const param = {
+          type: classMap.get(overload[i]),
+          name: overload[i + 1],
+          defaultRep: [],
+        };
+
+        const defaultVal = overload[i + 2];
+        switch (param.type) {
+          case i32:
+          case u32:
+            param.defaultRep.push(i32_const, ...Script.varuint(defaultVal));
+            break;
+
+          case i64:
+          case u64:
+            param.defaultRep.push(i64_const, ...Script.varuint(defaultVal));
+            break;
+
+          case f32:
+            param.defaultRep.push(f32_const, ... new Uint8Array(Float32Array.of(defaultVal).buffer));
+            break;
+
+          case f64:
+            param.defaultRep.push(f64_const, ... new Uint8Array(Float64Array.of(defaultVal).buffer));
+            break;
+          
+          case string:
+            //not supported yet
+            throw "encounted default string value for function " + name + " parameter " + param.name;
+        }
+
+        if (defaultVal !== undefined) {
+          param.name += "\n";
+  
+          if (typeof defaultVal === "string") {
+            param.name += `"${defaultVal.replace("\n", "\\n")}"`;
+          } else {
+            param.name += defaultVal;
+          }
+        }
+  
+        formattedOverload.parameters.push(param);
+      }
+
+      formattedOverloads.push(formattedOverload);
     }
     
     return {
       scope: classMap.get(scope),
-      returnType: classMap.get(returnType),
       name,
-      parameters: formattedParameters
+      overloads: formattedOverloads,
+      specializations,
     };
   }
-  
-  /* The .js property prepresents the equivalent javascript function to use when translating. */
-  this.functions = [
-    // parseFunction("f64", "Math", "cos", "f64", "angle", undefined),
-    // parseFunction("f64", "Math", "sin", "f64", "angle", undefined),
-    // parseFunction("f64", "Math", "tan", "f64", "angle", undefined),
-    // parseFunction("f64", "Math", "acos", "f64", "x/r", undefined),
-    // parseFunction("f64", "Math", "asin", "f64", "y/r", undefined),
-    // parseFunction("f64", "Math", "atan", "f64", "y/x", undefined),
-    // parseFunction("f64", "Math", "atan2", "f64", "y", undefined, "f64", "x", undefined),
-    // parseFunction("f64", "Math", "min", "f64", "a", undefined, "f64", "b", undefined),
-    // parseFunction("f64", "Math", "max", "f64", "a", undefined, "f64", "b", undefined),
-    // parseFunction("f64", "Math", "random"),
-    // parseFunction("f64", "Math", "abs", "f64", "number", undefined),
-    // parseFunction("f64", "Math", "sign", "f64", "number", undefined),
-    // parseFunction("f64", "Math", "sqrt", "f64", "number", undefined),
-    // parseFunction("f64", "Math", "power", "f64", "base", undefined, "f64", "exponent", undefined),
-    // parseFunction("f64", "Math", "exp", "f64", "exponent", undefined),
-    // parseFunction("f64", "Math", "log", "f64", "number", undefined),
-    // parseFunction("f64", "Math", "round", "f64", "number", undefined),
-    // parseFunction("f64", "Math", "floor", "f64", "number", undefined),
-    // parseFunction("f64", "Math", "ceil", "f64", "number", undefined),
-    parseFunction("void", "System", "print", "Any", "item", undefined),
-  ].reverse();
+
+  const builtinFunctions = [
+    parseFunction("System", "print", new Map([[classMap.get("string"), 0], [classMap.get("f64"), 1]]),
+      [0, "void", "Any", "item", undefined],
+    ),
+    parseFunction("System", "input", null,
+      [2, "f64", "f64", "default", 0, "f64", "min", -Infinity, "f64", "max", Infinity],
+    ),
+  ];
+
+  this.functions = [];
+  for (const builtin of builtinFunctions) {
+    for (const overload of builtin.overloads) {
+      this.functions.push({
+        name: builtin.name,
+        scope: builtin.scope,
+        specializations: builtin.specializations,
+        funcIndex: overload.importedFuncIndex,
+        returnType: overload.returnType,
+        parameters: overload.parameters,
+      });
+    }
+  }
+  this.functions.reverse();
   
   this.symbols = [
     "=", //asignment operators
@@ -126,9 +177,9 @@ function BuiltIns() {
     ",", //argument separator
     ".", //property accessor
     "(", //subexpression start
-    "(", //function arguments start
+    "⟨", //function arguments start
     ")", //subexpression end
-    ")", //function arguments end
+    "⟩", //function arguments end
   ];
   
   this.keywords = [

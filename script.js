@@ -121,6 +121,7 @@ class Script {
     this.CLASSES = {VOID: -1 & this.classes.mask};
 
     this.TYPES = {};
+    this.TYPES.VOID = this.classes.getIdByName("void");
     this.TYPES.I32 = this.classes.getIdByName("i32");
     this.TYPES.I64 = this.classes.getIdByName("i64");
     this.TYPES.F32 = this.classes.getIdByName("f32");
@@ -268,11 +269,9 @@ class Script {
           break;
 
           case Script.LITERAL:
-            if (this.literals.isUserDefined(data.value)) {
-              const index = (data.value + this.literals.builtinCount) & this.literals.mask;
-              const name = getAndRemove(this.literals, data.value);
-              this.literals.data[index] = name;
-            }
+            const index = (data.value + this.literals.builtinCount) & this.literals.mask;
+            const name = getAndRemove(this.literals, data.value);
+            this.literals.data[index] = name;
           break;
         }
       }
@@ -1076,7 +1075,7 @@ class Script {
 
     for (const id of this.functions.getIDs()) {
       let func = this.functions.get(id);
-      if (!requireReturn || func.returnType !== 0) {
+      if (!requireReturn || func.returnType !== this.TYPES.VOID) {
         options.push({text: func.name, style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
       }
     }
@@ -1636,7 +1635,7 @@ class Script {
     }
 
     let typeSection = [
-      ...Script.varuint(3), //count of type entries
+      ...Script.varuint(4), //count of type entries
     
       types.func, //the form of the type
       0, //parameters
@@ -1649,9 +1648,13 @@ class Script {
       types.func,
       1, types.f64,
       0,
+
+      types.func,
+      3, types.f64, types.f64, types.f64,
+      1, types.f64
     ];
 
-    const importedFunctionsCount = 2;
+    const importedFunctionsCount = 3;
     let importSection = [
       ...Script.varuint(importedFunctionsCount + 1), //count of things to import
 
@@ -1670,6 +1673,11 @@ class Script {
       ...Script.getStringBytes("printDouble"),
       externalKind.Function,
       ...Script.varuint(2),
+
+      ...Script.getStringBytes("environment"),
+      ...Script.getStringBytes("inputDouble"),
+      externalKind.Function,
+      ...Script.varuint(3),
     ];
 
     let functionSection = [
@@ -1726,37 +1734,47 @@ class Script {
               });
             }
             break;
+          
           case Script.FUNCTION_REFERENCE:
             functionsBeingCalled.push(value);
             break;
 
-          case Script.SYMBOL:
-            if (item === this.ITEMS.END_ARGUMENTS || item === this.ITEMS.COMMA) {
-              if (functionsBeingCalled[functionsBeingCalled.length - 1] === this.FUNCS.PRINT) {
-                //print function is a special case that calls the base function on each argument
-                //a different version of the function is called for string types and numeric types
+          case Script.ARGUMENT_HINT: {
+            const param = this.functions.get(value).parameters[meta];
+            expression.push({
+              type: param.type,
+              representation: param.defaultRep,
+            });
+          } break;
 
-                //commas and end parenthesis delimit expressions
-                //TODO implement evaluating expression for final type
-                const argumentType = expression[0].type;
+          case Script.SYMBOL: {
+            const func = functionsBeingCalled.length && this.functions.get(functionsBeingCalled[functionsBeingCalled.length - 1]);
 
-                //convert the high level expression into Wasm opcodes (at the moment, I assume a single value per expression)
-                initFunction.push(...expression[0].representation);
-                expression.length = 0;
-                
-                if (argumentType === this.TYPES.STRING) {
-                  initFunction.push(opcodes.call, 0);
-                } else {
-                  initFunction.push(opcodes.call, 1);
-                }
-              } else {
-                //TODO
+            let expressionType = this.TYPES.VOID;
+            if (item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) {
+              //TODO convert the high level expression into Wasm opcodes
+              initFunction.push(...expression[0].representation);
+              expressionType = expression[0].type;
+              expression.length = 0;
+            }
+
+            //functions taking an arbitrary count of Any arguments acts on each argument separately i.e. print()
+            //based on the type of the argument, it chooses a specialized version of itself to call
+            if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && func.specializations) {
+              const specialization = func.specializations.get(expressionType);
+              if (specialization === undefined) {
+                throw "specialization for function " + func.name + " with type " + this.classes[expressionType].name + " not found";
               }
-
-              if (item === this.ITEMS.END_ARGUMENTS) {
-                functionsBeingCalled.pop();
-              }
-            } break;
+              initFunction.push(opcodes.call, specialization);
+            }
+            else if (item === this.ITEMS.END_ARGUMENTS) {
+              initFunction.push(opcodes.call, func.funcIndex);
+            }
+            
+            if (item === this.ITEMS.END_ARGUMENTS) {
+              functionsBeingCalled.pop();
+            } 
+          } break;
 
           case Script.LITERAL:
             if (meta === 1) {
@@ -1823,7 +1841,8 @@ class Script {
       localVarDefinition.push(1, type);
     }
 
-    initFunction = [...localVarDefinition, ...initFunction, opcodes.end]
+    initFunction = [...localVarDefinition, ...initFunction, opcodes.end];
+    //console.log(initFunction.map(num => num.toString(16)));
 
     let codeSection = [
       ...Script.varuint(1), //count of functions to define
