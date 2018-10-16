@@ -1574,123 +1574,63 @@ class Script {
   Generates a Wasm binary from the script contents
   */
   getWasm() {
-    const section = {
-      Type: 1,
-      Import: 2,
-      Function: 3,
-      Table: 4,
-      Memory: 5,
-      Global: 6,
-      Export: 7,
-      Start: 8,
-      Element: 9,
-      Code: 10,
-      Data: 11,
-    }
-
-    const types = {
-      i32: 0x7F,
-      i64: 0x7E,
-      f32: 0x7D,
-      f64: 0x7C,
-      func: 0x60,
-    }
-
-    const externalKind = {
-      Function: 0,
-      //Table: 1,
-      Memory: 2,
-      //Global: 3,
-    }
-
-    const opcodes = {
-      i32: {
-        load: 0x28,
-        load8_s: 0x2c,
-        load8_u: 0x2d,
-        load16_s: 0x2e,
-        load16_u: 0x2f,
-        store: 0x36,
-        store8: 0x3a,
-        store16: 0x3b,
-        const: 0x41,
-      },
-      i64: {
-        const: 0x42,
-      },
-      f32: {
-        const: 0x43,
-      },
-      f64: {
-        const: 0x44,
-      },
-      call: 0x10,
-      drop: 0x1A,
-      end: 0x0b,
-      get_local: 0x20,
-      set_local: 0x21,
-      tee_local: 0x22,
-      get_global: 0x23,
-      set_global: 0x24,
-    }
-
     let typeSection = [
-      ...Script.varuint(4), //count of type entries
+      ...Wasm.varuint(4), //count of type entries
     
-      types.func, //the form of the type
+      Wasm.types.func, //the form of the type
       0, //parameters
       0, //return count (0 or 1)
     
-      types.func,
-      2, types.i32, types.i32,
+      Wasm.types.func,
+      2, Wasm.types.i32, Wasm.types.i32,
       0,
     
-      types.func,
-      1, types.f64,
+      Wasm.types.func,
+      1, Wasm.types.f64,
       0,
 
-      types.func,
-      3, types.f64, types.f64, types.f64,
-      1, types.f64
+      Wasm.types.func,
+      3, Wasm.types.f64, Wasm.types.f64, Wasm.types.f64,
+      1, Wasm.types.f64
     ];
 
     const importedFunctionsCount = 3;
     let importSection = [
-      ...Script.varuint(importedFunctionsCount + 1), //count of things to import
+      ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
-      ...Script.getStringBytes("environment"),
-      ...Script.getStringBytes("memory"),
-      externalKind.Memory,
+      ...Wasm.stringToUTF8("environment"),
+      ...Wasm.stringToUTF8("memory"),
+      Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
-      ...Script.varuint(1), //initially 1 page allocated
+      ...Wasm.varuint(1), //initially 1 page allocated
 
-      ...Script.getStringBytes("environment"),
-      ...Script.getStringBytes("print"),
-      externalKind.Function, //import type
-      ...Script.varuint(1), //type index (func signiture)
+      ...Wasm.stringToUTF8("environment"),
+      ...Wasm.stringToUTF8("print"),
+      Wasm.externalKind.Function, //import type
+      ...Wasm.varuint(1), //type index (func signiture)
 
-      ...Script.getStringBytes("environment"),
-      ...Script.getStringBytes("printDouble"),
-      externalKind.Function,
-      ...Script.varuint(2),
+      ...Wasm.stringToUTF8("environment"),
+      ...Wasm.stringToUTF8("printDouble"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(2),
 
-      ...Script.getStringBytes("environment"),
-      ...Script.getStringBytes("inputDouble"),
-      externalKind.Function,
-      ...Script.varuint(3),
+      ...Wasm.stringToUTF8("environment"),
+      ...Wasm.stringToUTF8("inputDouble"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(3),
     ];
 
     let functionSection = [
-      ...Script.varuint(1), //count of function bodies defined later
-      ...Script.varuint(0), //type indicies (func signitures)
+      ...Wasm.varuint(1), //count of function bodies defined later
+      ...Wasm.varuint(0), //type indicies (func signitures)
     ];
 
     let exportSection = [
-      ...Script.varuint(0), //count of exports
+      ...Wasm.varuint(0), //count of exports
 
-      // ...Script.getStringBytes("init"), //length and bytes of function name
-      // externalKind.Function, //export type
-      // ...Script.varuint(importedFunctionsCount), //exporting entry point function
+      // ...Wasm.stringToUTF8("init"), //length and bytes of function name
+      // Wasm.externalKind.Function, //export type
+      // ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
     ];
 
     let initFunction = [];
@@ -1730,7 +1670,7 @@ class Script {
               //reading from variable
               expression.push({
                 type: localVarMap[localIndex].type,
-                representation: [opcodes.get_local, localIndex],
+                representation: [Wasm.opcodes.get_local, localIndex],
               });
             }
             break;
@@ -1752,7 +1692,7 @@ class Script {
 
             let expressionType = this.TYPES.VOID;
             if (item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) {
-              //TODO convert the high level expression into Wasm opcodes
+              //TODO convert the high level expression into Wasm WasmSynthesizer.opcodes
               initFunction.push(...expression[0].representation);
               expressionType = expression[0].type;
               expression.length = 0;
@@ -1765,10 +1705,10 @@ class Script {
               if (specialization === undefined) {
                 throw "specialization for function " + func.name + " with type " + this.classes[expressionType].name + " not found";
               }
-              initFunction.push(opcodes.call, specialization);
+              initFunction.push(Wasm.opcodes.call, specialization);
             }
             else if (item === this.ITEMS.END_ARGUMENTS) {
-              initFunction.push(opcodes.call, func.funcIndex);
+              initFunction.push(Wasm.opcodes.call, func.funcIndex);
             }
             
             if (item === this.ITEMS.END_ARGUMENTS) {
@@ -1784,8 +1724,8 @@ class Script {
               expression.push({
                 type: this.TYPES.STRING,
                 representation: [
-                  opcodes.i32.const, ...Script.varint(stackPointer), //begin
-                  opcodes.i32.const, ...Script.varint(stackPointer + stringLength), //end
+                  Wasm.opcodes.i32.const, ...Wasm.varint(stackPointer), //begin
+                  Wasm.opcodes.i32.const, ...Wasm.varint(stackPointer + stringLength), //end
                 ]
               });
 
@@ -1797,7 +1737,7 @@ class Script {
               expression.push({
                 type: this.TYPES.F64,
                 representation: [
-                  opcodes.f64.const, ...bytes,
+                  Wasm.opcodes.f64.const, ...bytes,
                 ]
               });
             } break;
@@ -1812,12 +1752,12 @@ class Script {
       }
 
       if (assigningToVariable !== -1) {
-        initFunction.push(opcodes.set_local, assigningToVariable);
+        initFunction.push(Wasm.opcodes.set_local, assigningToVariable);
       }
     }
 
     const localVarDefinition = [
-      ...Script.varuint(localVarMap.length), //count of local entries (count and type pairs, not total locals)
+      ...Wasm.varuint(localVarMap.length), //count of local entries (count and type pairs, not total locals)
     ];
 
     //at the moment, I make no attempt to collapse repeating types into a single type description
@@ -1825,16 +1765,16 @@ class Script {
       let type = 0;
       switch (local.type) {
         case this.TYPES.I32:
-          type = types.i32;
+          type = Wasm.types.i32;
           break;
         case this.TYPES.I64:
-          type = types.i64;
+          type = Wasm.types.i64;
           break;
         case this.TYPES.F32:
-          type = types.f32;
+          type = Wasm.types.f32;
           break;
         case this.TYPES.F64:
-          type = types.f64;
+          type = Wasm.types.f64;
           break;
         default:
           throw "cannot find Wasm type of type " + this.classes.get(local.type).name;
@@ -1843,26 +1783,26 @@ class Script {
       localVarDefinition.push(1, type);
     }
 
-    initFunction = [...localVarDefinition, ...initFunction, opcodes.end];
-    //console.log(initFunction.map(num => num.toString(16)));
+    initFunction = [...localVarDefinition, ...initFunction, Wasm.opcodes.end];
 
     let codeSection = [
-      ...Script.varuint(1), //count of functions to define
-      ...Script.varuint(initFunction.length),
+      ...Wasm.varuint(1), //count of functions to define
+      ...Wasm.varuint(initFunction.length),
       ...initFunction,
     ];
 
     let dataSection = [
-      ...Script.varuint(1), //1 data segment
+      ...Wasm.varuint(1), //1 data segment
 
       0, //memory index 0
-      opcodes.i32.const, Script.varint(0), opcodes.end, //place memory at address 0
+      Wasm.opcodes.i32.const, Wasm.varint(0), Wasm.opcodes.end, //place memory at address 0
       stackPointer, //count of bytes to fill in (sum of all strings)
     ];
 
     for (let literalId of referencedStringLiterals) {
       const string = this.literals.get(literalId);
-      dataSection.push(...string.split('').map(a => a.charCodeAt()));
+      const bytes = string.split('').map(a => a.charCodeAt());
+      dataSection.push(...bytes);
     }
 
 
@@ -1870,70 +1810,36 @@ class Script {
       0x00, 0x61, 0x73, 0x6d, //magic numbers
       0x01, 0x00, 0x00, 0x00, //binary version
   
-      section.Type,
-      ...Script.varuint(typeSection.length), //size in bytes of section
+      Wasm.section.Type,
+      ...Wasm.varuint(typeSection.length), //size in bytes of section
       ...typeSection,
   
-      section.Import,
-      ...Script.varuint(importSection.length),
+      Wasm.section.Import,
+      ...Wasm.varuint(importSection.length),
       ...importSection,
   
-      section.Function,
-      ...Script.varuint(functionSection.length),
+      Wasm.section.Function,
+      ...Wasm.varuint(functionSection.length),
       ...functionSection,
   
-      section.Export,
-      ...Script.varuint(exportSection.length),
-      ...exportSection,
+      // Wasm.section.Export,
+      // ...Wasm.varuint(exportSection.length),
+      // ...exportSection,
 
-      section.Start,
-      [...Script.varuint(importedFunctionsCount)].length,
-      ...Script.varuint(importedFunctionsCount), //the start function is the first function after the imports
+      Wasm.section.Start,
+      [...Wasm.varuint(importedFunctionsCount)].length,
+      ...Wasm.varuint(importedFunctionsCount), //the start function is the first function after the imports
   
-      section.Code,
-      ...Script.varuint(codeSection.length),
+      Wasm.section.Code,
+      ...Wasm.varuint(codeSection.length),
       ...codeSection,
 
-      section.Data,
-      ...Script.varuint(dataSection.length),
+      Wasm.section.Data,
+      ...Wasm.varuint(dataSection.length),
       ...dataSection,
     ];
 
     return (new Uint8Array(wasm)).buffer;
-  }
-
-  //converts a string into an array of ASCII bytes
-  static getStringBytes(string) {
-    return [...Script.varuint(string.length), ...string.split('').map(a => a.charCodeAt())];
-  }
-  
-  static *varint(value) {    
-    let more = true;
-    
-    while(more) {
-      let byte = value & 0x7F;
-      value >>= 7;
-    
-      /* sign bit of byte is second high order bit (0x40) */
-      if ((value === 0 && (byte & 0x40) === 0) || (value === -1 && (byte & 0x40) !== 0)) {
-        more = false;
-      } else {
-        byte |= 0x80;
-      }
-      
-      yield byte;
-    }
-  }
-  
-  static *varuint(value) {
-    do {
-      let byte = value & 0x7F;
-      value >>= 7;
-      if (value !== 0) /* more bytes to come */
-        byte |= 0x80;
-      
-      yield byte;
-    } while (value !== 0); 
   }
 }
 

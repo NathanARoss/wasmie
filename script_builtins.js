@@ -42,11 +42,6 @@ function BuiltIns() {
   const f64 = classMap.get("f64");
   const string = classMap.get("string");
 
-  const i32_const = 0x41;
-  const i64_const = 0x42;
-  const f32_const = 0x43;
-  const f64_const = 0x44;
-
   function parseFunction(scope, name, specializations, ...overloads) {
     const formattedOverloads = [];
 
@@ -68,20 +63,20 @@ function BuiltIns() {
         switch (param.type) {
           case i32:
           case u32:
-            param.defaultRep.push(i32_const, ...Script.varuint(defaultVal));
+            param.defaultRep.push(Wasm.opcodes.i32.const, ...Wasm.varuint(defaultVal));
             break;
 
           case i64:
           case u64:
-            param.defaultRep.push(i64_const, ...Script.varuint(defaultVal));
+            param.defaultRep.push(Wasm.opcodes.i64.const, ...Wasm.varuint(defaultVal));
             break;
 
           case f32:
-            param.defaultRep.push(f32_const, ... new Uint8Array(Float32Array.of(defaultVal).buffer));
+            param.defaultRep.push(Wasm.opcodes.f32.const, ...Wasm.f32ToBytes(defaultVal));
             break;
 
           case f64:
-            param.defaultRep.push(f64_const, ... new Uint8Array(Float64Array.of(defaultVal).buffer));
+            param.defaultRep.push(Wasm.opcodes.f64.const, ...Wasm.f64ToBytes(defaultVal));
             break;
           
           case string:

@@ -64,7 +64,8 @@ viewCodeButton.addEventListener("click", function(event) {
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
-  //alert(script.getJavaScript());
+  history.pushState({action: "disassemble"}, "TouchScript Disassembly");
+  window.onpopstate();
 });
 
 menu.addEventListener("touchstart", function(event) {
@@ -169,27 +170,128 @@ window.onpopstate = function(event) {
     consoleOutput.innerHTML = "";
     document.title = "TouchScript"
   }
-  else if (event.state.action === "run") {    
-    const wasm = script.getWasm();
-    const environment = new RuntimeEnvironment();
-
+  else if (event.state.action === "run") {
+    let wasm;
     try {
-      WebAssembly.instantiate(wasm, environment)
-      .catch(error => {
-        console.log(error);
-        history.back();
-        return;
-      });
+      wasm = script.getWasm();
     } catch (error) {
       console.log(error);
       history.back();
       return;
     }
+
+    const environment = new RuntimeEnvironment();
+    WebAssembly.instantiate(wasm, environment)
+    .catch(error => {
+      console.log(error);
+      history.back();
+      return;
+    });
     
     editor.style.display = "none";
     runtime.style.display = "";
     programList.style.display = "none";
     document.title = "TouchScript Runtime"
+  }
+  else if (event.state.action === "disassemble") {
+    let wasmBinary;
+    try {
+      wasmBinary = script.getWasm();
+    } catch (error) {
+      console.log(error);
+      history.back();
+      return;
+    }
+
+    const wasm = new Uint8Array(wasmBinary);
+    const maxOffsetDigits = Math.ceil(Math.log2(wasm.length) / 4);
+
+    function printDisassembly(offset, slice, comment) {
+      const addressString = offset.toString(16).padStart(maxOffsetDigits, "0");
+      const byteString = Array.from(slice).map(num => num.toString(16).padStart(2, "0")).join(" ").padEnd(24);
+      let message = addressString + ": " + byteString;
+
+      if (comment) {
+        message += ";" + comment;
+      }
+      print(message + "\n");
+    }
+
+    //magic number
+    printDisassembly(0, wasm.slice(0, 4), "Wasm magic number \"\\0asm\"");
+
+    //version
+    printDisassembly(4, wasm.slice(4, 8), "Wasm version");
+
+
+    let offset = 8;
+    while (offset < wasm.length) {
+      const sectionCode = wasm[offset];
+      print("\n");
+      printDisassembly(offset, wasm.slice(offset, offset + 1), "section " + Wasm.sectionNames[sectionCode] + " (" + sectionCode + ")");
+      ++offset;
+
+      let [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+      const payloadLength = val;
+      printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "section size: " + val + " bytes");
+      offset += varuintSize;
+
+      switch (sectionCode) {
+        case Wasm.section.Data: {
+          [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+          const dataSegmentCount = val;
+          printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "count of data segments: " + val);
+          offset += varuintSize;
+
+          for (let i = 0; i < dataSegmentCount; ++i) {
+            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+            printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "linear memory index: " + val);
+            offset += varuintSize;
+  
+            //the memory offset is assumed to be a constant expression
+            printDisassembly(offset, wasm.slice(offset, offset + 1), Wasm.opcodeNames[wasm[offset]]); //assumed to be i32.const
+            offset += 1;
+
+            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+            printDisassembly(offset, wasm.slice(offset, offset + varuintSize), String(val));
+            offset += varuintSize;
+
+            printDisassembly(offset, wasm.slice(offset, offset + 1), Wasm.opcodeNames[wasm[offset]]); //assumed to be end
+            offset += 1;
+  
+            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+            const sizeOfData = val;
+            printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "size of data: " + val + " bytes");
+            offset += varuintSize;
+  
+            //print 8 bytes at a time
+            let suboffset = offset;
+            for (; suboffset <= offset + sizeOfData - 8; suboffset += 8) {
+              const slice = wasm.slice(suboffset, suboffset + 8);
+              printDisassembly(suboffset, slice, Wasm.UTF8toString(slice));
+            }
+  
+            //print remainder of bytes=hex
+            if (suboffset < offset + sizeOfData) {
+              const slice = wasm.slice(suboffset, offset + sizeOfData);
+              printDisassembly(suboffset, slice, Wasm.UTF8toString(slice));
+            }
+          }
+        } break;
+
+        default:
+          for (let suboffset = offset; suboffset < offset + payloadLength; ++suboffset) {
+            printDisassembly(suboffset, wasm.slice(suboffset, suboffset + 1));
+          }
+      }
+
+      offset += payloadLength;
+    }
+
+    editor.style.display = "none";
+    runtime.style.display = "";
+    programList.style.display = "none";
+    document.title = "TouchScript Disassembly"
   }
   else if (event.state.action === "load") {
     editor.style.display = "none";

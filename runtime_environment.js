@@ -18,7 +18,7 @@ class RuntimeEnvironment {
   
   print(begin, end) {
     const bytes = this.environment.memory.buffer.slice(begin, end);
-    const message = String.fromCharCode.apply(String, new Uint8Array(bytes));
+    const message = Wasm.UTF8toString(new Uint8Array(bytes));
     print(message);
   }
 
