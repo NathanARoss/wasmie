@@ -28,6 +28,28 @@ class Wasm {
         } while (value !== 0); 
     }
 
+    static decodeVarint(bytes, offset) {
+        let result = 0;
+        let shift = 0;
+        const size = 32;
+        let bytesRead = 0;
+        let byte;
+        do {
+          byte = bytes[offset + bytesRead];
+          ++bytesRead;
+
+          result |= (byte & 0x7F) << shift;
+          shift += 7;
+        } while((byte & 0x80) != 0);
+        
+        /* sign bit of byte is second high order bit (0x40) */
+        if ((shift < size) && (byte & 0x40))
+          /* sign extend */
+          result |= (~0 << shift);
+
+        return [result, bytesRead];
+    }
+
     static decodeVaruint(bytes, offset) {
         let result = 0;
         let shift = 0;
@@ -49,7 +71,12 @@ class Wasm {
     //the array is prepended by the size of the coded string encoded as a varuint
     //TODO support full UTF-8 rather than just ASCII
     static stringToUTF8(string) {
-      return [...Wasm.varuint(string.length), ...string.split('').map(a => a.charCodeAt())];
+      return string.split('').map(a => a.charCodeAt());
+    }
+
+    static getStringBytesAndData(string) {
+        const encoding = Wasm.stringToUTF8(string);
+        return [...Wasm.varuint(encoding.length), ...encoding];
     }
 
     static UTF8toString(ubytes) {

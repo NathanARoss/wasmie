@@ -252,7 +252,7 @@ window.onpopstate = function(event) {
             printDisassembly(offset, wasm.slice(offset, offset + 1), Wasm.opcodeNames[wasm[offset]]); //assumed to be i32.const
             offset += 1;
 
-            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+            [val, varuintSize] = Wasm.decodeVarint(wasm, offset); //assumed to be a varint literal
             printDisassembly(offset, wasm.slice(offset, offset + varuintSize), String(val));
             offset += varuintSize;
 
@@ -268,13 +268,13 @@ window.onpopstate = function(event) {
             let suboffset = offset;
             for (; suboffset <= offset + sizeOfData - 8; suboffset += 8) {
               const slice = wasm.slice(suboffset, suboffset + 8);
-              printDisassembly(suboffset, slice, Wasm.UTF8toString(slice));
+              printDisassembly(suboffset, slice, Wasm.UTF8toString(slice).replace(/\n/g, "\\n"));
             }
   
             //print remainder of bytes=hex
             if (suboffset < offset + sizeOfData) {
               const slice = wasm.slice(suboffset, offset + sizeOfData);
-              printDisassembly(suboffset, slice, Wasm.UTF8toString(slice));
+              printDisassembly(suboffset, slice, Wasm.UTF8toString(slice).replace(/\n/g, "\\n"));
             }
           }
         } break;

@@ -1598,24 +1598,24 @@ class Script {
     let importSection = [
       ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
-      ...Wasm.stringToUTF8("environment"),
-      ...Wasm.stringToUTF8("memory"),
+      ...Wasm.getStringBytesAndData("environment"),
+      ...Wasm.getStringBytesAndData("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
       ...Wasm.varuint(1), //initially 1 page allocated
 
-      ...Wasm.stringToUTF8("environment"),
-      ...Wasm.stringToUTF8("print"),
+      ...Wasm.getStringBytesAndData("environment"),
+      ...Wasm.getStringBytesAndData("print"),
       Wasm.externalKind.Function, //import type
       ...Wasm.varuint(1), //type index (func signiture)
 
-      ...Wasm.stringToUTF8("environment"),
-      ...Wasm.stringToUTF8("printDouble"),
+      ...Wasm.getStringBytesAndData("environment"),
+      ...Wasm.getStringBytesAndData("printDouble"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(2),
 
-      ...Wasm.stringToUTF8("environment"),
-      ...Wasm.stringToUTF8("inputDouble"),
+      ...Wasm.getStringBytesAndData("environment"),
+      ...Wasm.getStringBytesAndData("inputDouble"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(3),
     ];
@@ -1628,19 +1628,18 @@ class Script {
     let exportSection = [
       ...Wasm.varuint(0), //count of exports
 
-      // ...Wasm.stringToUTF8("init"), //length and bytes of function name
+      // ...Wasm.getStringBytesAndData("init"), //length and bytes of function name
       // Wasm.externalKind.Function, //export type
       // ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
     ];
 
     let initFunction = [];
 
-    const referencedStringLiterals = [];
     const functionsBeingCalled = [];
     const expression = [];
-    let stackPointer = 0;
     const localVarMap = []; //maps local vars to varIDs
     let assigningToVariable;
+    const linearMemoryInitialValues = [];
 
     for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
       assigningToVariable = -1;
@@ -1718,18 +1717,18 @@ class Script {
 
           case Script.LITERAL:
             if (meta === 1) {
-              referencedStringLiterals.push(value);
-              const stringLength = this.literals.get(value).length;
+              const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
+              const bytes = Wasm.stringToUTF8(stringLiteral);
               
               expression.push({
                 type: this.TYPES.STRING,
                 representation: [
-                  Wasm.opcodes.i32.const, ...Wasm.varint(stackPointer), //begin
-                  Wasm.opcodes.i32.const, ...Wasm.varint(stackPointer + stringLength), //end
+                  Wasm.opcodes.i32.const, ...Wasm.varint(linearMemoryInitialValues.length), //begin
+                  Wasm.opcodes.i32.const, ...Wasm.varint(linearMemoryInitialValues.length + bytes.length), //end
                 ]
               });
 
-              stackPointer += stringLength;
+              linearMemoryInitialValues.push(...bytes);
             } else if (meta === 2) {
               const literal = this.literals.get(value);
               const bytes = new Uint8Array(Float64Array.of(+literal).buffer);
@@ -1796,14 +1795,9 @@ class Script {
 
       0, //memory index 0
       Wasm.opcodes.i32.const, Wasm.varint(0), Wasm.opcodes.end, //place memory at address 0
-      stackPointer, //count of bytes to fill in (sum of all strings)
+      ...Wasm.varuint(linearMemoryInitialValues.length), //count of bytes to fill in
+      ...linearMemoryInitialValues,
     ];
-
-    for (let literalId of referencedStringLiterals) {
-      const string = this.literals.get(literalId);
-      const bytes = string.split('').map(a => a.charCodeAt());
-      dataSection.push(...bytes);
-    }
 
 
     let wasm = [
