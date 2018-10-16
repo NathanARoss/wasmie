@@ -1816,7 +1816,9 @@ class Script {
       }
     }
 
-    const localVarDefinition = Script.varuint(localVarMap.length); //count of local entries (count and type pairs, not total locals)
+    const localVarDefinition = [
+      ...Script.varuint(localVarMap.length), //count of local entries (count and type pairs, not total locals)
+    ];
 
     //at the moment, I make no attempt to collapse repeating types into a single type description
     for (let local of localVarMap) {
@@ -1851,7 +1853,7 @@ class Script {
     ];
 
     let dataSection = [
-      Script.varuint(1), //1 data segment
+      ...Script.varuint(1), //1 data segment
 
       0, //memory index 0
       opcodes.i32.const, Script.varint(0), opcodes.end, //place memory at address 0
@@ -1885,7 +1887,7 @@ class Script {
       ...exportSection,
 
       section.Start,
-      Script.varuint(importedFunctionsCount).length,
+      [...Script.varuint(importedFunctionsCount)].length,
       ...Script.varuint(importedFunctionsCount), //the start function is the first function after the imports
   
       section.Code,
@@ -1905,9 +1907,7 @@ class Script {
     return [...Script.varuint(string.length), ...string.split('').map(a => a.charCodeAt())];
   }
   
-  static varint(value) {
-    const bytes = [];
-    
+  static *varint(value) {    
     let more = true;
     
     while(more) {
@@ -1921,25 +1921,19 @@ class Script {
         byte |= 0x80;
       }
       
-      bytes.push(byte);
+      yield byte;
     }
-    
-    return bytes;
   }
   
-  static varuint(value) {
-    const bytes = [];
-    
+  static *varuint(value) {
     do {
       let byte = value & 0x7F;
       value >>= 7;
       if (value !== 0) /* more bytes to come */
         byte |= 0x80;
       
-      bytes.push(byte);
+      yield byte;
     } while (value !== 0); 
-    
-    return bytes;
   }
 }
 
