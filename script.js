@@ -297,7 +297,7 @@ class Script {
       }
     }
 
-    reloadAllRows();
+    scriptLoaded();
   }
 
   itemClicked(row, col) {

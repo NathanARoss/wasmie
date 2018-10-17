@@ -341,7 +341,11 @@ window.onpopstate = function(event) {
     });
   }
 }
-window.onpopstate();
+
+function scriptLoaded() {
+  reloadAllRows();
+  window.onpopstate();
+}
 
 
 function selectProject(event) {
