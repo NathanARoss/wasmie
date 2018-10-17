@@ -1,14 +1,14 @@
 class RuntimeEnvironment {
   constructor() {
     const self = this;
-    this.environment = {
+    this.imports = {
       print(begin, end) {
         self.print(begin, end)
       },
-      printDouble(doubleNum) {
+      printF64(doubleNum) {
         self.printDouble(doubleNum)
       },
-      inputDouble(defaultVal, min, max) {
+      inputF64(defaultVal, min, max) {
         return self.inputDouble(defaultVal, min, max);
       },
 
@@ -17,7 +17,7 @@ class RuntimeEnvironment {
   }
   
   print(begin, end) {
-    const bytes = this.environment.memory.buffer.slice(begin, end);
+    const bytes = this.imports.memory.buffer.slice(begin, end);
     const message = Wasm.UTF8toString(new Uint8Array(bytes));
     print(message);
   }

@@ -1598,24 +1598,24 @@ class Script {
     let importSection = [
       ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
-      ...Wasm.getStringBytesAndData("environment"),
+      ...Wasm.getStringBytesAndData("imports"),
       ...Wasm.getStringBytesAndData("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
       ...Wasm.varuint(1), //initially 1 page allocated
 
-      ...Wasm.getStringBytesAndData("environment"),
+      ...Wasm.getStringBytesAndData("imports"),
       ...Wasm.getStringBytesAndData("print"),
       Wasm.externalKind.Function, //import type
       ...Wasm.varuint(1), //type index (func signiture)
 
-      ...Wasm.getStringBytesAndData("environment"),
-      ...Wasm.getStringBytesAndData("printDouble"),
+      ...Wasm.getStringBytesAndData("imports"),
+      ...Wasm.getStringBytesAndData("printF64"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(2),
 
-      ...Wasm.getStringBytesAndData("environment"),
-      ...Wasm.getStringBytesAndData("inputDouble"),
+      ...Wasm.getStringBytesAndData("imports"),
+      ...Wasm.getStringBytesAndData("inputF64"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(3),
     ];
@@ -1702,7 +1702,7 @@ class Script {
             if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && func.specializations) {
               const specialization = func.specializations.get(expressionType);
               if (specialization === undefined) {
-                throw "specialization for function " + func.name + " with type " + this.classes[expressionType].name + " not found";
+                throw `implementation of ${func.name}(${this.classes.get(expressionType).name}) not found`;
               }
               initFunction.push(Wasm.opcodes.call, specialization);
             }
