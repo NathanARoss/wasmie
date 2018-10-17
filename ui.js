@@ -157,11 +157,13 @@ window.onpopstate = function(event) {
   if (!event) {
     event = {state: history.state};
   }
+  
+  editor.style.display = "none";
+  runtime.style.display = "none";
+  programList.style.display = "none";
 
   if (!event.state) {
     editor.style.display = "";
-    runtime.style.display = "none";
-    programList.style.display = "none";
 
     while (programList.childNodes.length > 1) {
       programList.removeChild(programList.lastChild);
@@ -188,9 +190,7 @@ window.onpopstate = function(event) {
       return;
     });
     
-    editor.style.display = "none";
     runtime.style.display = "";
-    programList.style.display = "none";
     document.title = "TouchScript Runtime"
   }
   else if (event.state.action === "disassemble") {
@@ -206,7 +206,7 @@ window.onpopstate = function(event) {
     const wasm = new Uint8Array(wasmBinary);
     const maxOffsetDigits = Math.ceil(Math.log2(wasm.length) / 4);
 
-    function printDisassembly(offset, slice, comment) {
+    function printDisassembly(offset, slice, comment = "") {
       const addressNode = document.createElement("span");
       addressNode.textContent = offset.toString(16).padStart(maxOffsetDigits, "0") + " ";
       addressNode.id = "wasm-byte-offset";
@@ -217,16 +217,13 @@ window.onpopstate = function(event) {
       consoleOutput.appendChild(byteNode);
 
       const commentNode = document.createElement("span");
-      commentNode.textContent = comment;
+      commentNode.textContent = comment + "\n";
       commentNode.id = "wasm-comment";
       consoleOutput.appendChild(commentNode);
-
-      const newline = document.createElement("br");
-      consoleOutput.appendChild(newline);
     }
 
     //reads and prints a whole string on the first line
-    function printBytesAsChars(begin, end, beginComment, endComment) {
+    function printBytesAsChars(begin, end, beginComment = '"', endComment = '"') {
       const slice = wasm.slice(begin, Math.min(begin + 8, end));
       const nameSlice = wasm.slice(begin, end);
       printDisassembly(begin, slice, beginComment + Wasm.UTF8toString(nameSlice).replace(/\n/g, "\\n") + endComment);
@@ -259,12 +256,8 @@ window.onpopstate = function(event) {
       }
     }
 
-    //magic number
     printDisassembly(0, wasm.slice(0, 4), "Wasm magic number \"\\0asm\"");
-
-    //version
     printDisassembly(4, wasm.slice(4, 8), "Wasm version");
-
 
     let offset = 8;
     while (offset < wasm.length) {
@@ -273,33 +266,33 @@ window.onpopstate = function(event) {
       printDisassembly(offset, wasm.slice(offset, offset + 1), "section " + Wasm.sectionNames[sectionCode] + " (" + sectionCode + ")");
       ++offset;
 
-      let [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+      let [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
       const payloadLength = val;
-      printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "section size: " + val + " bytes");
-      offset += varuintSize;
+      printDisassembly(offset, wasm.slice(offset, offset + bytesRead), "section size: " + val + " bytes");
+      offset += bytesRead;
 
       const end = offset + payloadLength;
 
       switch (sectionCode) {
         case Wasm.section.Import: {
-          [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+          [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
           const importCount = val;
-          offset += varuintSize;
+          offset += bytesRead;
 
           for (let i = 0; i < importCount; ++i) {
             print("\n");
-            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
             printDisassembly(offset, [val], "module name size: " + val + " bytes");
-            offset += varuintSize;
+            offset += bytesRead;
 
-            printBytesAsChars(offset, offset + val, "\"", "\"");
+            printBytesAsChars(offset, offset + val);
             offset += val;
 
-            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
             printDisassembly(offset, [val], "function name size: " + val + " bytes");
-            offset += varuintSize;
+            offset += bytesRead;
 
-            printBytesAsChars(offset, offset + val, "\"", "\"");
+            printBytesAsChars(offset, offset + val);
             offset += val;
 
             const exportType = wasm[offset];
@@ -308,52 +301,52 @@ window.onpopstate = function(event) {
 
             if (exportType === Wasm.externalKind.Memory) {
               const maxPagesSpecifiedFlag = wasm[offset];
-              printDisassembly(offset, [maxPagesSpecifiedFlag], maxPagesSpecifiedFlag ? "allocation limit specified" : "no allocation limit")
+              printDisassembly(offset, [maxPagesSpecifiedFlag], maxPagesSpecifiedFlag ? "allocation limit specified" : "no allocation limit");
               ++offset;
 
-              [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+              [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
               printDisassembly(offset, [val], "initial allocation: " + val + " pages");
-              offset += varuintSize;
+              offset += bytesRead;
 
               if (maxPagesSpecifiedFlag) {
-                [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+                [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
                 printDisassembly(offset, [val], "max allocation: " + val + " pages");
-                offset += varuintSize;
+                offset += bytesRead;
               }
             } else if (exportType === Wasm.externalKind.Function) {
-              [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+              [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
               printDisassembly(offset, [val], "func signature index: " + val);
-              offset += varuintSize;
+              offset += bytesRead;
             }
           }
         } break;
 
         case Wasm.section.Data: {
-          [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+          [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
           const dataSegmentCount = val;
-          printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "count of data segments: " + val);
-          offset += varuintSize;
+          printDisassembly(offset, wasm.slice(offset, offset + bytesRead), "count of data segments: " + val);
+          offset += bytesRead;
 
           for (let i = 0; i < dataSegmentCount; ++i) {
-            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
-            printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "linear memory index: " + val);
-            offset += varuintSize;
+            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+            printDisassembly(offset, wasm.slice(offset, offset + bytesRead), "linear memory index: " + val);
+            offset += bytesRead;
   
             //the memory offset is assumed to be a constant expression
             printDisassembly(offset, wasm.slice(offset, offset + 1), Wasm.opcodeNames[wasm[offset]]); //assumed to be i32.const
             offset += 1;
 
-            [val, varuintSize] = Wasm.decodeVarint(wasm, offset); //assumed to be a varint literal
-            printDisassembly(offset, wasm.slice(offset, offset + varuintSize), String(val));
-            offset += varuintSize;
+            [val, bytesRead] = Wasm.decodeVarint(wasm, offset); //assumed to be a varint literal
+            printDisassembly(offset, wasm.slice(offset, offset + bytesRead), String(val));
+            offset += bytesRead;
 
             printDisassembly(offset, wasm.slice(offset, offset + 1), Wasm.opcodeNames[wasm[offset]]); //assumed to be end
             offset += 1;
   
-            [val, varuintSize] = Wasm.decodeVaruint(wasm, offset);
+            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
             const sizeOfData = val;
-            printDisassembly(offset, wasm.slice(offset, offset + varuintSize), "size of data: " + val + " bytes");
-            offset += varuintSize;
+            printDisassembly(offset, wasm.slice(offset, offset + bytesRead), "size of data: " + val + " bytes");
+            offset += bytesRead;
   
             printAsMemory(offset, end);
           }
@@ -368,14 +361,10 @@ window.onpopstate = function(event) {
       offset = end;
     }
 
-    editor.style.display = "none";
     runtime.style.display = "";
-    programList.style.display = "none";
     document.title = "TouchScript Disassembly"
   }
   else if (event.state.action === "load") {
-    editor.style.display = "none";
-    runtime.style.display = "none";
     programList.style.display = "";
     document.title = "TouchScript Project Manager"
 
@@ -924,6 +913,6 @@ function* stride(start, end) {
 }
 
 function print(value) {
-  const textNode = document.createTextNode(value);  
+  const textNode = document.createTextNode(value);
   consoleOutput.appendChild(textNode);
 }
