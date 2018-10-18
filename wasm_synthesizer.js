@@ -1,5 +1,5 @@
 class Wasm {
-    static *varint(value) {    
+    static *varint(value) {
         let more = true;
         
         while(more) {
@@ -25,7 +25,7 @@ class Wasm {
             byte |= 0x80;
             
             yield byte;
-        } while (value !== 0); 
+        } while (value !== 0);
     }
 
     static decodeVarint(bytes, offset) {

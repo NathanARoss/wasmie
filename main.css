@@ -231,6 +231,14 @@ button {
   #debug {
     display: none;
   }
+  
+  #wasm-data {
+    display: none;
+  }
+  
+  #wasm-comment::before {
+    display: none;
+  }
 }
 
 
@@ -304,10 +312,11 @@ button {
   font-weight: bold;
 }
 #wasm-comment {
-  font-family: sans-serif;
   color: #808080;
 }
-
+#wasm-comment::before {
+  content: "; ";
+}
 #list {
   width: 100%;
   transition: width 0.25s;
