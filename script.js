@@ -70,10 +70,10 @@ class Script {
     this.symbols = symbols;
     this.keywords = keywords;
 
-    const makeKeyword = text => 
+    const makeKeyword = text =>
       Script.makeItem({format: Script.KEYWORD, value: this.keywords.findIndex(element => element.name === text)});
 
-    const makeSymbol = text => 
+    const makeSymbol = text =>
       Script.makeItem({format: Script.SYMBOL, value: this.symbols.indexOf(text)});
 
     const literals = [];
@@ -1100,7 +1100,7 @@ class Script {
    * Finds the bounds of the smallest expression that contains the item position
    * @param {Number} row
    * @param {Number} col
-   * @return {[Number, Number]} [startItem, endItem] 
+   * @return {[Number, Number]} [startItem, endItem]
    */
   getExpressionBounds(row, col) {
     let start = col;
@@ -1289,7 +1289,7 @@ class Script {
 
   /**
    * creates a new key that sorts after key
-   * @param {ArrayBuffer} key 
+   * @param {ArrayBuffer} key
    * @returns {ArrayBuffer} succeeding key
    */
   static incrementKey(key) {
@@ -1314,7 +1314,7 @@ class Script {
 
   /**
    * creates a new key that sorts between lowKey and highKey
-   * @param {ArrayBuffer} lowKey 
+   * @param {ArrayBuffer} lowKey
    * @param {ArrayBuffer} highKey
    * @return {ArrayBuffer} midway key
    */
@@ -1712,7 +1712,7 @@ class Script {
             
             if (item === this.ITEMS.END_ARGUMENTS) {
               functionsBeingCalled.pop();
-            } 
+            }
           } break;
 
           case Script.LITERAL:

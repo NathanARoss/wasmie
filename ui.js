@@ -206,7 +206,9 @@ window.onpopstate = function(event) {
     const wasm = new Uint8Array(wasmBinary);
     const maxOffsetDigits = Math.ceil(Math.log2(wasm.length) / 4);
 
-    function printDisassembly(offset, slice, comment = "") {
+    function printDisassembly(offset, count, comment = "") {
+      const slice = wasm.slice(offset, offset + count);
+      
       const addressNode = document.createElement("span");
       addressNode.textContent = offset.toString(16).padStart(maxOffsetDigits, "0") + ": ";
       addressNode.id = "wasm-byte-offset";
@@ -224,22 +226,21 @@ window.onpopstate = function(event) {
     }
 
     //reads and prints a whole string on the first line
-    function printBytesAsChars(begin, end, beginComment = '"', endComment = '"') {
-      const slice = wasm.slice(begin, Math.min(begin + 8, end));
-      const nameSlice = wasm.slice(begin, end);
-      printDisassembly(begin, slice, beginComment + Wasm.UTF8toString(nameSlice).replace(/\n/g, "\\n").replace(/\0/g, "\\0") + endComment);
+    function printBytesAsChars(begin, count, beginComment = '"', endComment = '"') {
+      const end = begin + count;
+      
+      const sanitizedString = escapeControlCodes(Wasm.UTF8toString(wasm.slice(begin, end)));
+      printDisassembly(begin, Math.min(8, count), beginComment + sanitizedString + endComment);
       begin += 8;
 
       //print 8 bytes at a time
       for (; begin <= end - 8; begin += 8) {
-        const slice = wasm.slice(begin, begin + 8);
-        printDisassembly(begin, slice);
+        printDisassembly(begin, 8);
       }
 
       //print remainder of bytes
       if (begin < end) {
-        const slice = wasm.slice(begin, end);
-        printDisassembly(begin, slice);
+        printDisassembly(begin, end - begin);
       }
     }
 
@@ -247,152 +248,143 @@ window.onpopstate = function(event) {
       //print 8 bytes at a time
       for (; begin <= end - 8; begin += 8) {
         const slice = wasm.slice(begin, begin + 8);
-        printDisassembly(begin, slice, Wasm.UTF8toString(slice).replace(/\n/g, "\\n"));
+        printDisassembly(begin, 8, escapeControlCodes(Wasm.UTF8toString(slice)));
       }
 
       //print remainder of bytes
       if (begin < end) {
         const slice = wasm.slice(begin, end);
-        printDisassembly(begin, slice, Wasm.UTF8toString(slice).replace(/\n/g, "\\n"));
+        printDisassembly(begin, end - begin, escapeControlCodes(Wasm.UTF8toString(slice)));
       }
     }
 
     printBytesAsChars(0, 4, 'Wasm magic number: "');
-    printDisassembly(4, wasm.slice(4, 8), "Wasm version");
+    printDisassembly(4, 4, "Wasm version");
 
     let offset = 8;
     while (offset < wasm.length) {
       const sectionCode = wasm[offset];
       print("\n\n");
-      printDisassembly(offset, wasm.slice(offset, offset + 1), "section " + Wasm.sectionNames[sectionCode] + " (" + sectionCode + ")");
+      printDisassembly(offset, 1, "section " + Wasm.sectionNames[sectionCode] + " (" + sectionCode + ")");
       ++offset;
 
       let [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
       const payloadLength = val;
-      printDisassembly(offset, wasm.slice(offset, offset + bytesRead), "section size: " + val + " bytes");
+      printDisassembly(offset, bytesRead, "size: " + val + " bytes");
       offset += bytesRead;
 
       const end = offset + payloadLength;
       [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+      const count = val;
+      let firstItemLabel = sectionCode === Wasm.section.Start ? "entry point func: " : "count: ";
+      printDisassembly(offset, bytesRead, firstItemLabel + count);
       offset += bytesRead;
 
       switch (sectionCode) {
         case Wasm.section.Type: {
-          const typeCount = val;
-          printDisassembly(offset, wasm.slice(offset - bytesRead, offset), "count of types: " + typeCount);
-          
-          for (let i = 0; i < typeCount; ++i) {
+          for (let i = 0; i < count; ++i) {
             print("\n");
-            printDisassembly(offset, wasm.slice(offset, offset + 1), "form: " + Wasm.typeNames[wasm[offset]]);
+            printDisassembly(offset, 1, "form: " + Wasm.typeNames[wasm[offset]]);
             ++offset;
             
             [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
             const paramCount = val;
-            printDisassembly(offset, wasm.slice(offset, offset + 1), "param count: " + paramCount);
+            printDisassembly(offset, 1, "param count: " + paramCount);
             offset += bytesRead;
             
             for (let j = 0; j < paramCount; ++j) {
               [val, bytesRead] = Wasm.decodeVarint(wasm, offset);
-              printDisassembly(offset, wasm.slice(offset, offset + bytesRead), Wasm.typeNames[val & 0x7F]);
+              printDisassembly(offset, bytesRead, Wasm.typeNames[val & 0x7F]);
               offset += bytesRead;
             }
             
             [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
             const returnCount = val;
-            printDisassembly(offset, wasm.slice(offset, offset + 1), "return count: " + returnCount);
+            printDisassembly(offset, 1, "return count: " + returnCount);
             offset += bytesRead;
             
             for (let j = 0; j < returnCount; ++j) {
               [val, bytesRead] = Wasm.decodeVarint(wasm, offset);
-              printDisassembly(offset, wasm.slice(offset, offset + bytesRead), Wasm.typeNames[val & 0x7F]);
+              printDisassembly(offset, bytesRead, Wasm.typeNames[val & 0x7F]);
               offset += bytesRead;
             }
           }
         } break;
         
         case Wasm.section.Import: {
-          const importCount = val;
-          printDisassembly(offset, wasm.slice(offset - bytesRead, offset), "count of imports: " + importCount);
-
-          for (let i = 0; i < importCount; ++i) {
+          for (let i = 0; i < count; ++i) {
             print("\n");
             [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            printDisassembly(offset, [val], "module name: " + val + " bytes");
+            printDisassembly(offset, bytesRead, "module name: " + val + " bytes");
             offset += bytesRead;
 
-            printBytesAsChars(offset, offset + val);
+            printBytesAsChars(offset, val);
             offset += val;
 
             [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            printDisassembly(offset, [val], "field name: " + val + " bytes");
+            printDisassembly(offset, bytesRead, "field name: " + val + " bytes");
             offset += bytesRead;
 
-            printBytesAsChars(offset, offset + val);
+            printBytesAsChars(offset, val);
             offset += val;
 
             const exportType = wasm[offset];
-            printDisassembly(offset, [exportType], "export type: " + Wasm.externalKindNames[exportType]);
+            printDisassembly(offset, 1, "export type: " + Wasm.externalKindNames[exportType]);
             ++offset;
 
             if (exportType === Wasm.externalKind.Memory) {
               const maxPagesSpecifiedFlag = wasm[offset];
-              printDisassembly(offset, [maxPagesSpecifiedFlag], maxPagesSpecifiedFlag ? "allocation limit specified" : "no allocation limit");
+              printDisassembly(offset, 1, maxPagesSpecifiedFlag ? "allocation limit specified" : "no allocation limit");
               ++offset;
 
               [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-              printDisassembly(offset, [val], "initial allocation: " + val + " pages");
+              printDisassembly(offset, bytesRead, "initial allocation: " + val + " pages");
               offset += bytesRead;
 
               if (maxPagesSpecifiedFlag) {
                 [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-                printDisassembly(offset, [val], "max allocation: " + val + " pages");
+                printDisassembly(offset, bytesRead, "max allocation: " + val + " pages");
                 offset += bytesRead;
               }
             } else if (exportType === Wasm.externalKind.Function) {
               [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-              printDisassembly(offset, [val], "signature: type index " + val);
+              printDisassembly(offset, bytesRead, "signature: type index " + val);
               offset += bytesRead;
             }
           }
         } break;
         
         case Wasm.section.Function: {
-          printDisassembly(offset, wasm.slice(offset - bytesRead, offset), "defined function count: " + val);
-          
           while (offset < end) {
             [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            printDisassembly(offset, [val], "signature: type index " + val);
+            printDisassembly(offset, bytesRead, "signature: type index " + val);
             offset += bytesRead;
           }
         } break;
         
         case Wasm.section.Start: {
-          printDisassembly(offset, wasm.slice(offset - bytesRead, offset), "start function index: " + val);
         } break;
 
         case Wasm.section.Data: {
-          const dataSegmentCount = val;
-          printDisassembly(offset, wasm.slice(offset - bytesRead, offset), "count of data segments: " + val);
-
-          for (let i = 0; i < dataSegmentCount; ++i) {
+          for (let i = 0; i < count; ++i) {
             [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            printDisassembly(offset, wasm.slice(offset, offset + bytesRead), "linear memory index: " + val);
+            printDisassembly(offset, bytesRead, "linear memory index: " + val);
             offset += bytesRead;
   
             //the memory offset is assumed to be a constant expression
-            printDisassembly(offset, wasm.slice(offset, offset + 1), Wasm.opcodeNames[wasm[offset]]); //assumed to be i32.const
+            printDisassembly(offset, 1, Wasm.opcodeNames[wasm[offset]]); //assumed to be i32.const
             offset += 1;
 
             [val, bytesRead] = Wasm.decodeVarint(wasm, offset); //assumed to be a varint literal
-            printDisassembly(offset, wasm.slice(offset, offset + bytesRead), String(val));
+            printDisassembly(offset, bytesRead, String(val));
             offset += bytesRead;
 
-            printDisassembly(offset, wasm.slice(offset, offset + 1), Wasm.opcodeNames[wasm[offset]]); //assumed to be end
+            printDisassembly(offset, 1, Wasm.opcodeNames[wasm[offset]]); //assumed to be end
             offset += 1;
   
             [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
             const sizeOfData = val;
-            printDisassembly(offset, wasm.slice(offset, offset + bytesRead), "size of data: " + val + " bytes");
+            printDisassembly(offset, bytesRead, "size of data: " + val + " bytes");
             offset += bytesRead;
   
             printAsMemory(offset, end);
@@ -400,8 +392,8 @@ window.onpopstate = function(event) {
         } break;
 
         default:
-          for (offset -= bytesRead; offset < end; ++offset) {
-            printDisassembly(offset, wasm.slice(offset, offset + 1));
+          for (; offset < end; ++offset) {
+            printDisassembly(offset, 1);
           }
       }
 
@@ -962,4 +954,8 @@ function* stride(start, end) {
 function print(value) {
   const textNode = document.createTextNode(value);
   consoleOutput.appendChild(textNode);
+}
+
+function escapeControlCodes(string) {
+  return string.replace(/\n/g, "\\n").replace(/\0/g, "\\0");
 }
