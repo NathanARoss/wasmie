@@ -204,13 +204,13 @@ window.onpopstate = function(event) {
     }
 
     const wasm = new Uint8Array(wasmBinary);
-    const maxOffsetDigits = Math.ceil(Math.log2(wasm.length) / 4);
+    const maxOffsetDigits = Math.ceil(Math.log2(wasm.length) / Math.log2(10));
 
     function printDisassembly(offset, count, comment = "") {
       const slice = wasm.slice(offset, offset + count);
       
       const addressNode = document.createElement("span");
-      addressNode.textContent = offset.toString(16).padStart(maxOffsetDigits, "0") + ": ";
+      addressNode.textContent = offset.toString().padStart(maxOffsetDigits) + ": ";
       addressNode.id = "wasm-byte-offset";
       consoleOutput.appendChild(addressNode);
 
@@ -287,26 +287,17 @@ window.onpopstate = function(event) {
             printDisassembly(offset, 1, "form: " + Wasm.typeNames[wasm[offset]]);
             ++offset;
             
-            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            const paramCount = val;
-            printDisassembly(offset, 1, "param count: " + paramCount);
-            offset += bytesRead;
-            
-            for (let j = 0; j < paramCount; ++j) {
-              [val, bytesRead] = Wasm.decodeVarint(wasm, offset);
-              printDisassembly(offset, bytesRead, Wasm.typeNames[val & 0x7F]);
+            for (const part of ["param", "return"]) {
+              [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+              printDisassembly(offset, bytesRead, part + " count: " + val);
               offset += bytesRead;
-            }
-            
-            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            const returnCount = val;
-            printDisassembly(offset, 1, "return count: " + returnCount);
-            offset += bytesRead;
-            
-            for (let j = 0; j < returnCount; ++j) {
-              [val, bytesRead] = Wasm.decodeVarint(wasm, offset);
-              printDisassembly(offset, bytesRead, Wasm.typeNames[val & 0x7F]);
-              offset += bytesRead;
+              
+              for (let j = 0; j < val; j += 8) {
+                const count = Math.min(8, val - j);
+                const comment = Array.from(wasm.slice(offset, offset + count)).map(type => Wasm.typeNames[type & 0x7F]).join(" ");
+                printDisassembly(offset, count, comment);
+                offset += count;
+              }
             }
           }
         } break;
