@@ -236,7 +236,7 @@ button {
     display: none;
   }
   
-  #wasm-comment::before {
+  #wasm-comment::before, #wasm-byte-offset {
     display: none;
   }
 }
