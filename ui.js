@@ -234,27 +234,18 @@ window.onpopstate = function(event) {
       begin += 8;
 
       //print 8 bytes at a time
-      for (; begin <= end - 8; begin += 8) {
-        printDisassembly(begin, 8);
-      }
-
-      //print remainder of bytes
-      if (begin < end) {
-        printDisassembly(begin, end - begin);
+      for (; begin < end; begin += 8) {
+        const count = Math.min(8, end - begin);
+        printDisassembly(begin, count);
       }
     }
 
     function printAsMemory(begin, end) {
       //print 8 bytes at a time
-      for (; begin <= end - 8; begin += 8) {
-        const slice = wasm.slice(begin, begin + 8);
-        printDisassembly(begin, 8, escapeControlCodes(Wasm.UTF8toString(slice)));
-      }
-
-      //print remainder of bytes
-      if (begin < end) {
-        const slice = wasm.slice(begin, end);
-        printDisassembly(begin, end - begin, escapeControlCodes(Wasm.UTF8toString(slice)));
+      for (; begin < end; begin += 8) {
+        const count = Math.min(8, end - begin);
+        const slice = wasm.slice(begin, begin + count);
+        printDisassembly(begin, count, escapeControlCodes(Wasm.UTF8toString(slice)));
       }
     }
 
@@ -305,19 +296,14 @@ window.onpopstate = function(event) {
         case Wasm.section.Import: {
           for (let i = 0; i < count; ++i) {
             print("\n");
-            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            printDisassembly(offset, bytesRead, "module name: " + val + " bytes");
-            offset += bytesRead;
-
-            printBytesAsChars(offset, val);
-            offset += val;
-
-            [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-            printDisassembly(offset, bytesRead, "field name: " + val + " bytes");
-            offset += bytesRead;
-
-            printBytesAsChars(offset, val);
-            offset += val;
+            for (const responsibility of ["module", "field"]) {
+              [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+              printDisassembly(offset, bytesRead, responsibility + " name: " + val + " bytes");
+              offset += bytesRead;
+  
+              printBytesAsChars(offset, val);
+              offset += val;
+            }
 
             const exportType = wasm[offset];
             printDisassembly(offset, 1, "export type: " + Wasm.externalKindNames[exportType]);
