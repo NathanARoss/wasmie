@@ -137,6 +137,7 @@ class Script {
           console.log("The previously opened project no longer exists");
           this.projectID = 0;
           localStorage.removeItem(ACTIVE_PROJECT_KEY);
+          parent.assembleMetadata();
         } else {
           let remainingStores = {count: 6};
           let actions = [];
