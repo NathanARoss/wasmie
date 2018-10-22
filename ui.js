@@ -149,7 +149,7 @@ window.onscroll = function() {
   
   list.childNodes.forEach(touchCanceled);
 
-  debug.firstChild.nodeValue = `[${firstLoadedPosition}, ${(firstLoadedPosition + loadedCount - 1)}]`;
+  debug.textContent = `[${firstLoadedPosition}, ${(firstLoadedPosition + loadedCount - 1)}]`;
 };
 window.onscroll();
 
@@ -210,7 +210,7 @@ window.onpopstate = function(event) {
     function printDisassembly(count, comment = "") {      
       const addressNode = document.createElement("span");
       addressNode.textContent = offset.toString().padStart(maxOffsetDigits) + ": ";
-      addressNode.id = "wasm-byte-offset";
+      addressNode.className = "wasm-byte-offset";
       consoleOutput.appendChild(addressNode);
 
       const slice = wasm.slice(offset, offset + count);
@@ -218,12 +218,12 @@ window.onpopstate = function(event) {
 
       const byteNode = document.createElement("span");
       byteNode.textContent = Array.from(slice).map(num => num.toString(16).padStart(2, "0")).join(" ").padEnd(24);
-      byteNode.id = "wasm-data";
+      byteNode.className = "wasm-data";
       consoleOutput.appendChild(byteNode);
 
       const commentNode = document.createElement("span");
       commentNode.textContent = comment + "\n";
-      commentNode.id = "wasm-comment";
+      commentNode.className = "wasm-comment";
       consoleOutput.appendChild(commentNode);
     }
 
@@ -251,6 +251,8 @@ window.onpopstate = function(event) {
       printDisassembly(bytesRead, beginComment + val + endComment);
       return val;
     }
+    
+    
 
     printEncodedString(4, 'Wasm magic number: "');
     printDisassembly(4, "Wasm version");
@@ -362,12 +364,11 @@ window.onpopstate = function(event) {
           dateLastModified.textContent = "Last Modified: " + getDateString(project.lastModified);
 
           const deleteButton = document.createElement("button");
-          deleteButton.classList.add("delete");
-          deleteButton.classList.add("delete-project-button");
+          deleteButton.className = "delete delete-project-button";
           deleteButton.addEventListener("click", deleteProject);
 
           const entry = document.createElement("div");
-          entry.classList.add("project-list-entry");
+          entry.className = "project-list-entry";
           entry.appendChild(deleteButton);
           entry.appendChild(label);
           entry.appendChild(projectName);
@@ -394,18 +395,17 @@ function scriptLoaded() {
 
 
 function selectProject(event) {
-  if (event.target.nodeName === "BUTTON" || event.target.nodeName === "INPUT")
-    return;
-
-  const projectID = event.currentTarget.projectId;
-  const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
-  if (projectID !== oldActiveProject) {
-    localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
-    script = new Script();
-    reloadAllRows();
+  if (event.target.nodeName !== "BUTTON" && event.target.nodeName !== "INPUT") {
+    const projectID = event.currentTarget.projectId;
+    const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+    if (projectID !== oldActiveProject) {
+      localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
+      script = new Script();
+      reloadAllRows();
+    }
+    closeMenu();
+    window.history.back();
   }
-  closeMenu();
-  window.history.back();
 }
 
 function deleteProject(event) {
@@ -490,45 +490,38 @@ function getRowCount() {
 
 function createRow() {
   let lineNumberItem = document.createElement("p");
-  lineNumberItem.classList.add("slide-menu-item");
-  lineNumberItem.classList.add("no-select");
-  lineNumberItem.id = "line-number-item";
-  lineNumberItem.appendChild(document.createTextNode(""));
+  lineNumberItem.className= "line-number-item slide-menu-item no-select";
   
   let newlineItem = document.createElement("p");
-  newlineItem.classList.add("slide-menu-item");
-  newlineItem.id = "newline-item";
+  newlineItem.className = "newline-item slide-menu-item";
   
   let deleteLineItem = document.createElement("p");
-  deleteLineItem.classList.add("slide-menu-item");
-  deleteLineItem.id = "delete-line-item";
+  deleteLineItem.className = "delete-line-item slide-menu-item";
   
   let slideMenu = document.createElement("div");
-  slideMenu.classList.add("slide-menu");
-  slideMenu.classList.add("slow-transition");
+  slideMenu.className = "slide-menu slow-transition";
   slideMenu.appendChild(lineNumberItem);
   slideMenu.appendChild(newlineItem);
   slideMenu.appendChild(deleteLineItem);
 
   let append = document.createElement("button");
-  append.classList.add("append");
+  append.className = "append";
   append.position = 0;
 
   let indentation = document.createElement("div");
   indentation.classList.add("indentation");
   
   let innerDiv = document.createElement("div");
-  innerDiv.classList.add("inner-row");
+  innerDiv.className = "inner-row";
   innerDiv.addEventListener("click", rowClickHandler, {passive: true});
   innerDiv.appendChild(indentation);
   innerDiv.appendChild(append);
   
   let outerDiv = document.createElement("div");
-  outerDiv.classList.add("outer-row");
+  outerDiv.className = "outer-row";
   outerDiv.appendChild(slideMenu);
   outerDiv.appendChild(innerDiv);
   
-  outerDiv.touchId = -1;
   outerDiv.addEventListener("touchstart", touchStartHandler, {passive: true});
   outerDiv.addEventListener("touchmove", existingTouchHandler, {passive: false});
   outerDiv.addEventListener("touchend", existingTouchHandler, {passive: true});
@@ -603,7 +596,7 @@ function loadRow(position, outerDiv) {
   if (innerRow.position !== position) {
     outerDiv.style.transform = "translateY(" + Math.floor(position / loadedCount) * loadedCount * rowHeight + "px)";
     innerRow.position = position;
-    innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
+    innerRow.previousSibling.firstChild.textContent = String(position).padStart(4);
 
     let button = innerRow.childNodes[1 + menu.col];
 
@@ -630,7 +623,7 @@ function getItem(text) {
     return node;
   } else {
     let node = document.createElement("button");
-    node.appendChild(document.createTextNode(text));
+    node.textContent = text;
     return node;
   }
 }
@@ -666,8 +659,7 @@ function menuItemClicked(payload) {
 
   if (Array.isArray(response) && response.length > 0) {
     configureMenu(response);
-    return;
-  } else  {
+  } else {
     if ("rowUpdated" in response) {
       if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
         const outerDiv = list.childNodes[menu.row % loadedCount];
@@ -702,9 +694,9 @@ function menuItemClicked(payload) {
       reloadAllRows();
       menu.col = 0;
     }
+    
+    itemClicked(menu.row, menu.col);
   }
-
-  itemClicked(menu.row, menu.col);
 }
 
 
@@ -765,25 +757,24 @@ function rowClickHandler(event) {
   if (menuButton.toggled) {
     menuButton.toggled = false;
     fabMenu.classList.remove("expanded");
-    return;
-  }
-
-  if (event.target.nodeName === "BUTTON") {
+  } else if (event.target.nodeName === "BUTTON") {
     itemClicked(this.position|0, event.target.position|0);
     document.body.classList.add("selected");
   }
 }
 
 function itemClicked(row, col) {
-  const selectedItem = list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col];
-  if (selectedItem)
-    selectedItem.focus();
-
-  menu.row = row;
-  menu.col = col;
-
-  let options = script.itemClicked(row, col);
-  configureMenu(options);
+  if (row !== undefined && col !== undefined) {
+    const selectedItem = list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col];
+    if (selectedItem)
+      selectedItem.focus();
+    
+    menu.row = row;
+    menu.col = col;
+    
+    let options = script.itemClicked(row, col);
+    configureMenu(options);
+  }
 }
 
 function selectPreviousLine() {
@@ -798,7 +789,7 @@ function selectPreviousLine() {
 
 
 function touchStartHandler(event) {
-  if (this.touchId === -1) {
+  if (this.touchId === undefined) {
     const touch = event.changedTouches[0];
     this.touchId = touch.identifier;
     this.touchStartX = touch.pageX + this.childNodes[1].scrollLeft;
@@ -874,7 +865,7 @@ function touchEnded(outerDiv, touch) {
 }
 
 function touchCanceled(outerDiv) {
-  outerDiv.touchId = -1;
+  outerDiv.touchId = undefined;
   if (outerDiv.touchCaptured) {
     outerDiv.touchCaptured = false;
     outerDiv.firstChild.classList.add("slow-transition");
