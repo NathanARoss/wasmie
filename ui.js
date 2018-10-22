@@ -311,14 +311,37 @@ window.onpopstate = function(event) {
           case Wasm.section.Function: {
             readVaruintAndPrint("signature: type index ");
           } break;
+          
+          case Wasm.section.Code: {
+            const bodySize = readVaruintAndPrint("func body size: ", " bytes");
+            const subEnd = offset + bodySize;
+            const localCount = readVaruintAndPrint("local var count: ");
+            
+            for (let i = 0; i < localCount; ++i) {
+              const count = readVaruintAndPrint("count of locals of the following type: ");
+              printDisassembly(1, Wasm.typeNames[wasm[offset]]);
+            }
+            
+            while (offset < subEnd) {
+              const opcodeData = Wasm.opcodeData[wasm[offset]];
+              printDisassembly(1, opcodeData.name);
+              
+              for (const immediates of opcodeData.immediates) {
+                const valsAndBytesRead = immediates(wasm, offset);
+                for (let i = 0; i < valsAndBytesRead.length; i += 2) {
+                  printDisassembly(valsAndBytesRead[i+1], valsAndBytesRead[i]);
+                }
+              }
+            }
+          } break;
 
           case Wasm.section.Data: {
             readVaruintAndPrint("linear memory index: ");
 
             //the memory offset is assumed to be an i32.const expression
-            printDisassembly(1, Wasm.opcodeNames[wasm[offset]]);
+            printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
             readVarintAndPrint();
-            printDisassembly(1, Wasm.opcodeNames[wasm[offset]]);
+            printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
 
             const dataSize = readVaruintAndPrint("size of data: ", " bytes");
             const subEnd = offset + dataSize;
@@ -577,9 +600,7 @@ function loadRow(position, outerDiv) {
     for (let col = 1; col < itemCount; ++col) {
       const [text, style] = script.getItemDisplay(position, col);
       
-      let node = getItem(text);
-      node.className = "item " + style;
-      node.position = col;
+      let node = getItem(text, "item " + style, col);
       innerRow.appendChild(node);
     }
     
@@ -616,16 +637,12 @@ function reloadAllRows() {
 
 
 
-function getItem(text) {
-  if (itemPool.length !== 0) {
-    let node = itemPool.pop();
-    node.firstChild.nodeValue = text;
-    return node;
-  } else {
-    let node = document.createElement("button");
-    node.textContent = text;
-    return node;
-  }
+function getItem(text, className, position) {
+  const node = itemPool.pop() || document.createElement("button");
+  node.textContent = text;
+  node.className = className;
+  node.position = position;
+  return node;
 }
 
 
@@ -637,9 +654,7 @@ function configureMenu(options) {
   }
 
   for (const option of options) {
-    let button = getItem(option.text);
-    button.className = "menu-item no-select " + option.style;
-    button.position = option.payload;
+    let button = getItem(option.text, "menu-item no-select " + option.style, option.payload);
     menu.appendChild(button);
   }
 }
@@ -873,11 +888,6 @@ function touchCanceled(outerDiv) {
   }
 }
 
-
-function* stride(start, end) {
-  for (let i = start; i < end; ++i)
-    yield i;
-}
 
 function print(value) {
   const textNode = document.createTextNode(value);

@@ -66,6 +66,22 @@ class Wasm {
 
         return [result, bytesRead];
     }
+    
+    static decodeArrayOfVaruint(bytes, offset) {
+      const output = [];
+      
+      let [val, bytesRead] = Wasm.decodeVaruint(bytes, offset);
+      offset += bytesRead;
+      output.push(val, bytesRead);
+      
+      for (let i = 0; i < val; ++i) {
+        [val, bytesRead] = Wasm.decodeVaruint(bytes, offset);
+        offset += bytesRead;
+        output.push(val, bytesRead);
+      }
+      
+      return output;
+    }
 
     //converts a string into an array of UTF-8 bytes
     //the array is prepended by the size of the coded string encoded as a varuint
@@ -89,6 +105,14 @@ class Wasm {
 
     static f64ToBytes(num) {
         return new Uint8Array(Float64Array.of(num).buffer);
+    }
+    
+    static decodeF32(bytes, offset) {
+      return [(new Float32Array(bytes.slice(offset, offset + 4).buffer))[0], 4];
+    }
+    
+    static decodeF64(bytes, offset) {
+      return [(new Float64Array(bytes.slice(offset, offset + 8).buffer))[0], 8];
     }
 }
 
@@ -126,7 +150,9 @@ Wasm.types = {
     i64: 0x7E,
     f32: 0x7D,
     f64: 0x7C,
+    anyFunc: 0x70,
     func: 0x60,
+    void: 0x40,
 }
 
 Wasm.typeNames = [];
@@ -181,24 +207,204 @@ Wasm.opcodes = {
     set_global: 0x24,
 }
 
-Wasm.opcodeNames = [];
-Wasm.opcodeNames[0x28] = "i32.load";
-Wasm.opcodeNames[0x2c] = "i32.load8_s";
-Wasm.opcodeNames[0x2d] = "i32.load8_u";
-Wasm.opcodeNames[0x2e] = "i32.load16_s";
-Wasm.opcodeNames[0x2f] = "i32.load16_u";
-Wasm.opcodeNames[0x36] = "i32.store";
-Wasm.opcodeNames[0x3a] = "i32.store8";
-Wasm.opcodeNames[0x3b] = "i32.store16";
-Wasm.opcodeNames[0x41] = "i32.const";
-Wasm.opcodeNames[0x42] = "i64.const";
-Wasm.opcodeNames[0x43] = "f32.const";
-Wasm.opcodeNames[0x44] = "f64.const";
-Wasm.opcodeNames[0x10] = "call";
-Wasm.opcodeNames[0x1A] = "drop";
-Wasm.opcodeNames[0x0b] = "end";
-Wasm.opcodeNames[0x20] = "get_local";
-Wasm.opcodeNames[0x21] = "set_local";
-Wasm.opcodeNames[0x22] = "tee_local";
-Wasm.opcodeNames[0x23] = "get_global";
-Wasm.opcodeNames[0x24] = "set_global";
+class OpcodeData {
+  constructor(name, ...immediates) {
+    this.name = name;
+    this.immediates = immediates;
+  }
+}
+
+Wasm.opcodeData = [
+  new OpcodeData("unreachable"),
+  new OpcodeData("nop"),
+  new OpcodeData("block", Wasm.decodeVaruint), //unsure about the immediate value for branch instructuibs
+  new OpcodeData("loop", Wasm.decodeVaruint),
+  new OpcodeData("if", Wasm.decodeVaruint),
+  new OpcodeData("else"),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  new OpcodeData("end"),
+  new OpcodeData("br", Wasm.decodeVaruint),
+  new OpcodeData("br_if", Wasm.decodeVaruint),
+  new OpcodeData("br_table", Wasm.decodeArrayOfVaruint),
+  new OpcodeData("return"),
+  new OpcodeData("call", Wasm.decodeVaruint), //0x10
+  new OpcodeData("call_indirect", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  new OpcodeData("drop"),
+  new OpcodeData("select"),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  new OpcodeData("get_local", Wasm.decodeVaruint), //0x20
+  new OpcodeData("set_local", Wasm.decodeVaruint),
+  new OpcodeData("tee_local", Wasm.decodeVaruint),
+  new OpcodeData("get_global", Wasm.decodeVaruint),
+  new OpcodeData("set_global", Wasm.decodeVaruint),
+  undefined,
+  undefined,
+  undefined,
+  new OpcodeData("i32.load", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.load", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("f32.load", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("f64.load", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i32.load8_s", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i32.load8_u", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i32.load16_s", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i32.load16_u", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.load8_s", Wasm.decodeVaruint, Wasm.decodeVaruint), //0x30
+  new OpcodeData("i64.load8_u", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.load16_s", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.load16_u", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.load32_s", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.load32_u", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i32.store", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.store", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("f32.store", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("f64.store", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i32.store8", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i32.store16", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.store8", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.store16", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("i64.store32", Wasm.decodeVaruint, Wasm.decodeVaruint),
+  new OpcodeData("memory.size", Wasm.decodeVaruint),
+  new OpcodeData("memory.grow", Wasm.decodeVaruint), //0x40
+  new OpcodeData("i32.const", Wasm.decodeVarint),
+  new OpcodeData("i64.const", Wasm.decodeVarint),
+  new OpcodeData("f32.const", Wasm.decodeF32),
+  new OpcodeData("f64.const", Wasm.decodeF64),
+  new OpcodeData("i32.eqz"),
+  new OpcodeData("i32.eq"),
+  new OpcodeData("i32.ne"),
+  new OpcodeData("i32.lt_s"),
+  new OpcodeData("i32.lt_u"),
+  new OpcodeData("i32.gt_s"),
+  new OpcodeData("i32.gt_u"),
+  new OpcodeData("i32.le_s"),
+  new OpcodeData("i32.le_u"),
+  new OpcodeData("i32.ge_s"),
+  new OpcodeData("i32.ge_u"),
+  new OpcodeData("i64.eqz"), //0x50
+  new OpcodeData("i64.eq"),
+  new OpcodeData("i64.ne"),
+  new OpcodeData("i64.lt_s"),
+  new OpcodeData("i64.lt_u"),
+  new OpcodeData("i64.gt_s"),
+  new OpcodeData("i64.gt_u"),
+  new OpcodeData("i64.le_s"),
+  new OpcodeData("i64.le_u"),
+  new OpcodeData("i64.ge_s"),
+  new OpcodeData("i64.ge_u"),
+  new OpcodeData("f32.eq"),
+  new OpcodeData("f32.ne"),
+  new OpcodeData("f32.lt"),
+  new OpcodeData("f32.gt"),
+  new OpcodeData("f32.le"),
+  new OpcodeData("f32.ge"), //0x60
+  new OpcodeData("f64.eq"),
+  new OpcodeData("f64.ne"),
+  new OpcodeData("f64.lt"),
+  new OpcodeData("f64.gt"),
+  new OpcodeData("f64.le"),
+  new OpcodeData("f64.ge"),
+  new OpcodeData("i32.clz"),
+  new OpcodeData("i32.ctz"),
+  new OpcodeData("i32.popcnt"),
+  new OpcodeData("i32.add"),
+  new OpcodeData("i32.sub"),
+  new OpcodeData("i32.mul"),
+  new OpcodeData("i32.div_s"),
+  new OpcodeData("i32.div_u"),
+  new OpcodeData("i32.rem_s"),
+  new OpcodeData("i32.rem_u"), //0x70
+  new OpcodeData("i32.and"),
+  new OpcodeData("i32.or"),
+  new OpcodeData("i32.xor"),
+  new OpcodeData("i32.shl"),
+  new OpcodeData("i32.shr_s"),
+  new OpcodeData("i32.shr_u"),
+  new OpcodeData("i32.rotl"),
+  new OpcodeData("i32.rotr"),
+  new OpcodeData("i32.clz"),
+  new OpcodeData("i32.ctz"),
+  new OpcodeData("i64.popcnt"),
+  new OpcodeData("i64.add"),
+  new OpcodeData("i64.sub"),
+  new OpcodeData("i64.mul"),
+  new OpcodeData("i64.div_s"),
+  new OpcodeData("i64.div_u"), //0x80
+  new OpcodeData("i64.rem_s"),
+  new OpcodeData("i64.rem_u"),
+  new OpcodeData("i64.and"),
+  new OpcodeData("i64.or"),
+  new OpcodeData("i64.xor"),
+  new OpcodeData("i64.shl"),
+  new OpcodeData("i64.shr_s"),
+  new OpcodeData("i64.shr_u"),
+  new OpcodeData("i64.rotl"),
+  new OpcodeData("i64.rotr"),
+  new OpcodeData("f32.abs"),
+  new OpcodeData("f32.neg"),
+  new OpcodeData("f32.ceil"),
+  new OpcodeData("f32.floor"),
+  new OpcodeData("f32.trunc"),
+  new OpcodeData("f32.nearest"), //0x90
+  new OpcodeData("f32.sqrt"),
+  new OpcodeData("f32.add"),
+  new OpcodeData("f32.sub"),
+  new OpcodeData("f32.mul"),
+  new OpcodeData("f32.div"),
+  new OpcodeData("f32.min"),
+  new OpcodeData("f32.max"),
+  new OpcodeData("f32.copysign"),
+  new OpcodeData("f64.abs"),
+  new OpcodeData("f64.neg"),
+  new OpcodeData("f64.ceil"),
+  new OpcodeData("f64.floor"),
+  new OpcodeData("f64.trunc"),
+  new OpcodeData("f64.nearest"),
+  new OpcodeData("f64.sqrt"),
+  new OpcodeData("f64.add"), //0xa0
+  new OpcodeData("f64.sub"),
+  new OpcodeData("f64.mul"),
+  new OpcodeData("f64.div"),
+  new OpcodeData("f64.min"),
+  new OpcodeData("f64.max"),
+  new OpcodeData("f64.copysign"),
+  new OpcodeData("i32.wrap/i64"),
+  new OpcodeData("i32.trunc_s/f32"),
+  new OpcodeData("i32.trunc_u/f32"),
+  new OpcodeData("i32.trunc_s/f64"),
+  new OpcodeData("i32.trunc_u/f64"),
+  new OpcodeData("i64.extend_s/i32"),
+  new OpcodeData("i64.extend_u/i32"),
+  new OpcodeData("i64.trunc_s/f32"),
+  new OpcodeData("i64.trunc_u/f32"),
+  new OpcodeData("i64.trunc_s/f64"), //0xb0
+  new OpcodeData("i64.trunc_u/f64"),
+  new OpcodeData("f32.convert_s/i32"),
+  new OpcodeData("f32.convert_u/i32"),
+  new OpcodeData("f32.convert_s/i64"),
+  new OpcodeData("f32.convert_u/i64"),
+  new OpcodeData("f32.demote/f64"),
+  new OpcodeData("f64.convert_s/i32"),
+  new OpcodeData("f64.convert_u/i32"),
+  new OpcodeData("f64.convert_s/i64"),
+  new OpcodeData("f64.convert_u/i64"),
+  new OpcodeData("f64.promote/f32"),
+  new OpcodeData("i32.reinterpret/f32"),
+  new OpcodeData("i64.reinterpret/f64"),
+  new OpcodeData("f32.reinterpret/i32"),
+  new OpcodeData("f64.reinterpret/i64"),
+];
