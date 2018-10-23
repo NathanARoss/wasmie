@@ -1583,7 +1583,7 @@ class Script {
       0, //return count (0 or 1)
     
       Wasm.types.func,
-      2, Wasm.types.i32, Wasm.types.i32,
+      1, Wasm.types.i32,
       0,
     
       Wasm.types.func,
@@ -1599,23 +1599,23 @@ class Script {
     let importSection = [
       ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
-      ...Wasm.getStringBytesAndData("imports"),
+      ...Wasm.getStringBytesAndData("js"),
       ...Wasm.getStringBytesAndData("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
       ...Wasm.varuint(1), //initially 1 page allocated
 
-      ...Wasm.getStringBytesAndData("imports"),
+      ...Wasm.getStringBytesAndData("System"),
       ...Wasm.getStringBytesAndData("print"),
       Wasm.externalKind.Function, //import type
       ...Wasm.varuint(1), //type index (func signiture)
 
-      ...Wasm.getStringBytesAndData("imports"),
+      ...Wasm.getStringBytesAndData("System"),
       ...Wasm.getStringBytesAndData("printF64"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(2),
 
-      ...Wasm.getStringBytesAndData("imports"),
+      ...Wasm.getStringBytesAndData("System"),
       ...Wasm.getStringBytesAndData("inputF64"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(3),
@@ -1626,13 +1626,13 @@ class Script {
       ...Wasm.varuint(0), //type indicies (func signitures)
     ];
 
-    let exportSection = [
-      ...Wasm.varuint(0), //count of exports
+    // let exportSection = [
+    //   ...Wasm.varuint(0), //count of exports
 
-      // ...Wasm.getStringBytesAndData("init"), //length and bytes of function name
-      // Wasm.externalKind.Function, //export type
-      // ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
-    ];
+    //   ...Wasm.getStringBytesAndData("init"), //length and bytes of function name
+    //   Wasm.externalKind.Function, //export type
+    //   ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
+    // ];
 
     let initFunction = [];
 
@@ -1718,18 +1718,16 @@ class Script {
 
           case Script.LITERAL:
             if (meta === 1) {
-              const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
-              const bytes = Wasm.stringToUTF8(stringLiteral);
-              
               expression.push({
                 type: this.TYPES.STRING,
                 representation: [
-                  Wasm.opcodes.i32.const, ...Wasm.varint(linearMemoryInitialValues.length), //begin
-                  Wasm.opcodes.i32.const, ...Wasm.varint(linearMemoryInitialValues.length + bytes.length), //end
+                  Wasm.opcodes.i32.const, ...Wasm.varint(linearMemoryInitialValues.length),
                 ]
               });
 
-              linearMemoryInitialValues.push(...bytes);
+              const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
+              const bytes = Wasm.stringToUTF8(stringLiteral);
+              linearMemoryInitialValues.push(...Wasm.varuint(bytes.length), ...bytes);
             } else if (meta === 2) {
               const literal = this.literals.get(value);
               const bytes = new Uint8Array(Float64Array.of(+literal).buffer);

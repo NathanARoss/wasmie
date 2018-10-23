@@ -1,9 +1,9 @@
 class RuntimeEnvironment {
   constructor() {
     const self = this;
-    this.imports = {
-      print(begin, end) {
-        self.print(begin, end)
+    this.System = {
+      print(location) {
+        self.print(location)
       },
       printF64(doubleNum) {
         self.printDouble(doubleNum)
@@ -11,14 +11,17 @@ class RuntimeEnvironment {
       inputF64(defaultVal, min, max) {
         return self.inputDouble(defaultVal, min, max);
       },
-
+    }
+    this.js = {
       memory: new WebAssembly.Memory({initial: 1}),
     }
   }
   
-  print(begin, end) {
-    const bytes = this.imports.memory.buffer.slice(begin, end);
-    const message = Wasm.UTF8toString(new Uint8Array(bytes));
+  print(location) {
+    const memory = new Uint8Array(this.js.memory.buffer);
+    const [sizeOfString, bytesRead] = Wasm.decodeVaruint(memory, location);
+    location += bytesRead;
+    const message = Wasm.UTF8toString(memory.slice(location, location + sizeOfString));
     print(message);
   }
 
