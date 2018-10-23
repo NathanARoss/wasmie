@@ -177,7 +177,7 @@ window.onpopstate = function(event) {
     try {
       wasm = script.getWasm();
     } catch (error) {
-      alert(error);
+      console.log(error);
       history.back();
       return;
     }
@@ -185,7 +185,7 @@ window.onpopstate = function(event) {
     const environment = new RuntimeEnvironment();
     WebAssembly.instantiate(wasm, environment)
     .catch(error => {
-      alert(error);
+      console.log(error);
       history.back();
       return;
     });
@@ -217,7 +217,7 @@ window.onpopstate = function(event) {
       offset += count;
 
       const byteNode = document.createElement("span");
-      byteNode.textContent = Array.from(slice).map(num => num.toString(16).padStart(2, "0")).join(" ").padEnd(24);
+      byteNode.textContent = Array.from(slice).map(num => num.toString(16).padStart(2, "0")).join(" ").padEnd(27);
       byteNode.className = "wasm-data";
       consoleOutput.appendChild(byteNode);
 
@@ -274,15 +274,18 @@ window.onpopstate = function(event) {
           case Wasm.section.Type: {
             printDisassembly(1, Wasm.typeNames[wasm[offset]]);
             
-            for (const countOf of ["params: ", "results: "]) {
-              const subCount = readVaruintAndPrint(countOf)
-              const subEnd = offset + subCount;
+            for (let comment of ["params: ", "return: "]) {
+              let [typeCount, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+              const bytesToRead = bytesRead + typeCount;
               
-              while (offset < subEnd) {
-                const count = Math.min(8, subEnd - offset);
-                const comment = Array.from(wasm.slice(offset, offset + count)).map(type => Wasm.typeNames[type & 0x7F]).join(" ");
-                printDisassembly(count, comment);
+              while (bytesRead < bytesToRead) {
+                const count = Math.min(8, bytesToRead - bytesRead);
+                comment += Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + count))
+                           .map(type => Wasm.typeNames[type & 0x7F]).join(" ");
+                bytesRead += count;
               }
+              
+              printDisassembly(bytesRead, comment);
             }
           } break;
           
@@ -315,23 +318,32 @@ window.onpopstate = function(event) {
           case Wasm.section.Code: {
             const bodySize = readVaruintAndPrint("func body size: ", " bytes");
             const subEnd = offset + bodySize;
-            const localCount = readVaruintAndPrint("local var count: ");
+            let [localCount, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+            let localVariableComment = "local vars:";
             
             for (let i = 0; i < localCount; ++i) {
-              const count = readVaruintAndPrint("count of locals of the following type: ");
-              printDisassembly(1, Wasm.typeNames[wasm[offset]]);
+              const [count] = Wasm.decodeVaruint(wasm, offset + bytesRead); //assumes no more than 127 locals specified at once
+              ++bytesRead;
+              localVariableComment += (" " + Wasm.typeNames[wasm[offset + bytesRead]]).repeat(count);
+              ++bytesRead;
             }
+            
+            printDisassembly(bytesRead, localVariableComment);
             
             while (offset < subEnd) {
               const opcodeData = Wasm.opcodeData[wasm[offset]];
-              printDisassembly(1, opcodeData.name);
+              let comment = opcodeData.name;
+              let bytesRead = 1;
               
               for (const immediates of opcodeData.immediates) {
-                const valsAndBytesRead = immediates(wasm, offset);
+                const valsAndBytesRead = immediates(wasm, offset + bytesRead);
                 for (let i = 0; i < valsAndBytesRead.length; i += 2) {
-                  printDisassembly(valsAndBytesRead[i+1], valsAndBytesRead[i]);
+                  comment += " " + valsAndBytesRead[i];
+                  bytesRead += valsAndBytesRead[i+1];
                 }
               }
+              
+              printDisassembly(bytesRead, comment);
             }
           } break;
 
@@ -339,8 +351,8 @@ window.onpopstate = function(event) {
             readVaruintAndPrint("linear memory index: ");
 
             //the memory offset is assumed to be an i32.const expression
-            printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
-            readVarintAndPrint();
+            const [val, bytesRead] = Wasm.decodeVaruint(wasm, offset + 1);
+            printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
             printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
 
             const dataSize = readVaruintAndPrint("size of data: ", " bytes");
