@@ -1780,20 +1780,17 @@ class Script {
     
     function compileExpression(expression, outputType) {
       console.log("before folding:", ...expression);
-      const wasmCode = [];
       
       //constant folding pass
-      constant_folding:
+      look_for_next_operator:
       for (let i = 0; i < expression.length; ++i) {
         const operator = expression[i];
         if (operator.constructor === TSSymbol) {
-          //make sure that this operator has a higher precedence than its neighbor
-          for (let j = Math.max(0, i - 2); j < Math.min(expression.lenth, i + 2); ++j) {
+          //make sure that this operator has a higher precedence than its neighbors
+          for (let j = Math.max(0, i - 2); j < Math.min(expression.length, i + 3); ++j) {
             if (expression[j].constructor === TSSymbol) {
               if (expression[j].precedence > operator.precedence) {
-                continue constant_folding;
-              } else {
-                break;
+                continue look_for_next_operator;
               }
             }
           }
@@ -1805,12 +1802,28 @@ class Script {
           } else if (expression[i-1].constructor === NumericLiteral && expression[i+1].constructor === NumericLiteral) {
             expression[i-1].performBinaryOp(operator.appearance, expression[i+1]);
             expression.splice(i, 2);
+            i = Math.max(i - 3, 0);
           }
         }
       }
-      
+
       //code generation pass
-      
+      // const operators = [];
+      // const operands = [];
+      // const wasmCode = [];
+      // const symbolQueue = [];
+      // for (let i = 0; i < expression.length; ++i) {
+      //   const item = expression[i];
+      //   if (item.constructor === TSSymbol) {
+      //     //check if the operator stack contains operators that are performed before the one that is about to be pushed
+      //     if (operators.length > 0 && operators[operators.length - 1].precedence > item.precedence) {
+            
+
+      //     }
+      //   } else {
+      //     operands.push(item);
+      //   }
+      // }
       
       console.log("after constant folding:", ...expression);
     }
