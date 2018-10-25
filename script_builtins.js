@@ -1,5 +1,19 @@
 "use strict";
 
+class TSSymbol {
+  constructor(appearance, precedence, isUnary, ...uses) {
+    this.appearance = appearance;
+    this.precedence = precedence;
+    this.isUnary = isUnary;
+    
+    this.uses = [];
+    for (const use of uses) {
+      const [type, ...wasmCode] = use;
+      this.uses.push({type, wasmCode});
+    } 
+  }
+}
+
 function BuiltIns() {
   this.classes = [
     {name: "void", size: 0},
@@ -23,68 +37,60 @@ function BuiltIns() {
 
 
 
-  const classMap = new Map();
+  const classes = {};
   for (let i = 0; i < this.classes.length; ++i) {
-    classMap.set(this.classes[i].name, (-this.classes.length + i) & 0x3FF);
+    classes[this.classes[i].name] = (-this.classes.length + i) & 0x3FF;
   }
   
   //static variables of classes only.  no instance variables
   this.variables = [
-    // {name: "E",  type: classMap.get("f64"), scope: classMap.get("Math")},
-    // {name: "PI", type: classMap.get("f64"), scope: classMap.get("Math")},
+    // {name: "E",  type: classes.f64, scope: clesses.Math},
+    // {name: "PI", type: classes.f64, scope: classes.Math},
   ].reverse();
-  
-  const i32 = classMap.get("i32");
-  const i64 = classMap.get("i64");
-  const u32 = classMap.get("u32");
-  const u64 = classMap.get("u64");
-  const f32 = classMap.get("f32");
-  const f64 = classMap.get("f64");
-  const string = classMap.get("string");
 
-  function parseFunction(scope, name, specializations, ...overloads) {
+  function parseFunction(scope, name, ...overloads) {
     const formattedOverloads = [];
 
     for (const overload of overloads) {
       const formattedOverload = {
         importedFuncIndex: overload[0],
-        returnType: classMap.get(overload[1]),
+        returnType: overload[1],
         parameters: [],
       }
 
       for (let i = 2; i < overload.length; i += 3) {
         const param = {
-          type: classMap.get(overload[i]),
+          type: overload[i],
           name: overload[i + 1],
           defaultRep: [],
         };
 
         const defaultVal = overload[i + 2];
-        switch (param.type) {
-          case i32:
-          case u32:
-            param.defaultRep.push(Wasm.opcodes.i32.const, ...Wasm.varuint(defaultVal));
-            break;
-
-          case i64:
-          case u64:
-            param.defaultRep.push(Wasm.opcodes.i64.const, ...Wasm.varuint(defaultVal));
-            break;
-
-          case f32:
-            param.defaultRep.push(Wasm.opcodes.f32.const, ...Wasm.f32ToBytes(defaultVal));
-            break;
-
-          case f64:
-            param.defaultRep.push(Wasm.opcodes.f64.const, ...Wasm.f64ToBytes(defaultVal));
-            break;
-          
-          case string:
-            //not supported yet
-            throw "encounted default string value for function " + name + " parameter " + param.name;
-        }
-
         if (defaultVal !== undefined) {
+          switch (param.type) {
+            case classes.i32:
+            case classes.u32:
+              param.defaultRep.push(Wasm.opcodes.i32_const, ...Wasm.varint(defaultVal));
+              break;
+  
+            case classes.i64:
+            case classes.u64:
+              param.defaultRep.push(Wasm.opcodes.i64_const, ...Wasm.varint(defaultVal));
+              break;
+  
+            case classes.f32:
+              param.defaultRep.push(Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(defaultVal));
+              break;
+  
+            case classes.f64:
+              param.defaultRep.push(Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(defaultVal));
+              break;
+            
+            case classes.string:
+              //not supported yet
+              throw "encounted default string value for function " + name + " parameter " + param.name;
+          }
+          
           param.name += "\n";
   
           if (typeof defaultVal === "string") {
@@ -101,19 +107,25 @@ function BuiltIns() {
     }
     
     return {
-      scope: classMap.get(scope),
+      scope,
       name,
       overloads: formattedOverloads,
-      specializations,
     };
   }
 
   const builtinFunctions = [
-    parseFunction("System", "print", new Map([[classMap.get("string"), 0], [classMap.get("f64"), 1]]),
-      [0, "void", "Any", "item", undefined],
+    parseFunction(classes.System, "print",
+      [-1, classes.void, classes.Any, "item", undefined],
+      [0, classes.void, classes.string, "item", undefined],
+      [1, classes.void, classes.i32, "item", undefined],
+      [2, classes.void, classes.u32, "item", undefined],
+      [3, classes.void, classes.i64, "item", undefined],
+      [4, classes.void, classes.u64, "item", undefined],
+      [5, classes.void, classes.f32, "item", undefined],
+      [6, classes.void, classes.f64, "item", undefined],
     ),
-    parseFunction("System", "input", null,
-      [2, "f64", "f64", "default", 0, "f64", "min", -Infinity, "f64", "max", Infinity],
+    parseFunction(classes.System, "input",
+      [7, classes.f64, classes.f64, "default", 0, classes.f64, "min", -Infinity, classes.f64, "max", Infinity],
     ),
   ];
 
@@ -123,8 +135,7 @@ function BuiltIns() {
       this.functions.push({
         name: builtin.name,
         scope: builtin.scope,
-        specializations: builtin.specializations,
-        funcIndex: overload.importedFuncIndex,
+        importedFuncIndex: overload.importedFuncIndex,
         returnType: overload.returnType,
         parameters: overload.parameters,
       });
@@ -133,48 +144,59 @@ function BuiltIns() {
   this.functions.reverse();
   
   this.symbols = [
-    "=", //asignment operators
-    "+=",
-    "-=",
-    "*=",
-    "/=",
-    "%=",
-    "^=", //integer-specific assignment operators
-    "&=",
-    "|=",
-    "<<=",
-    ">>=",
-    "+", //arithmetic operators
-    "-",
-    "*",
-    "/",
-    "%",
-    "^", //integer-specific operators
-    "&",
-    "|",
-    "<<",
-    ">>",
-    "&&", //boolean binary operators
-    "||",
-    "===", //reference-specific comparison operators
-    "!==",
-    "==", //comparison operators
-    "!=",
-    ">",
-    "<",
-    ">=",
-    "<=",
-    "..", //half-open range operator
-    "..=", //closed range operator
-    "-", //arithmetic negation operator
-    "!", //binary or bitwise negation operator
-    "____", //misc
-    ",", //argument separator
-    ".", //property accessor
-    "(", //subexpression start
-    "⟨", //function arguments start
-    ")", //subexpression end
-    "⟩", //function arguments end
+    new TSSymbol("=", 0), //asignment operators
+    new TSSymbol("+=", 0),
+    new TSSymbol("-=", 0),
+    new TSSymbol("*=", 0),
+    new TSSymbol("/=", 0),
+    new TSSymbol("%=", 0),
+    new TSSymbol("^=", 0), //integer-specific assignment operators
+    new TSSymbol("&=", 0),
+    new TSSymbol("|=", 0),
+    new TSSymbol("<<=", 0),
+    new TSSymbol(">>=", 0),
+    new TSSymbol("+", 8, false, //arithmetic operators
+      [classes.i32, Wasm.opcodes.i32_add],
+      [classes.u32, Wasm.opcodes.i32_add],
+      [classes.i64, Wasm.opcodes.i64_add],
+      [classes.u64, Wasm.opcodes.i64_add],
+    ),
+    new TSSymbol("-", 8),
+    new TSSymbol("*", 9),
+    new TSSymbol("/", 9),
+    new TSSymbol("%", 9),
+    new TSSymbol("|", 4), //integer-specific operators
+    new TSSymbol("^", 5),
+    new TSSymbol("&", 6),
+    new TSSymbol("<<", 7),
+    new TSSymbol(">>", 7),
+    new TSSymbol("&&", 2), //boolean binary operators
+    new TSSymbol("||", 1),
+    new TSSymbol("===", 3), //reference-specific comparison operators
+    new TSSymbol("!==", 3),
+    new TSSymbol("==", 3), //comparison operators
+    new TSSymbol("!=", 3),
+    new TSSymbol(">", 3),
+    new TSSymbol("<", 3),
+    new TSSymbol(">=", 3),
+    new TSSymbol("<=", 3),
+    new TSSymbol("..", 0), //half-open range operator
+    new TSSymbol("..=", 0), //closed range operator
+    new TSSymbol("-", 10, true), //arithmetic negation operator
+    new TSSymbol("!", 10, true, //binary or bitwise negation operator
+      [classes.boolean, Wasm.opcodes.i32_eqz],
+      [classes.i32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
+      [classes.u32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
+      [classes.i64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
+      [classes.u64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
+    ),
+    new TSSymbol("____", 0), //misc
+    new TSSymbol(",", 0), //argument separator
+    new TSSymbol(".", 0), //property accessor
+    new TSSymbol("(", 0), //subexpression start
+    new TSSymbol("⟨", 0), //function arguments start
+    new TSSymbol(")", 0), //subexpression end
+    new TSSymbol("⟩", 0), //function arguments end
   ];
   
   this.keywords = [

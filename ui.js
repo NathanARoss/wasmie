@@ -183,12 +183,13 @@ window.onpopstate = function(event) {
     }
 
     const environment = new RuntimeEnvironment();
-    WebAssembly.instantiate(wasm, environment)
-    .catch(error => {
+    try {
+      WebAssembly.instantiate(wasm, environment)
+    } catch (error) {
       console.log(error);
       history.back();
       return;
-    });
+    }
     
     runtime.style.display = "";
     document.title = "TouchScript Runtime"

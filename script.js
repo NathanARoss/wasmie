@@ -74,7 +74,7 @@ class Script {
       Script.makeItem({format: Script.KEYWORD, value: this.keywords.findIndex(element => element.name === text)});
 
     const makeSymbol = text =>
-      Script.makeItem({format: Script.SYMBOL, value: this.symbols.indexOf(text)});
+      Script.makeItem({format: Script.SYMBOL, value: this.symbols.findIndex(sym => sym.appearance === text)});
 
     const literals = [];
     const makeLiteral = (text, type) => {
@@ -113,6 +113,23 @@ class Script {
     this.functions = new MetadataContainer("functions", functions, 0xFFFF);
     this.classes = new MetadataContainer("classes", classes, 0x3FF);
     this.literals = new MetadataContainer("literals", literals, 0xFFFF);
+    
+    this.functions.findOverloadId = function(scope, name, ...argumentTypes) {
+      const index = this.data.findIndex(func => {
+        return func.scope === scope
+               && func.name === name
+               && func.parameters.length === argumentTypes.length
+               && func.parameters.every((param, index) => {
+                 return param.type === argumentTypes[index];
+               });
+      });
+      
+      if (index === -1) {
+        return undefined;
+      } else {
+        return index - this.builtinCount;
+      }
+    }
 
     this.FUNCS = {
       RANGE: -1 & this.functions.mask,
@@ -123,7 +140,9 @@ class Script {
     this.TYPES = {};
     this.TYPES.VOID = this.classes.getIdByName("void");
     this.TYPES.I32 = this.classes.getIdByName("i32");
+    this.TYPES.U32 = this.classes.getIdByName("u32");
     this.TYPES.I64 = this.classes.getIdByName("i64");
+    this.TYPES.U64 = this.classes.getIdByName("u64");
     this.TYPES.F32 = this.classes.getIdByName("f32");
     this.TYPES.F64 = this.classes.getIdByName("f64");
     this.TYPES.STRING = this.classes.getIdByName("string");
@@ -212,7 +231,7 @@ class Script {
 
       *getMenuItems() {
         for (let payload = this.start; payload < this.end; ++payload) {
-          yield {text: symbols[payload & 0xFFFF] + this.postfix, style: "", payload};
+          yield {text: symbols[payload & 0xFFFF].appearance + this.postfix, style: "", payload};
         }
       }
     }
@@ -1454,7 +1473,7 @@ class Script {
         return [this.functions.get(value).parameters[meta].name, "comment"];
 
       case Script.SYMBOL:
-        return [this.symbols[value], ""];
+        return [this.symbols[value].appearance, ""];
 
       case Script.KEYWORD:
         return [this.keywords[value].name, "keyword"];
@@ -1576,7 +1595,7 @@ class Script {
   */
   getWasm() {
     let typeSection = [
-      ...Wasm.varuint(4), //count of type entries
+      ...Wasm.varuint(6), //count of type entries
     
       Wasm.types.func, //the form of the type
       0, //parameters
@@ -1584,6 +1603,14 @@ class Script {
     
       Wasm.types.func,
       1, Wasm.types.i32,
+      0,
+    
+      Wasm.types.func,
+      1, Wasm.types.i64,
+      0,
+    
+      Wasm.types.func,
+      1, Wasm.types.f32,
       0,
     
       Wasm.types.func,
@@ -1595,7 +1622,7 @@ class Script {
       1, Wasm.types.f64
     ];
 
-    const importedFunctionsCount = 3;
+    const importedFunctionsCount = 8;
     let importSection = [
       ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
@@ -1611,14 +1638,39 @@ class Script {
       ...Wasm.varuint(1), //type index (func signiture)
 
       ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printF64"),
+      ...Wasm.getStringBytesAndData("printI32"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(1),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printU32"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(1),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printI64"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(2),
 
       ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("inputF64"),
+      ...Wasm.getStringBytesAndData("printU64"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(2),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printF32"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(3),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printF64"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(4),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("inputF64"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(5),
     ];
 
     let functionSection = [
@@ -1633,17 +1685,146 @@ class Script {
     //   Wasm.externalKind.Function, //export type
     //   ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
     // ];
+    
+    const parent = this;
+    class NumericLiteral {
+      constructor(rawString) {
+        this.value = +rawString;
+        this.hasDecimalPoint = rawString.includes(".");
+      }
+      
+      performUnaryOp(unaryOp) {
+        switch (unaryOp) {
+        case "!":
+          this.value = ~this.value;
+          break;
+        case "-":
+          this.value = -this.value;
+          break;
+        default:
+          throw "unrecognized unary operator " + unaryOp;
+        }
+      }
+      
+      performBinaryOp(binOp, operand) {
+        switch (binOp) {
+          case "+":
+            this.value += operand.value;
+            break;
+          case "-":
+            this.value -= operand.value;
+            break;
+          case "*":
+            this.value *= operand.value;
+            break;
+          case "/":
+            this.value /= operand.value;
+            break;
+          case "%":
+            this.value %= operand.value;
+            break;
+          case "|":
+            this.value |= operand.value;
+            break;
+          case "^":
+            this.value ^= operand.value;
+            break;
+          case "&":
+            this.value &= operand.value;
+            break;
+          case "<<":
+            this.value <<= operand.value;
+            break;
+          case ">>":
+            this.value >>= operand.value;
+            break;
+          default:
+            throw "unrecognized binary operator: " + binOp;
+        }
+        
+        this.hasDecimalPoint = this.hasDecimalPoint || operand.hasDecimalPoint;
+        if (!this.hasDecimalPoint) {
+          this.value = Math.trunc(this.value);
+        }
+      }
+    }
+    
+    class StringLiteral {
+      constructor(address) {
+        this.address = address;
+      }
+      
+      get type() {
+        return parent.TYPES.STRING;
+      }
+      
+      getWasmCode() {
+        return [Wasm.opcodes.i32_const, ...Wasm.varint(leftVal.address)];
+      }
+    }
+    
+    class LocalVarReference {
+      constructor(index, variable) {
+        this.index = index;
+        this.variable = variable;
+      }
+      
+      get type() {
+        return this.variable.type;
+      }
+      
+      getWasmCode() {
+        return [Wasm.opcodes.get_local, ...Wasm.varuint(index)];
+      }
+    }
+    
+    function compileExpression(expression, outputType) {
+      console.log("before folding:", ...expression);
+      const wasmCode = [];
+      
+      //constant folding pass
+      constant_folding:
+      for (let i = 0; i < expression.length; ++i) {
+        const operator = expression[i];
+        if (operator.constructor === TSSymbol) {
+          //make sure that this operator has a higher precedence than its neighbor
+          for (let j = Math.max(0, i - 2); j < Math.min(expression.lenth, i + 2); ++j) {
+            if (expression[j].constructor === TSSymbol) {
+              if (expression[j].precedence > operator.precedence) {
+                continue constant_folding;
+              } else {
+                break;
+              }
+            }
+          }
+          
+          if (operator.isUnary && expression[i+1].constructor === NumericLiteral) {
+            expression[i+1].performUnaryOp(operator.appearance);
+            expression.splice(i, 1);
+            i = Math.max(i - 2, 0);
+          } else if (expression[i-1].constructor === NumericLiteral && expression[i+1].constructor === NumericLiteral) {
+            expression[i-1].performBinaryOp(operator.appearance, expression[i+1]);
+            expression.splice(i, 2);
+          }
+        }
+      }
+      
+      //code generation pass
+      
+      
+      console.log("after constant folding:", ...expression);
+    }
 
     let initFunction = [];
 
     const functionsBeingCalled = [];
     const expression = [];
     const localVarMap = []; //maps local vars to varIDs
-    let assigningToVariable;
+    let localVarLValue;
     const linearMemoryInitialValues = [];
 
     for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
-      assigningToVariable = -1;
+      localVarLValue = -1;
 
       for (let col = 1, endCol = this.getItemCount(row); col < endCol; ++col) {
         const item = this.getItem(row, col);
@@ -1651,9 +1832,7 @@ class Script {
 
         switch (format) {
           case Script.VARIABLE_DEFINITION:
-            if (this.getItem(row, col + 1) === this.ITEMS.EQUALS) {
-              assigningToVariable = localVarMap.length;
-            }
+            expression.push(new LocalVarReference(localVarMap.length, this.variables.get(value)));
             localVarMap.push({id: value, type: meta});
             break;
           
@@ -1662,17 +1841,8 @@ class Script {
             if (localIndex === -1) {
               throw "var" + value + " is referenced before it is declared";
             }
-
-            if (this.getItem(row, col + 1) === this.ITEMS.EQUALS) {
-              //writing to variable
-              assigningToVariable = localIndex;
-            } else {
-              //reading from variable
-              expression.push({
-                type: localVarMap[localIndex].type,
-                representation: [Wasm.opcodes.get_local, localIndex],
-              });
-            }
+            
+            expression.push(new LocalVarReference(localIndex, localVarMap[localIndex]));
             break;
           
           case Script.FUNCTION_REFERENCE:
@@ -1689,55 +1859,55 @@ class Script {
 
           case Script.SYMBOL: {
             const func = functionsBeingCalled.length && this.functions.get(functionsBeingCalled[functionsBeingCalled.length - 1]);
+            
+            if (this.ASSIGNMENT_OPERATORS.includes(item)) {
+              const localVar = expression.pop();
+              localVarLValue = localVar.index;
+              
+              if (item !== this.ITEMS.EQUALS) {
+                  //TODO insert a reference to the variable then the first part of the combined operator here
+              }
+            }
 
             let expressionType = this.TYPES.VOID;
             if (item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) {
-              //TODO convert the high level expression into Wasm WasmSynthesizer.opcodes
-              initFunction.push(...expression[0].representation);
+              const wasmCode = compileExpression(expression);
               expressionType = expression[0].type;
               expression.length = 0;
             }
 
-            //functions taking an arbitrary count of Any arguments acts on each argument separately i.e. print()
-            //based on the type of the argument, it chooses a specialized version of itself to call
-            if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && func.specializations) {
-              const specialization = func.specializations.get(expressionType);
-              if (specialization === undefined) {
+            //print() takes an arbitrary count of Any arguments and overloads for each argument in order
+            if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && func.name === "print") {
+              const overload = this.functions.findOverloadId(func.scope, func.name, expressionType);
+              if (overload === undefined) {
                 throw `implementation of ${func.name}(${this.classes.get(expressionType).name}) not found`;
               }
-              initFunction.push(Wasm.opcodes.call, specialization);
+              const overloadedFunc = this.functions.get(overload);
+              initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
             }
             else if (item === this.ITEMS.END_ARGUMENTS) {
-              initFunction.push(Wasm.opcodes.call, func.funcIndex);
+              initFunction.push(Wasm.opcodes.call, func.importedFuncIndex);
             }
             
             if (item === this.ITEMS.END_ARGUMENTS) {
               functionsBeingCalled.pop();
             }
+            
+            if (![this.ITEMS.COMMA, this.ITEMS.START_ARGUMENTS, this.ITEMS.END_ARGUMENTS].includes(item) && !this.ASSIGNMENT_OPERATORS.includes(item)) {
+              expression.push(this.symbols[value]);
+            }
           } break;
 
           case Script.LITERAL:
-            if (meta === 1) {
-              expression.push({
-                type: this.TYPES.STRING,
-                representation: [
-                  Wasm.opcodes.i32.const, ...Wasm.varint(linearMemoryInitialValues.length),
-                ]
-              });
+            if (meta === 1) { //string
+              expression.push(new StringLiteral(linearMemoryInitialValues.length));
 
               const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
               const bytes = Wasm.stringToUTF8(stringLiteral);
               linearMemoryInitialValues.push(...Wasm.varuint(bytes.length), ...bytes);
-            } else if (meta === 2) {
+            } else if (meta === 2) { //number
               const literal = this.literals.get(value);
-              const bytes = new Uint8Array(Float64Array.of(+literal).buffer);
-
-              expression.push({
-                type: this.TYPES.F64,
-                representation: [
-                  Wasm.opcodes.f64.const, ...bytes,
-                ]
-              });
+              expression.push(new NumericLiteral(literal));
             } break;
         }
       }
@@ -1745,12 +1915,12 @@ class Script {
       //end of line delimits expression
       //TODO convert expression into sequence of Wasm instructions
       if (expression[0]) {
-        initFunction.push(...expression[0].representation);
+        const wasmCode = compileExpression(expression);
         expression.length = 0; //consume expression
       }
 
-      if (assigningToVariable !== -1) {
-        initFunction.push(Wasm.opcodes.set_local, assigningToVariable);
+      if (localVarLValue !== -1) {
+        initFunction.push(Wasm.opcodes.set_local, localVarLValue);
       }
     }
 
@@ -1763,9 +1933,11 @@ class Script {
       let type = 0;
       switch (local.type) {
         case this.TYPES.I32:
+        case this.TYPES.U32:
           type = Wasm.types.i32;
           break;
         case this.TYPES.I64:
+        case this.TYPES.U64:
           type = Wasm.types.i64;
           break;
         case this.TYPES.F32:
@@ -1775,7 +1947,7 @@ class Script {
           type = Wasm.types.f64;
           break;
         default:
-          throw "cannot find Wasm type of type " + this.classes.get(local.type).name;
+          throw "cannot find Wasm type of " + this.classes.get(local.type).name;
       }
 
       localVarDefinition.push(1, type);
@@ -1793,7 +1965,7 @@ class Script {
       ...Wasm.varuint(1), //1 data segment
 
       0, //memory index 0
-      Wasm.opcodes.i32.const, Wasm.varint(0), Wasm.opcodes.end, //place memory at address 0
+      Wasm.opcodes.i32_const, Wasm.varint(0), Wasm.opcodes.end, //place memory at address 0
       ...Wasm.varuint(linearMemoryInitialValues.length), //count of bytes to fill in
       ...linearMemoryInitialValues,
     ];

@@ -5,8 +5,28 @@ class RuntimeEnvironment {
       print(location) {
         self.print(location)
       },
-      printF64(doubleNum) {
-        self.printDouble(doubleNum)
+      printI32(i32Num) {
+        print(String(i32Num));
+      },
+      printU32(u32Num) {
+        if (u32Num < 0) {
+          u32Num += 2147483648;
+        }
+        print(String(u32Num));
+      },
+      printI64(i64Num) {
+        //the num is cast to double
+        print(String(i64Num));
+      },
+      printU64(u64Num) {
+        //not supported, printed as double
+        print(String(u64Num));
+      },
+      printF32(f32Num) {
+        print(String(f32Num));
+      },
+      printF64(f64Num) {
+        print(String(f64Num));
       },
       inputF64(defaultVal, min, max) {
         return self.inputDouble(defaultVal, min, max);
@@ -23,10 +43,6 @@ class RuntimeEnvironment {
     location += bytesRead;
     const message = Wasm.UTF8toString(memory.slice(location, location + sizeOfString));
     print(message);
-  }
-
-  printDouble(doubleNum) {
-    print(String(doubleNum));
   }
 
   inputDouble(defaultVal, min, max) {

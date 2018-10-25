@@ -176,37 +176,6 @@ Wasm.externalKindNames = [
     "Global",
 ]
 
-Wasm.opcodes = {
-    i32: {
-        load: 0x28,
-        load8_s: 0x2c,
-        load8_u: 0x2d,
-        load16_s: 0x2e,
-        load16_u: 0x2f,
-        store: 0x36,
-        store8: 0x3a,
-        store16: 0x3b,
-        const: 0x41,
-    },
-    i64: {
-        const: 0x42,
-    },
-    f32: {
-        const: 0x43,
-    },
-    f64: {
-        const: 0x44,
-    },
-    call: 0x10,
-    drop: 0x1A,
-    end: 0x0b,
-    get_local: 0x20,
-    set_local: 0x21,
-    tee_local: 0x22,
-    get_global: 0x23,
-    set_global: 0x24,
-}
-
 class OpcodeData {
   constructor(name, ...immediates) {
     this.name = name;
@@ -336,8 +305,8 @@ Wasm.opcodeData = [
   new OpcodeData("i32.shr_u"),
   new OpcodeData("i32.rotl"),
   new OpcodeData("i32.rotr"),
-  new OpcodeData("i32.clz"),
-  new OpcodeData("i32.ctz"),
+  new OpcodeData("i64.clz"),
+  new OpcodeData("i64.ctz"),
   new OpcodeData("i64.popcnt"),
   new OpcodeData("i64.add"),
   new OpcodeData("i64.sub"),
@@ -408,3 +377,11 @@ Wasm.opcodeData = [
   new OpcodeData("f32.reinterpret/i32"),
   new OpcodeData("f64.reinterpret/i64"),
 ];
+
+Wasm.opcodes = {};
+for (let i = 0; i < Wasm.opcodeData.length; ++i) {
+  if (Wasm.opcodeData[i]) {
+    const propName = Wasm.opcodeData[i].name.replace(/\./, "_").replace(/\//, "_from_");
+    Wasm.opcodes[propName] = i;
+  }
+}
