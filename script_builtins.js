@@ -15,7 +15,8 @@ class TSSymbol {
 }
 
 function BuiltIns() {
-  this.classes = [
+  this.types = {};
+  this.types.data = [
     {name: "void", size: 0},
     {name: "Any", size: 0},
     // {name: "bool", size: 1},
@@ -36,17 +37,21 @@ function BuiltIns() {
   ].reverse();
 
 
+  //short-hand builtin name -> index mapping
+  const types = {};
 
-  const classes = {};
-  for (let i = 0; i < this.classes.length; ++i) {
-    classes[this.classes[i].name] = (-this.classes.length + i) & 0x3FF;
+  for (let i = 0; i < this.types.data.length; ++i) {
+    types[this.types.data[i].name] = (-this.types.data.length + i) & 0x3FF;
   }
+  this.types.builtinNameMapping = types;
   
-  //static variables of classes only.  no instance variables
-  this.variables = [
-    // {name: "E",  type: classes.f64, scope: clesses.Math},
-    // {name: "PI", type: classes.f64, scope: classes.Math},
+  //static variables only.  no instance variables
+  this.variables = {};
+  this.variables.data = [
+    // {name: "E",  type: types.f64, scope: clesses.Math},
+    // {name: "PI", type: types.f64, scope: types.Math},
   ].reverse();
+  this.variables.builtinNameMapping = {};
 
   function parseFunction(scope, name, ...overloads) {
     const formattedOverloads = [];
@@ -68,25 +73,25 @@ function BuiltIns() {
         const defaultVal = overload[i + 2];
         if (defaultVal !== undefined) {
           switch (param.type) {
-            case classes.i32:
-            case classes.u32:
+            case types.i32:
+            case types.u32:
               param.defaultRep.push(Wasm.opcodes.i32_const, ...Wasm.varint(defaultVal));
               break;
   
-            case classes.i64:
-            case classes.u64:
+            case types.i64:
+            case types.u64:
               param.defaultRep.push(Wasm.opcodes.i64_const, ...Wasm.varint(defaultVal));
               break;
   
-            case classes.f32:
+            case types.f32:
               param.defaultRep.push(Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(defaultVal));
               break;
   
-            case classes.f64:
+            case types.f64:
               param.defaultRep.push(Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(defaultVal));
               break;
             
-            case classes.string:
+            case types.string:
               //not supported yet
               throw "encounted default string value for function " + name + " parameter " + param.name;
           }
@@ -114,25 +119,29 @@ function BuiltIns() {
   }
 
   const builtinFunctions = [
-    parseFunction(classes.System, "print",
-      [-1, classes.void, classes.Any, "item", undefined],
-      [0, classes.void, classes.string, "item", undefined],
-      [1, classes.void, classes.i32, "item", undefined],
-      [2, classes.void, classes.u32, "item", undefined],
-      [3, classes.void, classes.i64, "item", undefined],
-      [4, classes.void, classes.u64, "item", undefined],
-      [5, classes.void, classes.f32, "item", undefined],
-      [6, classes.void, classes.f64, "item", undefined],
+    parseFunction(types.System, "print",
+      [-1, types.void, types.Any, "item", undefined],
+      [0, types.void, types.string, "item", undefined],
+      [1, types.void, types.i32, "item", undefined],
+      [2, types.void, types.u32, "item", undefined],
+      [3, types.void, types.i64, "item", undefined],
+      [4, types.void, types.u64, "item", undefined],
+      [5, types.void, types.f32, "item", undefined],
+      [6, types.void, types.f64, "item", undefined],
     ),
-    parseFunction(classes.System, "input",
-      [7, classes.f64, classes.f64, "default", 0, classes.f64, "min", -Infinity, classes.f64, "max", Infinity],
+    parseFunction(types.System, "input",
+      [7, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
     ),
   ];
 
-  this.functions = [];
+  this.functions = {data: [], builtinNameMapping: {}};
   for (const builtin of builtinFunctions) {
+    const scope = this.types.data[(builtin.scope + this.types.data.length) & 0x3FF];
+    const identifier = scope.name + "_" + builtin.name;
+    this.functions.builtinNameMapping[identifier] = (-this.functions.data.length - 1) & 0xFFFF;
+
     for (const overload of builtin.overloads) {
-      this.functions.push({
+      this.functions.data.push({
         name: builtin.name,
         scope: builtin.scope,
         importedFuncIndex: overload.importedFuncIndex,
@@ -141,7 +150,7 @@ function BuiltIns() {
       });
     }
   }
-  this.functions.reverse();
+  this.functions.data.reverse();
   
   this.symbols = [
     new TSSymbol("=", 0), //asignment operators
@@ -156,36 +165,36 @@ function BuiltIns() {
     new TSSymbol("<<=", 0),
     new TSSymbol(">>=", 0),
     new TSSymbol("+", 8, false, //arithmetic operators
-      [classes.i32, Wasm.opcodes.i32_add],
-      [classes.u32, Wasm.opcodes.i32_add],
-      [classes.i64, Wasm.opcodes.i64_add],
-      [classes.u64, Wasm.opcodes.i64_add],
-      [classes.f32, Wasm.opcodes.f32_add],
-      [classes.f64, Wasm.opcodes.f64_add],
+      [types.i32, Wasm.opcodes.i32_add],
+      [types.u32, Wasm.opcodes.i32_add],
+      [types.i64, Wasm.opcodes.i64_add],
+      [types.u64, Wasm.opcodes.i64_add],
+      [types.f32, Wasm.opcodes.f32_add],
+      [types.f64, Wasm.opcodes.f64_add],
     ),
     new TSSymbol("-", 8, false,
-      [classes.i32, Wasm.opcodes.i32_sub],
-      [classes.u32, Wasm.opcodes.i32_sub],
-      [classes.i64, Wasm.opcodes.i64_sub],
-      [classes.u64, Wasm.opcodes.i64_sub],
-      [classes.f32, Wasm.opcodes.f32_sub],
-      [classes.f64, Wasm.opcodes.f64_sub],
+      [types.i32, Wasm.opcodes.i32_sub],
+      [types.u32, Wasm.opcodes.i32_sub],
+      [types.i64, Wasm.opcodes.i64_sub],
+      [types.u64, Wasm.opcodes.i64_sub],
+      [types.f32, Wasm.opcodes.f32_sub],
+      [types.f64, Wasm.opcodes.f64_sub],
     ),
     new TSSymbol("*", 9, false,
-     [classes.i32, Wasm.opcodes.i32_mul],
-     [classes.u32, Wasm.opcodes.i32_mul],
-     [classes.i64, Wasm.opcodes.i64_mul],
-     [classes.u64, Wasm.opcodes.i64_mul],
-     [classes.f32, Wasm.opcodes.f32_mul],
-     [classes.f64, Wasm.opcodes.f64_mul],
+     [types.i32, Wasm.opcodes.i32_mul],
+     [types.u32, Wasm.opcodes.i32_mul],
+     [types.i64, Wasm.opcodes.i64_mul],
+     [types.u64, Wasm.opcodes.i64_mul],
+     [types.f32, Wasm.opcodes.f32_mul],
+     [types.f64, Wasm.opcodes.f64_mul],
    ),
     new TSSymbol("/", 9, false,
-     [classes.i32, Wasm.opcodes.i32_div_s],
-     [classes.u32, Wasm.opcodes.i32_div_u],
-     [classes.i64, Wasm.opcodes.i64_div_s],
-     [classes.u64, Wasm.opcodes.i64_div_u],
-     [classes.f32, Wasm.opcodes.f32_div_s],
-     [classes.f64, Wasm.opcodes.f64_div_u],
+     [types.i32, Wasm.opcodes.i32_div_s],
+     [types.u32, Wasm.opcodes.i32_div_u],
+     [types.i64, Wasm.opcodes.i64_div_s],
+     [types.u64, Wasm.opcodes.i64_div_u],
+     [types.f32, Wasm.opcodes.f32_div_s],
+     [types.f64, Wasm.opcodes.f64_div_u],
    ),
     new TSSymbol("%", 9),
     new TSSymbol("|", 4), //integer-specific operators
@@ -207,11 +216,11 @@ function BuiltIns() {
     new TSSymbol("..=", 0), //closed range operator
     new TSSymbol("-", 10, true), //arithmetic negation operator
     new TSSymbol("!", 10, true, //binary or bitwise negation operator
-      [classes.boolean, Wasm.opcodes.i32_eqz],
-      [classes.i32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
-      [classes.u32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
-      [classes.i64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
-      [classes.u64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
+      [types.boolean, Wasm.opcodes.i32_eqz],
+      [types.i32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
+      [types.u32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
+      [types.i64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
+      [types.u64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
     ),
     new TSSymbol("____", 0), //misc
     new TSSymbol(",", 0), //argument separator
