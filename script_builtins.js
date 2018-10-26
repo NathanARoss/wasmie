@@ -67,41 +67,14 @@ function BuiltIns() {
         const param = {
           type: overload[i],
           name: overload[i + 1],
-          defaultRep: [],
+          default: overload[i + 2],
         };
 
-        const defaultVal = overload[i + 2];
-        if (defaultVal !== undefined) {
-          switch (param.type) {
-            case types.i32:
-            case types.u32:
-              param.defaultRep.push(Wasm.opcodes.i32_const, ...Wasm.varint(defaultVal));
-              break;
-  
-            case types.i64:
-            case types.u64:
-              param.defaultRep.push(Wasm.opcodes.i64_const, ...Wasm.varint(defaultVal));
-              break;
-  
-            case types.f32:
-              param.defaultRep.push(Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(defaultVal));
-              break;
-  
-            case types.f64:
-              param.defaultRep.push(Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(defaultVal));
-              break;
-            
-            case types.string:
-              //not supported yet
-              throw "encounted default string value for function " + name + " parameter " + param.name;
-          }
-          
-          param.name += "\n";
-  
-          if (typeof defaultVal === "string") {
-            param.name += `"${defaultVal.replace("\n", "\\n")}"`;
+        if (param.default !== undefined) {  
+          if (param.type === types.string) {
+            param.name += `\n"${param.default.replace("\n", "\\n")}"`;
           } else {
-            param.name += defaultVal;
+            param.name += "\n" + param.default;
           }
         }
   

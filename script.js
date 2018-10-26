@@ -1661,7 +1661,7 @@ class Script {
     class NumericLiteral {
       constructor(rawString) {
         this.value = +rawString;
-        this.hasDecimalPoint = rawString.includes(".");
+        this.hasDecimalPoint = String(rawString).includes(".");
       }
       
       performUnaryOp(unaryOp) {
@@ -1863,6 +1863,7 @@ class Script {
         }
       }
       
+      //console.log(...expression, "remaining operands", ...operands, "remaining operators", ...operators)
       const expressionType = operands[0].type;
       wasmCode.push(...(operands.pop().getWasmCode(expectedType)));
       
@@ -1905,10 +1906,11 @@ class Script {
 
           case Script.ARGUMENT_HINT: {
             const param = this.funcs.get(value).parameters[meta];
-            expression.push({
-              type: param.type,
-              representation: param.defaultRep,
-            });
+            if (param.type === this.types.builtins.string) {
+              expression.push(new StringLiteral(param.default));
+            } else {
+              expression.push(new NumericLiteral(param.default));
+            }
           } break;
 
           case Script.SYMBOL: {
