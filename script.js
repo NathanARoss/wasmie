@@ -139,6 +139,7 @@ class Script {
 
     this.TYPES = {};
     this.TYPES.VOID = this.classes.getIdByName("void");
+    this.TYPES.ANY = this.classes.getIdByName("Any");
     this.TYPES.I32 = this.classes.getIdByName("i32");
     this.TYPES.U32 = this.classes.getIdByName("u32");
     this.TYPES.I64 = this.classes.getIdByName("i64");
@@ -1747,6 +1748,26 @@ class Script {
           this.value = Math.trunc(this.value);
         }
       }
+      
+      getWasmCode(expectedType) {
+        switch(expectedType) {
+          case parent.TYPES.I32:
+          case parent.TYPES.U32:
+          case parent.TYPES.I64:
+          case parent.TYPES.U64:
+            return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
+          case parent.TYPES.F32:
+            return [Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(this.value)];
+          case parent.TYPES.F64:
+            return [Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(this.value)];
+          case parent.TYPES.ANY:
+          case parent.TYPES.VOID:
+            return this.getWasmCode(this.hasDecimalPoint ? parent.TYPES.F32 : parent.TYPES.I32);
+          default:
+            console.trace();
+            throw "unrecognized type for numeric literal: " + parent.classes.get(expectedType).name;
+        }
+      }
     }
     
     class StringLiteral {
@@ -1759,7 +1780,7 @@ class Script {
       }
       
       getWasmCode() {
-        return [Wasm.opcodes.i32_const, ...Wasm.varint(leftVal.address)];
+        return [Wasm.opcodes.i32_const, ...Wasm.varint(this.address)];
       }
     }
     
@@ -1774,13 +1795,25 @@ class Script {
       }
       
       getWasmCode() {
-        return [Wasm.opcodes.get_local, ...Wasm.varuint(index)];
+        return [Wasm.opcodes.get_local, ...Wasm.varuint(this.index)];
       }
     }
     
-    function compileExpression(expression, outputType) {
-      console.log("before folding:", ...expression);
+    class TypePlaceholder {
+      constructor(type) {
+        this.t = type;
+      }
       
+      get type() {
+        return this.t;
+      }
+      
+      getWasmCode() {
+        return [];
+      }
+    }
+    
+    function compileExpression(expression, expectedType) {
       //constant folding pass
       look_for_next_operator:
       for (let i = 0; i < expression.length; ++i) {
@@ -1808,24 +1841,62 @@ class Script {
       }
 
       //code generation pass
-      // const operators = [];
-      // const operands = [];
-      // const wasmCode = [];
-      // const symbolQueue = [];
-      // for (let i = 0; i < expression.length; ++i) {
-      //   const item = expression[i];
-      //   if (item.constructor === TSSymbol) {
-      //     //check if the operator stack contains operators that are performed before the one that is about to be pushed
-      //     if (operators.length > 0 && operators[operators.length - 1].precedence > item.precedence) {
-            
-
-      //     }
-      //   } else {
-      //     operands.push(item);
-      //   }
-      // }
+      const operators = [];
+      const operands = [];
+      const wasmCode = [];
+      for (let i = 0; i < expression.length; ++i) {
+        const item = expression[i];
+        if (item.constructor === TSSymbol) {
+          //check if the operator stack contains an operator that is performed before the one that is about to be pushed
+          if (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
+            const operator = operators.pop();
+            if (operator.isUnary) {
+              const operand = operands.pop();
+              const operationWasmCode = operator.uses.get(operand.type);
+              wasmCode.push(...operand.getWasmCode());
+              wasmCode.push(...operationWasmCode);
+              operand.push(new TypePlaceholder(operand.type));
+            } else {
+              const secondOperand = operands.pop();
+              const firstOperand = operands.pop();
+              const operationWasmCode = operator.uses.get(firstOperand.type);
+              wasmCode.push(...firstOperand.getWasmCode(secondOperand.type));
+              wasmCode.push(...secondOperand.getWasmCode(firstOperand.type));
+              wasmCode.push(...operationWasmCode);
+              operands.push(new TypePlaceholder(firstOperand.type));
+            }
+          }
+          
+          operators.push(item);
+        } else {
+          operands.push(item);
+        }
+      }
       
-      console.log("after constant folding:", ...expression);
+      //consume remaining operators
+      while (operators.length > 0) {
+        const operator = operators.pop();
+        if (operator.isUnary) {
+          const operand = operands.pop();
+          const operationWasmCode = operator.uses.get(operand.type);
+          wasmCode.push(...operand.getWasmCode());
+          wasmCode.push(...operationWasmCode);
+          operand.push(new TypePlaceholder(operand.type));
+        } else {
+          const secondOperand = operands.pop();
+          const firstOperand = operands.pop();
+          const operationWasmCode = operator.uses.get(firstOperand.type || secondOperand.type);
+          wasmCode.push(...firstOperand.getWasmCode(secondOperand.type));
+          wasmCode.push(...secondOperand.getWasmCode(firstOperand.type));
+          wasmCode.push(...operationWasmCode);
+          operands.push(new TypePlaceholder(firstOperand.type));
+        }
+      }
+      
+      const expressionType = operands[0].type;
+      wasmCode.push(...(operands.pop().getWasmCode(expectedType)));
+      
+      return [expressionType, wasmCode];
     }
 
     let initFunction = [];
@@ -1871,7 +1942,8 @@ class Script {
           } break;
 
           case Script.SYMBOL: {
-            const func = functionsBeingCalled.length && this.functions.get(functionsBeingCalled[functionsBeingCalled.length - 1]);
+            const funcId = functionsBeingCalled[functionsBeingCalled.length - 1];
+            const func = funcId && this.functions.get(funcId);
             
             if (this.ASSIGNMENT_OPERATORS.includes(item)) {
               const localVar = expression.pop();
@@ -1884,13 +1956,44 @@ class Script {
 
             let expressionType = this.TYPES.VOID;
             if (item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) {
-              const wasmCode = compileExpression(expression);
-              expressionType = expression[0].type;
+              //find argument type
+              let expectedType = this.TYPES.ANY;
+              let funcCallDepth = 0;
+              let argumentIndex = 0;
+              for (let j = col - 1; j > 0; --j) {
+                const item = this.getItem(row, j);
+                if (item === this.ITEMS.END_ARGUMENTS) {
+                  ++funcCallDepth;
+                }
+                if (item === this.ITEMS.COMMA && funcCallDepth === 0) {
+                  ++argumentIndex;
+                }
+                if (item === this.ITEMS.START_ARGUMENTS) {
+                  if (funcCallDepth === 0) {
+                    const funcId = this.getData(row, j - 1).value;
+                    const func = this.functions.get(funcId);
+                    console.log(expression, func, argumentIndex);
+                    if (funcId === this.FUNCS.PRINT) {
+                      argumentIndex = 0;
+                    }
+                    const argumentType = func.parameters[argumentIndex].type;
+                    console.log(expression, "is argument ", argumentIndex, "to function", func.scope + "." + func.name, "argument type is", this.classes.get(argumentType).name);
+                    expectedType = argumentType;
+                    break;
+                  }
+                  
+                  --funcCallDepth;
+                }
+              }
+              
+              let wasmCode;
+              [expressionType, wasmCode] = compileExpression(expression, expectedType);
               expression.length = 0;
+              initFunction.push(...wasmCode);
             }
 
             //print() takes an arbitrary count of Any arguments and overloads for each argument in order
-            if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && func.name === "print") {
+            if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && funcId == this.FUNCS.PRINT) {
               const overload = this.functions.findOverloadId(func.scope, func.name, expressionType);
               if (overload === undefined) {
                 throw `implementation of ${func.name}(${this.classes.get(expressionType).name}) not found`;
@@ -1927,9 +2030,11 @@ class Script {
 
       //end of line delimits expression
       //TODO convert expression into sequence of Wasm instructions
-      if (expression[0]) {
-        const wasmCode = compileExpression(expression);
-        expression.length = 0; //consume expression
+      if (expression.length > 0) {
+        const expectedType = this.TYPES.VOID; //TODO
+        const [expressionType, wasmCode] = compileExpression(expression, expectedType);
+        expression.length = 0;
+        initFunction.push(...wasmCode);
       }
 
       if (localVarLValue !== -1) {

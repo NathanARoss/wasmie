@@ -6,10 +6,10 @@ class TSSymbol {
     this.precedence = precedence;
     this.isUnary = isUnary;
     
-    this.uses = [];
+    this.uses = new Map();
     for (const use of uses) {
       const [type, ...wasmCode] = use;
-      this.uses.push({type, wasmCode});
+      this.uses.set(type, wasmCode);
     } 
   }
 }
@@ -160,10 +160,33 @@ function BuiltIns() {
       [classes.u32, Wasm.opcodes.i32_add],
       [classes.i64, Wasm.opcodes.i64_add],
       [classes.u64, Wasm.opcodes.i64_add],
+      [classes.f32, Wasm.opcodes.f32_add],
+      [classes.f64, Wasm.opcodes.f64_add],
     ),
-    new TSSymbol("-", 8),
-    new TSSymbol("*", 9),
-    new TSSymbol("/", 9),
+    new TSSymbol("-", 8, false,
+      [classes.i32, Wasm.opcodes.i32_sub],
+      [classes.u32, Wasm.opcodes.i32_sub],
+      [classes.i64, Wasm.opcodes.i64_sub],
+      [classes.u64, Wasm.opcodes.i64_sub],
+      [classes.f32, Wasm.opcodes.f32_sub],
+      [classes.f64, Wasm.opcodes.f64_sub],
+    ),
+    new TSSymbol("*", 9, false,
+     [classes.i32, Wasm.opcodes.i32_mul],
+     [classes.u32, Wasm.opcodes.i32_mul],
+     [classes.i64, Wasm.opcodes.i64_mul],
+     [classes.u64, Wasm.opcodes.i64_mul],
+     [classes.f32, Wasm.opcodes.f32_mul],
+     [classes.f64, Wasm.opcodes.f64_mul],
+   ),
+    new TSSymbol("/", 9, false,
+     [classes.i32, Wasm.opcodes.i32_div_s],
+     [classes.u32, Wasm.opcodes.i32_div_u],
+     [classes.i64, Wasm.opcodes.i64_div_s],
+     [classes.u64, Wasm.opcodes.i64_div_u],
+     [classes.f32, Wasm.opcodes.f32_div_s],
+     [classes.f64, Wasm.opcodes.f64_div_u],
+   ),
     new TSSymbol("%", 9),
     new TSSymbol("|", 4), //integer-specific operators
     new TSSymbol("^", 5),
