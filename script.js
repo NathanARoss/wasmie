@@ -132,8 +132,7 @@ class Script {
     }
 
     this.FUNCS = {
-      RANGE: -1 & this.functions.mask,
-      PRINT: (-this.functions.builtinCount + this.functions.data.findIndex(func => func.name === "print")) & this.functions.mask
+      PRINT: -1 & this.functions.mask
     };
     this.CLASSES = {VOID: -1 & this.classes.mask};
 
@@ -1979,7 +1978,7 @@ class Script {
                       argumentIndex = 0;
                     }
                     const argumentType = func.parameters[argumentIndex].type;
-                    console.log(expression, "is argument ", argumentIndex, "to function", func.scope + "." + func.name, "argument type is", this.classes.get(argumentType).name);
+                    console.log(expression, "is argument ", argumentIndex, "to ", func, "argument type is", this.classes.get(argumentType).name);
                     expectedType = argumentType;
                     break;
                   }
