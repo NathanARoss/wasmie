@@ -392,7 +392,7 @@ class Script {
         options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
       }
 
-      if (item === this.ITEMS.END_ARGUMENTS) {
+      if (item === this.ITEMS.END_ARGUMENTS || this.getItem(row, col + 1) === this.ITEMS.END_ARGUMENTS) {
         options.push({text: ",", payload: this.PAYLOADS.APPEND_ARGUMENT});
       }
 
@@ -775,6 +775,9 @@ class Script {
       }
 
       case this.PAYLOADS.APPEND_ARGUMENT: {
+        if (this.getItem(row, col) !== this.ITEMS.END_ARGUMENTS) {
+          ++col;
+        }
         this.spliceRow(row, col, 0, this.ITEMS.COMMA, this.ITEMS.UNDERSCORE);
         return {rowUpdated: true, selectedCol: col + 1};
       }
@@ -1972,7 +1975,6 @@ class Script {
                   if (funcCallDepth === 0) {
                     const funcId = this.getData(row, j - 1).value;
                     const func = this.functions.get(funcId);
-                    console.log(expression, func, argumentIndex);
                     if (funcId === this.FUNCS.PRINT) {
                       argumentIndex = 0;
                     }
