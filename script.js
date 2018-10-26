@@ -905,6 +905,9 @@ class Script {
             }
 
             if (funcID > -1) {
+              if (funcID === this.funcs.builtins.System_print) {
+                paramIndex = 0;
+              }
               this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
             } else {
               if (end + 1 === this.getItemCount(row)) {
@@ -1724,9 +1727,10 @@ class Script {
         switch(expectedType) {
           case parent.types.builtins.i32:
           case parent.types.builtins.u32:
+            return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
           case parent.types.builtins.i64:
           case parent.types.builtins.u64:
-            return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
+            return [Wasm.opcodes.i64_const, ...Wasm.varint(this.value)];
           case parent.types.builtins.f32:
             return [Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(this.value)];
           case parent.types.builtins.f64:
@@ -1739,6 +1743,18 @@ class Script {
             throw "unrecognized type for numeric literal: " + parent.types.get(expectedType).name;
         }
       }
+
+      getType(expectedType) {
+        if (expectedType !== parent.types.builtins.Any) {
+          return expectedType;
+        }
+
+        if (this.hasDecimalPoint) {
+          return parent.types.builtins.f32;
+        } else {
+          return parent.types.builtins.i32;
+        }
+      }
     }
     
     class StringLiteral {
@@ -1746,7 +1762,7 @@ class Script {
         this.address = address;
       }
       
-      get type() {
+      getType() {
         return parent.types.builtins.string;
       }
       
@@ -1761,7 +1777,7 @@ class Script {
         this.variable = variable;
       }
       
-      get type() {
+      getType() {
         return this.variable.type;
       }
       
@@ -1775,7 +1791,7 @@ class Script {
         this.t = type;
       }
       
-      get type() {
+      getType() {
         return this.t;
       }
       
@@ -1826,13 +1842,14 @@ class Script {
             const rightOperand = operands.pop();
             let operationWasmCode;
             if (operator.isUnary) {
-              operationWasmCode = operator.uses.get(rightOperand.type);
+              operationWasmCode = operator.uses.get(rightOperand.getType());
               wasmCode.push(...rightOperand.getWasmCode());
             } else {
               const leftOperand = operands.pop();
-              operationWasmCode = operator.uses.get(leftOperand.type || rightOperand.type);
-              wasmCode.push(...leftOperand.getWasmCode(rightOperand.type));
-              wasmCode.push(...rightOperand.getWasmCode(leftOperand.type));
+              const type = rightOperand.getType(leftOperand.getType());
+              operationWasmCode = operator.uses.get(type);
+              wasmCode.push(...leftOperand.getWasmCode(type));
+              wasmCode.push(...rightOperand.getWasmCode(type));
             }
             wasmCode.push(...operationWasmCode);
             operands.push(new TypePlaceholder(rightOperand.type));
@@ -1845,7 +1862,7 @@ class Script {
       }
       
       //console.log("remaining operands", ...operands, "remaining operators", ...operators)
-      const expressionType = operands[0].type;
+      const expressionType = operands[0].getType(expectedType);
       wasmCode.push(...(operands.pop().getWasmCode(expectedType)));
       
       return [expressionType, wasmCode];
@@ -1947,7 +1964,7 @@ class Script {
             if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && funcId == this.funcs.builtins.System_print) {
               const overload = this.funcs.findOverloadId(funcId, expressionType);
               if (overload === undefined) {
-                throw `implementation of ${func.name}(${this.types.get(expressionType).name}) not found`;
+                throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
               }
               const overloadedFunc = this.funcs.get(overload);
               initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
@@ -1980,9 +1997,13 @@ class Script {
       }
 
       //end of line delimits expression
-      //TODO convert expression into sequence of Wasm instructions
       if (expression.length > 0) {
-        const expectedType = this.types.builtins.void; //TODO
+        let expectedType = this.types.builtins.void;
+
+        if (localVarLValue !== -1) {
+          expectedType = localVarMap[localVarLValue].type;
+        }
+
         const [expressionType, wasmCode] = compileExpression(expression, expectedType);
 
         expression.length = 0;
