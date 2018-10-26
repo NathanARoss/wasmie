@@ -111,7 +111,8 @@ class Script {
     this.types = new MetadataContainer("classes", types, 0x3FF);
     this.literals = new MetadataContainer("literals", literals, 0xFFFF);
     
-    this.funcs.findOverloadId = function(scope, name, ...argumentTypes) {
+    this.funcs.findOverloadId = function(funcId, ...argumentTypes) {
+      const {name, scope} = parent.funcs.get(funcId);
       const index = this.data.findIndex(func => {
         return func.scope === scope
                && func.name === name
@@ -1915,7 +1916,6 @@ class Script {
 
           case Script.SYMBOL: {
             const funcId = functionsBeingCalled[functionsBeingCalled.length - 1];
-            const func = funcId && this.funcs.get(funcId);
             
             if (this.ASSIGNMENT_OPERATORS.includes(item)) {
               const localVar = expression.pop();
@@ -1965,7 +1965,7 @@ class Script {
 
             //print() takes an arbitrary count of Any arguments and overloads for each argument in order
             if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && funcId == this.funcs.builtins.System_print) {
-              const overload = this.funcs.findOverloadId(func.scope, func.name, expressionType);
+              const overload = this.funcs.findOverloadId(funcId, expressionType);
               if (overload === undefined) {
                 throw `implementation of ${func.name}(${this.types.get(expressionType).name}) not found`;
               }
@@ -1973,11 +1973,11 @@ class Script {
               initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
             }
             else if (item === this.ITEMS.END_ARGUMENTS) {
+              const func = this.funcs.get(functionsBeingCalled.pop());
               initFunction.push(Wasm.opcodes.call, func.importedFuncIndex);
-            }
-            
-            if (item === this.ITEMS.END_ARGUMENTS) {
-              functionsBeingCalled.pop();
+              if (func.returnType !== this.types.builtins.void) {
+                expression.push(new TypePlaceholder(func.returnType));
+              }
             }
             
             if (![this.ITEMS.COMMA, this.ITEMS.START_ARGUMENTS, this.ITEMS.END_ARGUMENTS].includes(item) && !this.ASSIGNMENT_OPERATORS.includes(item)) {
@@ -2004,12 +2004,15 @@ class Script {
       if (expression.length > 0) {
         const expectedType = this.types.builtins.void; //TODO
         const [expressionType, wasmCode] = compileExpression(expression, expectedType);
+
         expression.length = 0;
         initFunction.push(...wasmCode);
-      }
 
-      if (localVarLValue !== -1) {
-        initFunction.push(Wasm.opcodes.set_local, localVarLValue);
+        if (localVarLValue === -1) {
+          initFunction.push(Wasm.opcodes.drop);
+        } else {
+          initFunction.push(Wasm.opcodes.set_local, localVarLValue);
+        }
       }
     }
 
