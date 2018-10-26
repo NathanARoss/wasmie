@@ -1815,27 +1815,27 @@ class Script {
       const operators = [];
       const operands = [];
       const wasmCode = [];
+
+      expression.push(new TSSymbol("term", -1)); //terminate expression
       for (let i = 0; i < expression.length; ++i) {
         const item = expression[i];
         if (item.constructor === TSSymbol) {
-          //check if the operator stack contains an operator that is performed before the one that is about to be pushed
-          if (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
+          //check if the previous operators have a higher precedence than the one that is about to be pushed
+          while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
             const operator = operators.pop();
+            const rightOperand = operands.pop();
+            let operationWasmCode;
             if (operator.isUnary) {
-              const operand = operands.pop();
-              const operationWasmCode = operator.uses.get(operand.type);
-              wasmCode.push(...operand.getWasmCode());
-              wasmCode.push(...operationWasmCode);
-              operand.push(new TypePlaceholder(operand.type));
+              operationWasmCode = operator.uses.get(rightOperand.type);
+              wasmCode.push(...rightOperand.getWasmCode());
             } else {
-              const secondOperand = operands.pop();
-              const firstOperand = operands.pop();
-              const operationWasmCode = operator.uses.get(firstOperand.type);
-              wasmCode.push(...firstOperand.getWasmCode(secondOperand.type));
-              wasmCode.push(...secondOperand.getWasmCode(firstOperand.type));
-              wasmCode.push(...operationWasmCode);
-              operands.push(new TypePlaceholder(firstOperand.type));
+              const leftOperand = operands.pop();
+              operationWasmCode = operator.uses.get(leftOperand.type || rightOperand.type);
+              wasmCode.push(...leftOperand.getWasmCode(rightOperand.type));
+              wasmCode.push(...rightOperand.getWasmCode(leftOperand.type));
             }
+            wasmCode.push(...operationWasmCode);
+            operands.push(new TypePlaceholder(rightOperand.type));
           }
           
           operators.push(item);
@@ -1844,27 +1844,7 @@ class Script {
         }
       }
       
-      //consume remaining operators
-      while (operators.length > 0) {
-        const operator = operators.pop();
-        if (operator.isUnary) {
-          const operand = operands.pop();
-          const operationWasmCode = operator.uses.get(operand.type);
-          wasmCode.push(...operand.getWasmCode());
-          wasmCode.push(...operationWasmCode);
-          operand.push(new TypePlaceholder(operand.type));
-        } else {
-          const secondOperand = operands.pop();
-          const firstOperand = operands.pop();
-          const operationWasmCode = operator.uses.get(firstOperand.type || secondOperand.type);
-          wasmCode.push(...firstOperand.getWasmCode(secondOperand.type));
-          wasmCode.push(...secondOperand.getWasmCode(firstOperand.type));
-          wasmCode.push(...operationWasmCode);
-          operands.push(new TypePlaceholder(firstOperand.type));
-        }
-      }
-      
-      //console.log(...expression, "remaining operands", ...operands, "remaining operators", ...operators)
+      //console.log("remaining operands", ...operands, "remaining operators", ...operators)
       const expressionType = operands[0].type;
       wasmCode.push(...(operands.pop().getWasmCode(expectedType)));
       
