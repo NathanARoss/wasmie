@@ -10,7 +10,7 @@ class RuntimeEnvironment {
       },
       printU32(u32Num) {
         if (u32Num < 0) {
-          u32Num += 2147483648;
+          u32Num += 4294967296;
         }
         print(String(u32Num));
       },

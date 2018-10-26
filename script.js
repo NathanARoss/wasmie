@@ -372,7 +372,7 @@ class Script {
         options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
       }
 
-      if (item === this.ITEMS.END_ARGUMENTS || this.getItem(row, col + 1) === this.ITEMS.END_ARGUMENTS) {
+      if (this.getItem(row, col + 1) === this.ITEMS.END_ARGUMENTS || this.getItem(row, col + 1) === this.ITEMS.COMMA) {
         options.push({text: ",", payload: this.PAYLOADS.APPEND_ARGUMENT});
       }
 
@@ -1746,7 +1746,7 @@ class Script {
       }
       
       get type() {
-        return parent.TYPES.STRING;
+        return parent.types.builtins.string;
       }
       
       getWasmCode() {
@@ -1946,7 +1946,7 @@ class Script {
                       argumentIndex = 0;
                     }
                     const argumentType = func.parameters[argumentIndex].type;
-                    console.log(expression, "is argument ", argumentIndex, "to ", func, "argument type is", this.types.get(argumentType).name);
+                    //console.log(expression, "is argument ", argumentIndex, "to ", func.name, "argument type is", this.types.get(argumentType).name);
                     expectedType = argumentType;
                     break;
                   }
