@@ -1579,7 +1579,7 @@ class Script {
       Wasm.types.func,
       1, Wasm.types.i32,
       0,
-    
+
       Wasm.types.func,
       1, Wasm.types.i64,
       0,
@@ -1594,10 +1594,10 @@ class Script {
 
       Wasm.types.func,
       3, Wasm.types.f64, Wasm.types.f64, Wasm.types.f64,
-      1, Wasm.types.f64
+      1, Wasm.types.f64,
     ];
 
-    const importedFunctionsCount = 8;
+    const importedFunctionsCount = 6;
     let importSection = [
       ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
@@ -1613,24 +1613,14 @@ class Script {
       ...Wasm.varuint(1), //type index (func signiture)
 
       ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printI32"),
-      Wasm.externalKind.Function,
-      ...Wasm.varuint(1),
-
-      ...Wasm.getStringBytesAndData("System"),
       ...Wasm.getStringBytesAndData("printU32"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(1),
 
       ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printI64"),
+      ...Wasm.getStringBytesAndData("printI32"),
       Wasm.externalKind.Function,
-      ...Wasm.varuint(2),
-
-      ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printU64"),
-      Wasm.externalKind.Function,
-      ...Wasm.varuint(2),
+      ...Wasm.varuint(1),
 
       ...Wasm.getStringBytesAndData("System"),
       ...Wasm.getStringBytesAndData("printF32"),
@@ -1649,8 +1639,9 @@ class Script {
     ];
 
     let functionSection = [
-      ...Wasm.varuint(1), //count of function bodies defined later
+      ...Wasm.varuint(2), //count of function bodies defined later
       ...Wasm.varuint(0), //type indicies (func signitures)
+      ...Wasm.varuint(2),
     ];
 
     // let exportSection = [
@@ -1724,7 +1715,8 @@ class Script {
       }
       
       getWasmCode(expectedType) {
-        switch(expectedType) {
+        const outputType = this.getType(expectedType);
+        switch (outputType) {
           case parent.types.builtins.i32:
           case parent.types.builtins.u32:
             return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
@@ -1735,9 +1727,6 @@ class Script {
             return [Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(this.value)];
           case parent.types.builtins.f64:
             return [Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(this.value)];
-          case parent.types.builtins.Any:
-          case parent.types.builtins.void:
-            return this.getWasmCode(this.hasDecimalPoint ? parent.types.builtins.f32 : parent.types.builtins.i32);
           default:
             console.trace();
             throw "unrecognized type for numeric literal: " + parent.types.get(expectedType).name;
@@ -2048,10 +2037,62 @@ class Script {
 
     initFunction = [...localVarDefinition, ...initFunction, Wasm.opcodes.end];
 
+    const printU64 = [ // printU64(val)
+      1, 1, Wasm.types.i32,
+      Wasm.opcodes.get_global, 0, //address = top of stack + 16
+      Wasm.opcodes.i32_const, 16,
+      Wasm.opcodes.i32_add,
+      Wasm.opcodes.set_local, 1,
+
+      Wasm.opcodes.loop, Wasm.types.void, //do
+        Wasm.opcodes.get_local, 1, //address
+
+        Wasm.opcodes.get_local, 0,
+        Wasm.opcodes.i64_const, 10,
+        Wasm.opcodes.i64_rem_u,
+        Wasm.opcodes.i32_wrap_from_i64,
+        Wasm.opcodes.i32_const, ...Wasm.varint('0'.charCodeAt(0)),
+        Wasm.opcodes.i32_add, //value = val % 10 + '0'
+
+        Wasm.opcodes.i32_store8, 0, 0, //store value at address
+
+        Wasm.opcodes.get_local, 1, //address--
+        Wasm.opcodes.i32_const, 1,
+        Wasm.opcodes.i32_sub,
+        Wasm.opcodes.set_local, 1,
+
+        Wasm.opcodes.get_local, 0, //val /= 10
+        Wasm.opcodes.i64_const, 10,
+        Wasm.opcodes.i64_div_u,
+        Wasm.opcodes.tee_local, 0,
+        Wasm.opcodes.i64_const, 0,
+        Wasm.opcodes.i64_gt_u,
+      Wasm.opcodes.br_if, 0, //while val > 0
+      Wasm.opcodes.end,
+
+      Wasm.opcodes.get_local, 1, //address of string length
+
+      Wasm.opcodes.i32_const, 16, //length = 16 - address + top of stack
+      Wasm.opcodes.get_local, 1,
+      Wasm.opcodes.i32_sub,
+      Wasm.opcodes.get_global, 0,
+      Wasm.opcodes.i32_add,
+
+      Wasm.opcodes.i32_store8, 0, 0, //store length of string at address
+      
+      Wasm.opcodes.get_local, 1, //print string we just created
+      Wasm.opcodes.call, 0,
+
+      Wasm.opcodes.end,
+    ];
+
+
     let codeSection = [
-      ...Wasm.varuint(1), //count of functions to define
+      ...Wasm.varuint(2), //count of functions to define
       ...Wasm.varuint(initFunction.length),
       ...initFunction,
+      ...Wasm.varuint(printU64.length),
+      ...printU64,
     ];
 
     let dataSection = [
@@ -2063,6 +2104,12 @@ class Script {
       ...linearMemoryInitialValues,
     ];
 
+    const globalSection = [
+      ...Wasm.varuint(1),
+      Wasm.types.i32, 1,
+      Wasm.opcodes.i32_const, ...Wasm.varuint(linearMemoryInitialValues.length),
+      Wasm.opcodes.end,
+    ];
 
     let wasm = [
       0x00, 0x61, 0x73, 0x6d, //magic numbers
@@ -2079,6 +2126,10 @@ class Script {
       Wasm.section.Function,
       ...Wasm.varuint(functionSection.length),
       ...functionSection,
+
+      Wasm.section.Global,
+      ...Wasm.varuint(globalSection.length),
+      ...globalSection,
   
       // Wasm.section.Export,
       // ...Wasm.varuint(exportSection.length),

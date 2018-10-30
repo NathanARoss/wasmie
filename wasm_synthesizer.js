@@ -160,7 +160,9 @@ Wasm.typeNames[0x7F] = "i32";
 Wasm.typeNames[0x7E] = "i64";
 Wasm.typeNames[0x7D] = "f32";
 Wasm.typeNames[0x7C] = "f64";
+Wasm.typeNames[0x70] = "anyFunc";
 Wasm.typeNames[0x60] = "func";
+Wasm.typeNames[0x40] = "void";
 
 Wasm.externalKind = {
     Function: 0,

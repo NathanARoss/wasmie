@@ -246,12 +246,6 @@ window.onpopstate = function(event) {
       printDisassembly(bytesRead, beginComment + val + endComment);
       return val;
     }
-
-    function readVarintAndPrint(beginComment = "", endComment = "") {
-      const [val, bytesRead] = Wasm.decodeVarint(wasm, offset);
-      printDisassembly(bytesRead, beginComment + val + endComment);
-      return val;
-    }
     
     
 
@@ -315,6 +309,16 @@ window.onpopstate = function(event) {
           case Wasm.section.Function: {
             readVaruintAndPrint("signature: type index ");
           } break;
+
+          case Wasm.section.Global: {
+            printDisassembly(1, Wasm.typeNames[wasm[offset]]);
+            printDisassembly(1, wasm[offset] ? "mutable" : "immutable");
+
+            //the initial value is assumed to be an i32.const expression TODO should support other constant types
+            const [val, bytesRead] = Wasm.decodeVarint(wasm, offset + 1);
+            printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
+            printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
+          } break;
           
           case Wasm.section.Code: {
             const bodySize = readVaruintAndPrint("func body size: ", " bytes");
@@ -352,7 +356,7 @@ window.onpopstate = function(event) {
             readVaruintAndPrint("linear memory index: ");
 
             //the memory offset is assumed to be an i32.const expression
-            const [val, bytesRead] = Wasm.decodeVaruint(wasm, offset + 1);
+            const [val, bytesRead] = Wasm.decodeVarint(wasm, offset + 1);
             printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
             printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
 

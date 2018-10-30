@@ -14,14 +14,6 @@ class RuntimeEnvironment {
         }
         print(String(u32Num));
       },
-      printI64(i64Num) {
-        //the num is cast to double
-        print(String(i64Num));
-      },
-      printU64(u64Num) {
-        //not supported, printed as double
-        print(String(u64Num));
-      },
       printF32(f32Num) {
         print(String(f32Num));
       },
