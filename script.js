@@ -27,7 +27,8 @@ class Script {
     
       get(id) {
         if (id === undefined) {
-          throw "cannot find property " + this.storeName + "[undefined]";
+          console.trace();
+          console.log("cannot find property " + this.storeName + "[undefined]");
         }
         const index = (id + this.builtinCount) & this.mask;
         const output = this.data[index];
@@ -1780,16 +1781,17 @@ class Script {
     }
     
     class TypePlaceholder {
-      constructor(type) {
-        this.t = type;
+      constructor(type, ...wasmCode) {
+        this.type = type;
+        this.wasmCode = wasmCode;
       }
       
       getType() {
-        return this.t;
+        return this.type;
       }
       
       getWasmCode() {
-        return [];
+        return this.wasmCode;
       }
     }
     
@@ -1823,7 +1825,6 @@ class Script {
       //code generation pass
       const operators = [];
       const operands = [];
-      const wasmCode = [];
 
       expression.push(new TSSymbol("term", -1)); //terminate expression
       for (let i = 0; i < expression.length; ++i) {
@@ -1833,19 +1834,15 @@ class Script {
           while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
             const operator = operators.pop();
             const rightOperand = operands.pop();
-            let operationWasmCode;
             if (operator.isUnary) {
-              operationWasmCode = operator.uses.get(rightOperand.getType());
-              wasmCode.push(...rightOperand.getWasmCode());
+              const operationWasmCode = operator.uses.get(rightOperand.getType());
+              operands.push(new TypePlaceholder(rightOperand.getType(), ...rightOperand.getWasmCode(), ...operationWasmCode));
             } else {
               const leftOperand = operands.pop();
               const type = rightOperand.getType(leftOperand.getType());
-              operationWasmCode = operator.uses.get(type);
-              wasmCode.push(...leftOperand.getWasmCode(type));
-              wasmCode.push(...rightOperand.getWasmCode(type));
+              const operationWasmCode = operator.uses.get(type);
+              operands.push(new TypePlaceholder(type, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...operationWasmCode));
             }
-            wasmCode.push(...operationWasmCode);
-            operands.push(new TypePlaceholder(rightOperand.type));
           }
           
           operators.push(item);
@@ -1856,7 +1853,7 @@ class Script {
       
       //console.log("remaining operands", ...operands, "remaining operators", ...operators)
       const expressionType = operands[0].getType(expectedType);
-      wasmCode.push(...(operands.pop().getWasmCode(expectedType)));
+      const wasmCode = operands.pop().getWasmCode(expectedType);
       
       return [expressionType, wasmCode];
     }
@@ -1867,10 +1864,22 @@ class Script {
     const expression = [];
     const localVarMap = []; //maps local vars to varIDs
     let localVarLValue;
+    const endOfStatementInstructions = [];
+    const endOfScopeInstructions = [];
     const linearMemoryInitialValues = [];
 
     for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
       localVarLValue = -1;
+      
+      if (row > 0) {
+        let scopeDrop = this.getIndentation(row - 1) - this.getIndentation(row);
+        if (this.getItem(row, 1) === this.ITEMS.ELSE) {
+          --scopeDrop;
+        }
+        for (let i = 0; i < scopeDrop; ++i) {
+          initFunction.push(...endOfScopeInstructions.pop());
+        }
+      }
 
       for (let col = 1, endCol = this.getItemCount(row); col < endCol; ++col) {
         const item = this.getItem(row, col);
@@ -1910,6 +1919,7 @@ class Script {
             if (this.ASSIGNMENT_OPERATORS.includes(item)) {
               const localVar = expression.pop();
               localVarLValue = localVar.index;
+              endOfStatementInstructions.push(Wasm.opcodes.set_local, localVarLValue);
               
               if (item !== this.ITEMS.EQUALS) {
                   //TODO insert a reference to the variable then the first part of the combined operator here
@@ -1974,6 +1984,31 @@ class Script {
               expression.push(this.symbols[value]);
             }
           } break;
+          
+          case Script.KEYWORD: {
+            switch (item) {
+              case this.ITEMS.IF: {
+                endOfStatementInstructions.push(Wasm.opcodes.if, Wasm.types.void);
+                endOfScopeInstructions.push([Wasm.opcodes.end]);
+              } break;
+              case this.ITEMS.ELSE: {
+                endOfStatementInstructions.push(Wasm.opcodes.else);
+                endOfScopeInstructions.push([]);
+              } break;
+              case this.ITEMS.WHILE: {
+                initFunction.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
+                endOfStatementInstructions.push(Wasm.opcodes.i32_eqz, Wasm.opcodes.br_if, 1);
+                endOfScopeInstructions.push([Wasm.opcodes.br, 0, Wasm.opcodes.end, Wasm.opcodes.end]);
+              } break;
+              case this.ITEMS.DO_WHILE: {
+                initFunction.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
+                endOfScopeInstructions.push([Wasm.opcodes.br_if, 0, Wasm.opcodes.end, Wasm.opcodes.end]);
+              } break;
+              case this.ITEMS.BREAK: {
+                endOfStatementInstructions.push(Wasm.opcodes.br, 1);
+              }
+            }
+          }
 
           case Script.LITERAL:
             if (meta === 1) { //string
@@ -2000,14 +2035,25 @@ class Script {
         const [expressionType, wasmCode] = compileExpression(expression, expectedType);
 
         expression.length = 0;
-        initFunction.push(...wasmCode);
-
-        if (localVarLValue === -1) {
-          initFunction.push(Wasm.opcodes.drop);
+        if (this.getItem(row, 1) === this.ITEMS.DO_WHILE) {
+          //move the expression to right before the conditional loop branch
+          endOfScopeInstructions[endOfScopeInstructions.length - 1].unshift(...wasmCode);
         } else {
-          initFunction.push(Wasm.opcodes.set_local, localVarLValue);
+          initFunction.push(...wasmCode);
+          if (endOfStatementInstructions.length === 0) {
+            initFunction.push(Wasm.opcodes.drop);
+          }
         }
       }
+      
+      if (endOfStatementInstructions.length > 0) {
+        initFunction.push(...endOfStatementInstructions);
+        endOfStatementInstructions.length = 0;
+      }
+    }
+    
+    while (endOfScopeInstructions.length > 0) {
+      initFunction.push(...endOfScopeInstructions.pop());
     }
 
     const localVarDefinition = [

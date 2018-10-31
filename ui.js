@@ -321,6 +321,7 @@ window.onpopstate = function(event) {
           } break;
           
           case Wasm.section.Code: {
+            consoleOutput.appendChild(document.createElement("br"));
             const bodySize = readVaruintAndPrint("func body size: ", " bytes");
             const subEnd = offset + bodySize;
             let [localCount, bytesRead] = Wasm.decodeVaruint(wasm, offset);

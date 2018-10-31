@@ -33,7 +33,8 @@ class RuntimeEnvironment {
     const memory = new Uint8Array(this.js.memory.buffer);
     const [sizeOfString, bytesRead] = Wasm.decodeVaruint(memory, location);
     location += bytesRead;
-    const message = Wasm.UTF8toString(memory.slice(location, location + sizeOfString));
+    const bytes = memory.slice(location, location + sizeOfString);
+    const message = Wasm.UTF8toString(bytes);
     print(message);
   }
 
