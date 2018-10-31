@@ -1780,7 +1780,7 @@ class Script {
       }
     }
     
-    class TypePlaceholder {
+    class Placeholder {
       constructor(type, ...wasmCode) {
         this.type = type;
         this.wasmCode = wasmCode;
@@ -1796,32 +1796,6 @@ class Script {
     }
     
     function compileExpression(expression, expectedType) {
-      //constant folding pass
-      look_for_next_operator:
-      for (let i = 0; i < expression.length; ++i) {
-        const operator = expression[i];
-        if (operator.constructor === TSSymbol) {
-          //make sure that this operator has a higher precedence than its neighbors
-          for (let j = Math.max(0, i - 2); j < Math.min(expression.length, i + 3); ++j) {
-            if (expression[j].constructor === TSSymbol) {
-              if (expression[j].precedence > operator.precedence) {
-                continue look_for_next_operator;
-              }
-            }
-          }
-          
-          if (operator.isUnary && expression[i+1].constructor === NumericLiteral) {
-            expression[i+1].performUnaryOp(operator.appearance);
-            expression.splice(i, 1);
-            i = Math.max(i - 2, 0);
-          } else if (expression[i-1].constructor === NumericLiteral && expression[i+1].constructor === NumericLiteral) {
-            expression[i-1].performBinaryOp(operator.appearance, expression[i+1]);
-            expression.splice(i, 2);
-            i = Math.max(i - 3, 0);
-          }
-        }
-      }
-
       //code generation pass
       const operators = [];
       const operands = [];
@@ -1835,13 +1809,22 @@ class Script {
             const operator = operators.pop();
             const rightOperand = operands.pop();
             if (operator.isUnary) {
-              const operationWasmCode = operator.uses.get(rightOperand.getType());
-              operands.push(new TypePlaceholder(rightOperand.getType(), ...rightOperand.getWasmCode(), ...operationWasmCode));
+              if (rightOperand.constructor === NumericLiteral) {
+                rightOperand.performUnaryOp(operator.appearance);
+              } else {
+                const operationWasmCode = operator.uses.get(rightOperand.getType());
+                operands.push(new Placeholder(rightOperand.getType(), ...rightOperand.getWasmCode(), ...operationWasmCode));
+              }
             } else {
               const leftOperand = operands.pop();
-              const type = rightOperand.getType(leftOperand.getType());
-              const operationWasmCode = operator.uses.get(type);
-              operands.push(new TypePlaceholder(type, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...operationWasmCode));
+              if (leftOperand.constructor === NumericLiteral && rightOperand.constructor === NumericLiteral) {
+                leftOperand.performBinaryOp(operator.appearance, rightOperand);
+                operands.push(leftOperand);
+              } else {
+                const type = rightOperand.getType(leftOperand.getType());
+                const operationWasmCode = operator.uses.get(type);
+                operands.push(new Placeholder(type, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...operationWasmCode));
+              }
             }
           }
           
@@ -1853,7 +1836,7 @@ class Script {
       
       //console.log("remaining operands", ...operands, "remaining operators", ...operators)
       const expressionType = operands[0].getType(expectedType);
-      const wasmCode = operands.pop().getWasmCode(expectedType);
+      const wasmCode = operands[0].getWasmCode(expectedType);
       
       return [expressionType, wasmCode];
     }
@@ -1863,13 +1846,13 @@ class Script {
     const functionsBeingCalled = [];
     const expression = [];
     const localVarMap = []; //maps local vars to varIDs
-    let localVarLValue;
+    let lvalueType;
     const endOfStatementInstructions = [];
     const endOfScopeInstructions = [];
     const linearMemoryInitialValues = [];
 
     for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
-      localVarLValue = -1;
+      lvalueType = this.types.builtins.void;
       
       if (row > 0) {
         let scopeDrop = this.getIndentation(row - 1) - this.getIndentation(row);
@@ -1918,8 +1901,8 @@ class Script {
             
             if (this.ASSIGNMENT_OPERATORS.includes(item)) {
               const localVar = expression.pop();
-              localVarLValue = localVar.index;
-              endOfStatementInstructions.push(Wasm.opcodes.set_local, localVarLValue);
+              lvalueType = localVar.getType();
+              endOfStatementInstructions.push(Wasm.opcodes.set_local, localVar.index);
               
               if (item !== this.ITEMS.EQUALS) {
                   //TODO insert a reference to the variable then the first part of the combined operator here
@@ -1976,7 +1959,7 @@ class Script {
               const func = this.funcs.get(functionsBeingCalled.pop());
               initFunction.push(Wasm.opcodes.call, func.importedFuncIndex);
               if (func.returnType !== this.types.builtins.void) {
-                expression.push(new TypePlaceholder(func.returnType));
+                expression.push(new Placeholder(func.returnType)); //TODO place wasm code of function call as 2nd argument
               }
             }
             
@@ -2026,13 +2009,7 @@ class Script {
 
       //end of line delimits expression
       if (expression.length > 0) {
-        let expectedType = this.types.builtins.void;
-
-        if (localVarLValue !== -1) {
-          expectedType = localVarMap[localVarLValue].type;
-        }
-
-        const [expressionType, wasmCode] = compileExpression(expression, expectedType);
+        const [expressionType, wasmCode] = compileExpression(expression, lvalueType);
 
         expression.length = 0;
         if (this.getItem(row, 1) === this.ITEMS.DO_WHILE) {
