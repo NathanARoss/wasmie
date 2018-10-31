@@ -70,6 +70,11 @@ class Script {
     const {types, variables, functions, symbols, keywords} = new BuiltIns();
     this.symbols = symbols;
     this.keywords = keywords;
+    
+    this.symbolMapping = new Map();
+    for (const symbol of this.symbols) {
+      this.symbolMapping.set(symbol.appearance, symbol);
+    }
 
     const makeKeyword = text =>
       Script.makeItem({format: Script.KEYWORD, value: this.keywords.findIndex(element => element.name === text)});
@@ -106,6 +111,7 @@ class Script {
     this.ITEMS.END_ARGUMENTS       = this.ITEMS.END_SUBEXPRESSION + 1;
     this.ITEMS.COMMA               = makeSymbol(",");
     this.ITEMS.UNDERSCORE          = makeSymbol("____");
+    this.ITEMS.HALF_OPEN_RANGE     = makeSymbol("..");
 
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
@@ -700,15 +706,23 @@ class Script {
         return {rowUpdated: true};
 
       case this.ITEMS.FOR & 0xFFFF: {
-        //TODO
-        return {};
+        const varId = this.vars.nextId();
+        this.appendRowsUpTo(row);
+        this.vars.set(varId, {name: "index", type: this.types.builtins.i32, scope: this.types.builtins.void});
+        const varItem = Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.types.builtins.i32, value: varId});
+        
+        const id = this.literals.nextId();
+        this.literals.set(id, "0");
+        const literalItem = Script.makeItem({format: Script.LITERAL, meta: 2, value: id});
+        
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload, varItem, this.ITEMS.IN, literalItem, this.ITEMS.HALF_OPEN_RANGE, this.ITEMS.UNDERSCORE);
+        return {rowUpdated: true, rowsInserted: 2, selectedCol: 6};
       }
 
       case this.ITEMS.SWITCH & 0xFFFF:
-        this.appendRowsUpTo(row);
-        this.setIsStartingScope(row, true);
-        this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return {rowUpdated: true, rowsInserted: 2, selectedCol: 2};
+        //TODO
+        return {};
       
       case this.ITEMS.RETURN & 0xFFFF: {
         this.appendRowsUpTo(row);
@@ -1992,6 +2006,37 @@ class Script {
               case this.ITEMS.BREAK: {
                 endOfStatementInstructions.push(Wasm.opcodes.br, 1);
               }
+              case this.ITEMS.FOR: { //compile the entire line at once
+                //TODO at the moment assumes that the iterable is a range between two numeric literals
+                initFunction.push(Wasm.opcodes.block, Wasm.types.void);
+                const {value} = this.getData(row, col + 1);
+                const loopingVar = this.vars.get(value);
+                localVarMap.push({id: value, type: loopingVar.type});
+                const localIndex = localVarMap.findIndex(v => v.id === value);
+                const startValRep = (new NumericLiteral(this.literals.get(this.getItem(row, col + 3)))).getWasmCode(loopingVar.type);
+                const endValRep = (new NumericLiteral(this.literals.get(this.getItem(row, col + 5)))).getWasmCode(loopingVar.type);
+                const incValRep = (new NumericLiteral(1)).getWasmCode(loopingVar.type);
+                const exitCondCode = this.symbolMapping.get(">=").uses.get(loopingVar.type);
+                const incrementWasmCode = this.symbolMapping.get("+").uses.get(loopingVar.type);
+                
+                initFunction.push(...startValRep);
+                initFunction.push(Wasm.opcodes.set_local, localIndex);
+                initFunction.push(Wasm.opcodes.loop, Wasm.types.void);
+                initFunction.push(Wasm.opcodes.get_local, localIndex);
+                initFunction.push(...endValRep);
+                initFunction.push(...exitCondCode);
+                initFunction.push(Wasm.opcodes.br_if, 1);
+                
+                endOfScopeInstructions.push([
+                  Wasm.opcodes.get_local, localIndex,
+                  ...incValRep,
+                  ...incrementWasmCode,
+                  Wasm.opcodes.set_local, localIndex,
+                  Wasm.opcodes.br, 0,
+                  Wasm.opcodes.end, Wasm.opcodes.end
+                ]);
+                col = 10000;
+              } break;
             }
           }
 
