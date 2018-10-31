@@ -26,6 +26,9 @@ class Script {
       }
     
       get(id) {
+        if (id === undefined) {
+          throw "cannot find property " + this.storeName + "[undefined]";
+        }
         const index = (id + this.builtinCount) & this.mask;
         const output = this.data[index];
 
@@ -1639,8 +1642,9 @@ class Script {
     ];
 
     let functionSection = [
-      ...Wasm.varuint(2), //count of function bodies defined later
+      ...Wasm.varuint(3), //count of function bodies defined later
       ...Wasm.varuint(0), //type indicies (func signitures)
+      ...Wasm.varuint(2),
       ...Wasm.varuint(2),
     ];
 
@@ -2037,7 +2041,7 @@ class Script {
 
     initFunction = [...localVarDefinition, ...initFunction, Wasm.opcodes.end];
 
-    const printU64 = [ // printU64(val)
+    const printU64 = [ // print(val: u64)
       1, 1, Wasm.types.i32,
       Wasm.opcodes.get_global, 0, //address = top of stack + 16
       Wasm.opcodes.i32_const, 16,
@@ -2085,14 +2089,41 @@ class Script {
 
       Wasm.opcodes.end,
     ];
+    
+    const printU64Id = this.funcs.get(this.funcs.findOverloadId(this.funcs.builtins.System_print, this.types.builtins.u64)).importedFuncIndex;
+    const printString = this.funcs.get(this.funcs.findOverloadId(this.funcs.builtins.System_print, this.types.builtins.string)).importedFuncIndex;
+    
+    const printI64 = [ // print(val: i64)
+      0,
+      Wasm.opcodes.get_local, 0,
+      Wasm.opcodes.i64_const, 0,
+      Wasm.opcodes.i64_lt_s,
+      Wasm.opcodes.if, Wasm.types.i64, //if val < 0
+        Wasm.opcodes.i64_const, 0,
+        Wasm.opcodes.get_local, 0,
+        Wasm.opcodes.i64_sub, //val = -val
+        Wasm.opcodes.get_global, 0, //print('-')
+        Wasm.opcodes.i32_const, ...Wasm.varint(1 + '-'.charCodeAt() * 256),
+        Wasm.opcodes.i32_store16, 0, 0,
+        Wasm.opcodes.get_global, 0,
+        Wasm.opcodes.call, printString,
+      Wasm.opcodes.else,
+        Wasm.opcodes.get_local, 0,
+      Wasm.opcodes.end,
+      
+      Wasm.opcodes.call, printU64Id, //print(u64(abs(val)))
+      Wasm.opcodes.end,
+    ]
 
 
     let codeSection = [
-      ...Wasm.varuint(2), //count of functions to define
+      ...Wasm.varuint(3), //count of functions to define
       ...Wasm.varuint(initFunction.length),
       ...initFunction,
       ...Wasm.varuint(printU64.length),
       ...printU64,
+      ...Wasm.varuint(printI64.length),
+      ...printI64,
     ];
 
     let dataSection = [

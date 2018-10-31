@@ -100,7 +100,7 @@ function BuiltIns() {
       [3, types.void, types.f32, "item", undefined],
       [4, types.void, types.f64, "item", undefined],
       [7, types.void, types.u64, "item", undefined],
-      // [8, types.void, types.i64, "item", undefined],
+      [8, types.void, types.i64, "item", undefined],
     ),
     parseFunction(types.System, "input",
       [5, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
