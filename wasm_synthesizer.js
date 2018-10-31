@@ -4,7 +4,7 @@ class Wasm {
         
         while(more) {
             let byte = value & 0x7F;
-            value >>= 7;
+            value = Math.floor(value / 128);
         
             /* sign bit of byte is second high order bit (0x40) */
             if ((value === 0 && (byte & 0x40) === 0) || (value === -1 && (byte & 0x40) !== 0)) {
@@ -20,7 +20,7 @@ class Wasm {
     static *varuint(value) {
         do {
             let byte = value & 0x7F;
-            value >>= 7;
+            value = Math.floor(value / 128);
             if (value !== 0) /* more bytes to come */
             byte |= 0x80;
             
