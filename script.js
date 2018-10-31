@@ -1796,7 +1796,6 @@ class Script {
     }
     
     function compileExpression(expression, expectedType) {
-      //code generation pass
       const operators = [];
       const operands = [];
 
@@ -1902,11 +1901,14 @@ class Script {
             if (this.ASSIGNMENT_OPERATORS.includes(item)) {
               const localVar = expression.pop();
               lvalueType = localVar.getType();
-              endOfStatementInstructions.push(Wasm.opcodes.set_local, localVar.index);
               
               if (item !== this.ITEMS.EQUALS) {
-                  //TODO insert a reference to the variable then the first part of the combined operator here
+                initFunction.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
+                const wasmCode = this.symbols[value].uses.get(lvalueType);
+                endOfStatementInstructions.push(...wasmCode);
               }
+              
+              endOfStatementInstructions.push(Wasm.opcodes.set_local, localVar.index);
             }
 
             let expressionType = this.types.builtins.void;
