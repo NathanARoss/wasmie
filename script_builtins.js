@@ -378,5 +378,6 @@ function BuiltIns() {
     {name: "return"},
     {name: "break"},
     {name: "continue"},
+    {name: "step"},
   ];
 }
