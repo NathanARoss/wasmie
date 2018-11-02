@@ -64,7 +64,8 @@ viewCodeButton.addEventListener("click", function(event) {
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
-  alert(script.getJavaScript());
+  history.pushState({action: "disassemble"}, "TouchScript Disassembly");
+  window.onpopstate();
 });
 
 menu.addEventListener("touchstart", function(event) {
@@ -148,7 +149,7 @@ window.onscroll = function() {
   
   list.childNodes.forEach(touchCanceled);
 
-  debug.firstChild.nodeValue = `[${firstLoadedPosition}, ${(firstLoadedPosition + loadedCount - 1)}]`;
+  debug.textContent = `[${firstLoadedPosition}, ${(firstLoadedPosition + loadedCount - 1)}]`;
 };
 window.onscroll();
 
@@ -156,11 +157,13 @@ window.onpopstate = function(event) {
   if (!event) {
     event = {state: history.state};
   }
+  
+  editor.style.display = "none";
+  runtime.style.display = "none";
+  programList.style.display = "none";
 
   if (!event.state) {
     editor.style.display = "";
-    runtime.style.display = "none";
-    programList.style.display = "none";
 
     while (programList.childNodes.length > 1) {
       programList.removeChild(programList.lastChild);
@@ -169,25 +172,218 @@ window.onpopstate = function(event) {
     consoleOutput.innerHTML = "";
     document.title = "TouchScript"
   }
-  else if (event.state.action === "run") {    
+  else if (event.state.action === "run") {
+    let wasm;
     try {
-      const js = script.getJavaScript();
-      (new Function(js)) ();
-    } catch (e) {
-      //alert(e);
-      console.log(e);
+      wasm = script.getWasm();
+    } catch (error) {
+      console.log(error);
+      history.back();
+      return;
+    }
+
+    const environment = new RuntimeEnvironment();
+    try {
+      WebAssembly.instantiate(wasm, environment)
+    } catch (error) {
+      console.log(error);
       history.back();
       return;
     }
     
-    editor.style.display = "none";
     runtime.style.display = "";
-    programList.style.display = "none";
     document.title = "TouchScript Runtime"
   }
+  else if (event.state.action === "disassemble") {
+    let wasmBinary;
+    try {
+      wasmBinary = script.getWasm();
+    } catch (error) {
+      console.log(error);
+      history.back();
+      return;
+    }
+
+    const wasm = new Uint8Array(wasmBinary);
+    let offset = 0;
+    const maxOffsetDigits = Math.ceil(Math.log2(wasm.length) / Math.log2(10));
+
+    function printDisassembly(count, comment = "") {      
+      const addressNode = document.createElement("span");
+      addressNode.textContent = offset.toString().padStart(maxOffsetDigits) + ": ";
+      addressNode.className = "wasm-byte-offset";
+      consoleOutput.appendChild(addressNode);
+
+      const slice = wasm.slice(offset, offset + count);
+      offset += count;
+
+      const byteNode = document.createElement("span");
+      byteNode.textContent = Array.from(slice).map(num => num.toString(16).padStart(2, "0")).join(" ").padEnd(27);
+      byteNode.className = "wasm-data";
+      consoleOutput.appendChild(byteNode);
+
+      const commentNode = document.createElement("span");
+      commentNode.textContent = comment + "\n";
+      commentNode.className = "wasm-comment";
+      consoleOutput.appendChild(commentNode);
+    }
+
+    //reads and prints a whole string on the first line, remaining bytes spill into later lines
+    function printEncodedString(count, beginComment = '"', endComment = '"') {
+      const end = offset + count;
+      
+      const sanitizedString = escapeControlCodes(Wasm.UTF8toString(wasm.slice(offset, end)));
+      printDisassembly(Math.min(8, count), beginComment + sanitizedString + endComment);
+
+      while (offset < end) {
+        const count = Math.min(8, end - begin);
+        printDisassembly(count);
+      }
+    }
+
+    function readVaruintAndPrint(beginComment = "", endComment = "") {
+      const [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+      printDisassembly(bytesRead, beginComment + val + endComment);
+      return val;
+    }
+    
+    
+
+    printEncodedString(4, 'Wasm magic number: "');
+    printDisassembly(4, "Wasm version");
+
+    while (offset < wasm.length) {
+      print("\n");
+
+      const sectionCode = wasm[offset];
+      printDisassembly(1, "section " + Wasm.sectionNames[sectionCode] + " (" + sectionCode + ")");
+
+      const payloadLength = readVaruintAndPrint("size: ", " bytes");
+      const end = offset + payloadLength;
+
+      let firstItemLabel = sectionCode === Wasm.section.Start ? "entry point func: " : "count: ";
+      readVaruintAndPrint(firstItemLabel);
+
+      while (offset < end) {
+        switch (sectionCode) {
+          case Wasm.section.Type: {
+            printDisassembly(1, Wasm.typeNames[wasm[offset]]);
+            
+            for (let comment of ["params: ", "return: "]) {
+              let [typeCount, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+              const bytesToRead = bytesRead + typeCount;
+              
+              while (bytesRead < bytesToRead) {
+                const count = Math.min(8, bytesToRead - bytesRead);
+                comment += Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + count))
+                           .map(type => Wasm.typeNames[type & 0x7F]).join(" ");
+                bytesRead += count;
+              }
+              
+              printDisassembly(bytesRead, comment);
+            }
+          } break;
+          
+          case Wasm.section.Import: {
+            for (const description of ["module", "field"]) {
+              const stringLength = readVaruintAndPrint(description + " name: ", " bytes");
+              printEncodedString(stringLength);
+            }
+
+            const exportType = wasm[offset];
+            printDisassembly(1, "external " + Wasm.externalKindNames[exportType]);
+
+            if (exportType === Wasm.externalKind.Memory) {
+              const maxPagesSpecifiedFlag = wasm[offset];
+              printDisassembly(1, maxPagesSpecifiedFlag ? "allocation limit specified" : "no allocation limit");
+              readVaruintAndPrint("initial allocation: ", " pages");
+
+              if (maxPagesSpecifiedFlag) {
+                readVaruintAndPrint("max allocation: ", " pages");
+              }
+            } else if (exportType === Wasm.externalKind.Function) {
+              readVaruintAndPrint("signature: type index ");
+            }
+          } break;
+          
+          case Wasm.section.Function: {
+            readVaruintAndPrint("signature: type index ");
+          } break;
+
+          case Wasm.section.Global: {
+            printDisassembly(1, Wasm.typeNames[wasm[offset]]);
+            printDisassembly(1, wasm[offset] ? "mutable" : "immutable");
+
+            //the initial value is assumed to be an i32.const expression TODO should support other constant types
+            const [val, bytesRead] = Wasm.decodeVarint(wasm, offset + 1);
+            printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
+            printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
+          } break;
+          
+          case Wasm.section.Code: {
+            consoleOutput.appendChild(document.createElement("br"));
+            const bodySize = readVaruintAndPrint("func body size: ", " bytes");
+            const subEnd = offset + bodySize;
+            let [localCount, bytesRead] = Wasm.decodeVaruint(wasm, offset);
+            let localVariableComment = "local vars:";
+            
+            for (let i = 0; i < localCount; ++i) {
+              const [count] = Wasm.decodeVaruint(wasm, offset + bytesRead); //assumes no more than 127 locals specified at once
+              ++bytesRead;
+              localVariableComment += (" " + Wasm.typeNames[wasm[offset + bytesRead]]).repeat(count);
+              ++bytesRead;
+            }
+            
+            printDisassembly(bytesRead, localVariableComment);
+            
+            while (offset < subEnd) {
+              const opcodeData = Wasm.opcodeData[wasm[offset]];
+              let comment = opcodeData.name;
+              let bytesRead = 1;
+              
+              for (const immediates of opcodeData.immediates) {
+                const valsAndBytesRead = immediates(wasm, offset + bytesRead);
+                for (let i = 0; i < valsAndBytesRead.length; i += 2) {
+                  comment += " " + valsAndBytesRead[i];
+                  bytesRead += valsAndBytesRead[i+1];
+                }
+              }
+              
+              printDisassembly(bytesRead, comment);
+            }
+          } break;
+
+          case Wasm.section.Data: {
+            readVaruintAndPrint("linear memory index: ");
+
+            //the memory offset is assumed to be an i32.const expression
+            const [val, bytesRead] = Wasm.decodeVarint(wasm, offset + 1);
+            printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
+            printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
+
+            const dataSize = readVaruintAndPrint("size of data: ", " bytes");
+            const subEnd = offset + dataSize;
+
+            while (offset < subEnd) {
+              const count = Math.min(8, subEnd - offset);
+              const slice = wasm.slice(offset, offset + count);
+              printDisassembly(count, escapeControlCodes(Wasm.UTF8toString(slice)));
+            }
+          } break;
+
+          default:
+            printDisassembly(1);
+        }
+      }
+
+      //if for some reason a section is decoded using too many bytes, this resets the read position
+      offset = end;
+    }
+
+    runtime.style.display = "";
+    document.title = "TouchScript Disassembly"
+  }
   else if (event.state.action === "load") {
-    editor.style.display = "none";
-    runtime.style.display = "none";
     programList.style.display = "";
     document.title = "TouchScript Project Manager"
 
@@ -209,12 +405,11 @@ window.onpopstate = function(event) {
           dateLastModified.textContent = "Last Modified: " + getDateString(project.lastModified);
 
           const deleteButton = document.createElement("button");
-          deleteButton.classList.add("delete");
-          deleteButton.classList.add("delete-project-button");
+          deleteButton.className = "delete delete-project-button";
           deleteButton.addEventListener("click", deleteProject);
 
           const entry = document.createElement("div");
-          entry.classList.add("project-list-entry");
+          entry.className = "project-list-entry";
           entry.appendChild(deleteButton);
           entry.appendChild(label);
           entry.appendChild(projectName);
@@ -233,22 +428,25 @@ window.onpopstate = function(event) {
     });
   }
 }
-window.onpopstate();
+
+function scriptLoaded() {
+  reloadAllRows();
+  window.onpopstate();
+}
 
 
 function selectProject(event) {
-  if (event.target.nodeName === "BUTTON" || event.target.nodeName === "INPUT")
-    return;
-
-  const projectID = event.currentTarget.projectId;
-  const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
-  if (projectID !== oldActiveProject) {
-    localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
-    script = new Script();
-    reloadAllRows();
+  if (event.target.nodeName !== "BUTTON" && event.target.nodeName !== "INPUT") {
+    const projectID = event.currentTarget.projectId;
+    const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+    if (projectID !== oldActiveProject) {
+      localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
+      script = new Script();
+      reloadAllRows();
+    }
+    closeMenu();
+    window.history.back();
   }
-  closeMenu();
-  window.history.back();
 }
 
 function deleteProject(event) {
@@ -333,45 +531,38 @@ function getRowCount() {
 
 function createRow() {
   let lineNumberItem = document.createElement("p");
-  lineNumberItem.classList.add("slide-menu-item");
-  lineNumberItem.classList.add("no-select");
-  lineNumberItem.id = "line-number-item";
-  lineNumberItem.appendChild(document.createTextNode(""));
+  lineNumberItem.className= "line-number-item slide-menu-item no-select";
   
   let newlineItem = document.createElement("p");
-  newlineItem.classList.add("slide-menu-item");
-  newlineItem.id = "newline-item";
+  newlineItem.className = "newline-item slide-menu-item";
   
   let deleteLineItem = document.createElement("p");
-  deleteLineItem.classList.add("slide-menu-item");
-  deleteLineItem.id = "delete-line-item";
+  deleteLineItem.className = "delete-line-item slide-menu-item";
   
   let slideMenu = document.createElement("div");
-  slideMenu.classList.add("slide-menu");
-  slideMenu.classList.add("slow-transition");
+  slideMenu.className = "slide-menu slow-transition";
   slideMenu.appendChild(lineNumberItem);
   slideMenu.appendChild(newlineItem);
   slideMenu.appendChild(deleteLineItem);
 
   let append = document.createElement("button");
-  append.classList.add("append");
+  append.className = "append";
   append.position = 0;
 
   let indentation = document.createElement("div");
   indentation.classList.add("indentation");
   
   let innerDiv = document.createElement("div");
-  innerDiv.classList.add("inner-row");
+  innerDiv.className = "inner-row";
   innerDiv.addEventListener("click", rowClickHandler, {passive: true});
   innerDiv.appendChild(indentation);
   innerDiv.appendChild(append);
   
   let outerDiv = document.createElement("div");
-  outerDiv.classList.add("outer-row");
+  outerDiv.className = "outer-row";
   outerDiv.appendChild(slideMenu);
   outerDiv.appendChild(innerDiv);
   
-  outerDiv.touchId = -1;
   outerDiv.addEventListener("touchstart", touchStartHandler, {passive: true});
   outerDiv.addEventListener("touchmove", existingTouchHandler, {passive: false});
   outerDiv.addEventListener("touchend", existingTouchHandler, {passive: true});
@@ -427,9 +618,7 @@ function loadRow(position, outerDiv) {
     for (let col = 1; col < itemCount; ++col) {
       const [text, style] = script.getItemDisplay(position, col);
       
-      let node = getItem(text);
-      node.className = "item " + style;
-      node.position = col;
+      let node = getItem(text, "item " + style, col);
       innerRow.appendChild(node);
     }
     
@@ -446,7 +635,7 @@ function loadRow(position, outerDiv) {
   if (innerRow.position !== position) {
     outerDiv.style.transform = "translateY(" + Math.floor(position / loadedCount) * loadedCount * rowHeight + "px)";
     innerRow.position = position;
-    innerRow.previousSibling.firstChild.firstChild.nodeValue = String(position).padStart(4);
+    innerRow.previousSibling.firstChild.textContent = String(position).padStart(4);
 
     let button = innerRow.childNodes[1 + menu.col];
 
@@ -466,16 +655,12 @@ function reloadAllRows() {
 
 
 
-function getItem(text) {
-  if (itemPool.length !== 0) {
-    let node = itemPool.pop();
-    node.firstChild.nodeValue = text;
-    return node;
-  } else {
-    let node = document.createElement("button");
-    node.appendChild(document.createTextNode(text));
-    return node;
-  }
+function getItem(text, className, position) {
+  const node = itemPool.pop() || document.createElement("button");
+  node.textContent = text;
+  node.className = className;
+  node.position = position;
+  return node;
 }
 
 
@@ -487,9 +672,7 @@ function configureMenu(options) {
   }
 
   for (const option of options) {
-    let button = getItem(option.text);
-    button.className = "menu-item no-select " + option.style;
-    button.position = option.payload;
+    let button = getItem(option.text, "menu-item no-select " + option.style, option.payload);
     menu.appendChild(button);
   }
 }
@@ -509,8 +692,7 @@ function menuItemClicked(payload) {
 
   if (Array.isArray(response) && response.length > 0) {
     configureMenu(response);
-    return;
-  } else  {
+  } else {
     if ("rowUpdated" in response) {
       if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
         const outerDiv = list.childNodes[menu.row % loadedCount];
@@ -545,9 +727,9 @@ function menuItemClicked(payload) {
       reloadAllRows();
       menu.col = 0;
     }
+    
+    itemClicked(menu.row, menu.col);
   }
-
-  itemClicked(menu.row, menu.col);
 }
 
 
@@ -608,25 +790,24 @@ function rowClickHandler(event) {
   if (menuButton.toggled) {
     menuButton.toggled = false;
     fabMenu.classList.remove("expanded");
-    return;
-  }
-
-  if (event.target.nodeName === "BUTTON") {
+  } else if (event.target.nodeName === "BUTTON") {
     itemClicked(this.position|0, event.target.position|0);
     document.body.classList.add("selected");
   }
 }
 
 function itemClicked(row, col) {
-  const selectedItem = list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col];
-  if (selectedItem)
-    selectedItem.focus();
-
-  menu.row = row;
-  menu.col = col;
-
-  let options = script.itemClicked(row, col);
-  configureMenu(options);
+  if (row !== undefined && col !== undefined) {
+    const selectedItem = list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col];
+    if (selectedItem)
+      selectedItem.focus();
+    
+    menu.row = row;
+    menu.col = col;
+    
+    let options = script.itemClicked(row, col);
+    configureMenu(options);
+  }
 }
 
 function selectPreviousLine() {
@@ -641,7 +822,7 @@ function selectPreviousLine() {
 
 
 function touchStartHandler(event) {
-  if (this.touchId === -1) {
+  if (this.touchId === undefined) {
     const touch = event.changedTouches[0];
     this.touchId = touch.identifier;
     this.touchStartX = touch.pageX + this.childNodes[1].scrollLeft;
@@ -717,7 +898,7 @@ function touchEnded(outerDiv, touch) {
 }
 
 function touchCanceled(outerDiv) {
-  outerDiv.touchId = -1;
+  outerDiv.touchId = undefined;
   if (outerDiv.touchCaptured) {
     outerDiv.touchCaptured = false;
     outerDiv.firstChild.classList.add("slow-transition");
@@ -726,81 +907,11 @@ function touchCanceled(outerDiv) {
 }
 
 
-function* stride(start, end, by) {
-  if (by === 0)
-    return;
-  
-  by = Math.abs(by);
-
-  if (start < end) {
-    for (let i = start; i < end; i += by) yield i;
-  } else {
-    for (let i = start; i > end; i -= by) yield i;
-  }
+function print(value) {
+  const textNode = document.createTextNode(value);
+  consoleOutput.appendChild(textNode);
 }
 
-function print(value, terminator, wordWrap) {
-  const textNode = document.createTextNode(value + terminator);
-
-  if (wordWrap) {
-    const span = document.createElement("SPAN");
-    span.classList.add('wordwrap');
-    span.appendChild(textNode);
-    consoleOutput.appendChild(span);
-  } else {
-    consoleOutput.appendChild(textNode);
-  }
+function escapeControlCodes(string) {
+  return string.replace(/\n/g, "\\n").replace(/\0/g, "\\0");
 }
-
-// let httpRequest = new XMLHttpRequest();
-// httpRequest.open("GET", "https://api.github.com/gists/2e3aa951f6c3bc5e25f62055075fd67b");
-// httpRequest.onreadystatechange = function() {
-//   if (httpRequest.readyState === XMLHttpRequest.DONE) {
-//       if (httpRequest.status === 200) {
-//         console.log(httpRequest.responseText);
-//       } else {
-//           // There was a problem with the request.
-//           // For example, the response may have a 404 (Not Found)
-//           // or 500 (Internal Server Error) response code.
-//       }
-//   } else {
-//       // Not ready yet.
-//   }
-// }
-// httpRequest.send();
-
-
-
-// let postData = {};
-// postData.description = "New test gist";
-// postData.files = {};
-// postData.files["Jeff"] = {content: "A new challenger"};
-
-// let token = localStorage.getItem("access-token");
-// if (!token) {
-//   token = prompt("Enter GitHub authorization token with gist permission");
-// }
-
-// let httpRequest = new XMLHttpRequest();
-// httpRequest.open("POST", "https://api.github.com/gists");
-// httpRequest.setRequestHeader('Authorization', 'token ' + token);
-// httpRequest.onreadystatechange = function() {
-//   console.log("readyState: " + httpRequest.readyState);
-
-//   if (httpRequest.readyState === XMLHttpRequest.DONE) {
-//     if (httpRequest.status === 200 || httpRequest.status === 201) {
-//       console.log("status: " + httpRequest.status + "\n" + JSON.parse(httpRequest.responseText));
-//       localStorage.setItem("access-token", token);
-//     }
-
-//     else if (httpRequest.status === 401) {
-//       localStorage.removeItem("access-token");
-//       alert("Acces token is no longer valid.  Forgetting token.");
-//     }
-
-//     else {
-//       alert("status: " + httpRequest.status + "\n" + httpRequest.responseText);
-//     }
-//   }
-// }
-// httpRequest.send(JSON.stringify(postData));

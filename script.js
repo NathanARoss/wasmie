@@ -5,10 +5,11 @@ class Script {
 
     const parent = this;
     class MetadataContainer {
-      constructor(storeName, builtIns, mask) {
+      constructor(storeName, initialData, mask) {
         this.storeName = storeName;
-        this.data = builtIns;
-        this.builtinCount = builtIns.length;
+        this.data = initialData.data;
+        this.builtinCount = initialData.data.length;
+        this.builtins = initialData.builtinNameMapping;
         this.mask = mask;
         this.gaps = [];
         this.dbMap = new Map();
@@ -25,6 +26,10 @@ class Script {
       }
     
       get(id) {
+        if (id === undefined) {
+          console.trace();
+          console.log("cannot find property " + this.storeName + "[undefined]");
+        }
         const index = (id + this.builtinCount) & this.mask;
         const output = this.data[index];
 
@@ -57,25 +62,30 @@ class Script {
       }
 
       isUserDefined(id) {
-        return id < (-this.builtinCount & this.mask);
+        return id < this.mask - this.builtinCount;
       }
     }
 
 
-    const {classes, variables, functions, symbols, keywords} = new BuiltIns();
+    const {types, variables, functions, symbols, keywords} = new BuiltIns();
     this.symbols = symbols;
     this.keywords = keywords;
+    
+    this.symbolMapping = new Map();
+    for (const symbol of this.symbols) {
+      this.symbolMapping.set(symbol.appearance, symbol);
+    }
 
-    const makeKeyword = text => 
+    const makeKeyword = text =>
       Script.makeItem({format: Script.KEYWORD, value: this.keywords.findIndex(element => element.name === text)});
 
-    const makeSymbol = text => 
-      Script.makeItem({format: Script.SYMBOL, value: this.symbols.indexOf(text)});
+    const makeSymbol = text =>
+      Script.makeItem({format: Script.SYMBOL, value: this.symbols.findIndex(sym => sym.appearance === text)});
 
-    const literals = [];
+    const literals = {data: [], builtinNameMapping: {}};
     const makeLiteral = (text, type) => {
-      literals.unshift(text);
-      return Script.makeItem({format: Script.LITERAL, meta: type, value: -literals.length});
+      literals.data.unshift(text);
+      return Script.makeItem({format: Script.LITERAL, meta: type, value: -literals.data.length});
     }
 
     this.ITEMS = {};
@@ -91,7 +101,10 @@ class Script {
     this.ITEMS.IN       = makeKeyword("in");
     this.ITEMS.WHILE    = makeKeyword("while");
     this.ITEMS.DO_WHILE = makeKeyword("do while");
+    this.ITEMS.BREAK    = makeKeyword("break");
+    this.ITEMS.CONTINUE = makeKeyword("continue");
     this.ITEMS.RETURN   = makeKeyword("return");
+    this.ITEMS.STEP     = makeKeyword("step");
     this.toggles = [this.ITEMS.VAR, this.ITEMS.LET, this.ITEMS.WHILE, this.ITEMS.DO_WHILE, makeKeyword("continue"), makeKeyword("break")];
 
     this.ITEMS.EQUALS              = makeSymbol("=");
@@ -101,20 +114,33 @@ class Script {
     this.ITEMS.END_ARGUMENTS       = this.ITEMS.END_SUBEXPRESSION + 1;
     this.ITEMS.COMMA               = makeSymbol(",");
     this.ITEMS.UNDERSCORE          = makeSymbol("____");
+    this.ITEMS.HALF_OPEN_RANGE     = makeSymbol("..<");
 
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
 
-    this.variables = new MetadataContainer("variables", variables, 0xFFFF);
-    this.functions = new MetadataContainer("functions", functions, 0xFFFF);
-    this.classes = new MetadataContainer("classes", classes, 0x3FF);
+    this.vars = new MetadataContainer("variables", variables, 0xFFFF);
+    this.funcs = new MetadataContainer("functions", functions, 0xFFFF);
+    this.types = new MetadataContainer("classes", types, 0x3FF);
     this.literals = new MetadataContainer("literals", literals, 0xFFFF);
-
-    this.FUNCS = {
-      RANGE: -1 & this.functions.mask,
-      PRINT: (-this.functions.builtinCount + this.functions.data.findIndex(func => func.name === "print")) & this.functions.mask
-    };
-    this.CLASSES = {VOID: -1 & this.classes.mask};
+    
+    this.funcs.findOverloadId = function(funcId, ...argumentTypes) {
+      const {name, scope} = parent.funcs.get(funcId);
+      const index = this.data.findIndex(func => {
+        return func.scope === scope
+               && func.name === name
+               && func.parameters.length === argumentTypes.length
+               && func.parameters.every((param, index) => {
+                 return param.type === argumentTypes[index];
+               });
+      });
+      
+      if (index === -1) {
+        return undefined;
+      } else {
+        return index - this.builtinCount;
+      }
+    }
 
     this.lines = [];
     this.lineKeys = [];
@@ -125,11 +151,12 @@ class Script {
           console.log("The previously opened project no longer exists");
           this.projectID = 0;
           localStorage.removeItem(ACTIVE_PROJECT_KEY);
+          parent.assembleMetadata();
         } else {
           let remainingStores = {count: 6};
           let actions = [];
 
-          for (const container of [this.variables, this.functions, this.classes, this.literals]) {
+          for (const container of [this.vars, this.funcs, this.types, this.literals]) {
             actions.push({storeName: container.storeName, arguments: [container, remainingStores], function: function(container, remainingStores) {
               this.openCursor().onsuccess = function(event) {
                 let cursor = event.target.result;
@@ -183,6 +210,7 @@ class Script {
     this.PAYLOADS.CHANGE_TYPE = payloads--;
     this.PAYLOADS.ASSIGN_VALUE = payloads--;
     this.PAYLOADS.DEFINE_ANOTHER_VAR = payloads--;
+    this.PAYLOADS.APPEND_ARGUMENT = payloads--;
 
 
     class Operator {
@@ -198,19 +226,20 @@ class Script {
 
       *getMenuItems() {
         for (let payload = this.start; payload < this.end; ++payload) {
-          yield {text: symbols[payload & 0xFFFF] + this.postfix, style: "", payload};
+          yield {text: symbols[payload & 0xFFFF].appearance + this.postfix, style: "", payload};
         }
       }
     }
 
     this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
-    this.BINARY_OPERATORS = new Operator(11, 31);
-    this.UNARY_OPERATORS = new Operator(39, 42);
+    this.BINARY_OPERATORS = new Operator(11, 35);
     this.ARITHMETIC_OPERATORS = new Operator(11, 23);
     this.COMPARRISON_OPERATORS = new Operator(25, 31);
-    this.START_BRACKETS = new Operator(48, 53);
-    this.END_BRACKETS = new Operator(53, 58);
-    this.OPERATORS = new Operator(0, 42);
+    this.RANGE_OPERATORS = new Operator(31, 35);
+    this.UNARY_OPERATORS = new Operator(35, 37);
+    this.OPERATORS = new Operator(0, 37);
+    this.START_BRACKETS = new Operator(41, 43);
+    this.END_BRACKETS = new Operator(43, 45);
 
     this.UNARY_OPERATORS.postfix = " ____"
   }
@@ -238,20 +267,20 @@ class Script {
         const data = Script.getItemData(item);
         switch (data.format) {
           case Script.VARIABLE_DEFINITION: {
-            const index = (data.value + this.variables.builtinCount) & this.variables.mask;
-            const name = getAndRemove(this.variables, data.value);
-            this.variables.data[index] = {name, type: data.meta, scope: this.CLASSES.VOID};
+            const index = (data.value + this.vars.builtinCount) & this.vars.mask;
+            const name = getAndRemove(this.vars, data.value);
+            this.vars.data[index] = {name, type: data.meta, scope: this.types.builtins.void};
             if (func) {
-              func.parameters.push(this.variables.data[index]);
+              func.parameters.push(this.vars.data[index]);
             }
           }
           break;
 
           case Script.FUNCTION_DEFINITION: {
-            const index = (data.value + this.functions.builtinCount) & this.functions.mask;
-            const name = getAndRemove(this.functions, data.value);
-            this.functions.data[index] = {name, returnType: data.meta, scope: this.CLASSES.VOID, parameters: []};
-            func = this.functions.data[index];
+            const index = (data.value + this.funcs.builtinCount) & this.funcs.mask;
+            const name = getAndRemove(this.funcs, data.value);
+            this.funcs.data[index] = {name, returnType: data.meta, scope: this.types.builtins.void, parameters: []};
+            func = this.funcs.data[index];
           }
           break;
 
@@ -266,7 +295,7 @@ class Script {
       }
     }
 
-    for (const container of [this.variables, this.functions, this.classes, this.literals]) {
+    for (const container of [this.vars, this.funcs, this.types, this.literals]) {
       for (let index = container.builtinCount; index < container.data.length; ++index) {
         if (container.data[index] === undefined) {
           const id = (index - container.builtinCount) & container.mask;
@@ -286,7 +315,7 @@ class Script {
       }
     }
 
-    reloadAllRows();
+    scriptLoaded();
   }
 
   itemClicked(row, col) {
@@ -326,10 +355,14 @@ class Script {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
     }
 
+    if (this.RANGE_OPERATORS.includes(item)) {
+      return this.RANGE_OPERATORS.getMenuItems();
+    }
+
     let options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM}];
 
-    if (((data.format === Script.VARIABLE_REFERENCE || data.format === Script.VARIABLE_DEFINITION) && this.variables.isUserDefined(data.value))
-    || ((data.format === Script.FUNCTION_REFERENCE || data.format === Script.FUNCTION_DEFINITION) && this.functions.isUserDefined(data.value))) {
+    if (((data.format === Script.VARIABLE_REFERENCE || data.format === Script.VARIABLE_DEFINITION) && this.vars.isUserDefined(data.value))
+    || ((data.format === Script.FUNCTION_REFERENCE || data.format === Script.FUNCTION_DEFINITION) && this.funcs.isUserDefined(data.value))) {
       options.push({text: "", style: "rename", payload: this.PAYLOADS.RENAME});
     }
 
@@ -360,19 +393,23 @@ class Script {
         options.push({text: "", style: "delete-outline", payload: this.PAYLOADS.UNWRAP_PARENTHESIS});
       }
 
+      if (this.getItem(row, col + 1) === this.ITEMS.END_ARGUMENTS || this.getItem(row, col + 1) === this.ITEMS.COMMA) {
+        options.push({text: ",", payload: this.PAYLOADS.APPEND_ARGUMENT});
+      }
+
       if (data.format === Script.FUNCTION_REFERENCE
       || item === this.ITEMS.START_SUBEXPRESSION
       || item === this.ITEMS.START_ARGUMENTS)
         options.push( {text: "( )", style: "", payload: this.PAYLOADS.WRAP_IN_PARENTHESIS} );
 
       if (data.format === Script.FUNCTION_DEFINITION) {
-        options.push({text: "void", style: "comment", payload: Script.makeItem({meta: this.CLASSES.VOID, value: this.PAYLOADS.CHANGE_TYPE})});
+        options.push({text: "void", style: "comment", payload: Script.makeItem({meta: this.types.builtins.void, value: this.PAYLOADS.CHANGE_TYPE})});
         options.push(...this.getSizedClasses(0, this.PAYLOADS.CHANGE_TYPE));
       }
 
       if (data.format === Script.VARIABLE_DEFINITION) {
         if (this.getItem(row, 3) === this.ITEMS.EQUALS) {
-          options.push({text: "auto", style: "comment", payload: Script.makeItem({meta: this.CLASSES.VOID, value: this.PAYLOADS.CHANGE_TYPE})});
+          options.push({text: "auto", style: "comment", payload: Script.makeItem({meta: this.types.builtins.void, value: this.PAYLOADS.CHANGE_TYPE})});
         }
 
         options.push(...this.getSizedClasses(1, this.PAYLOADS.CHANGE_TYPE));
@@ -380,6 +417,10 @@ class Script {
 
       const prevItem = this.getItem(row, col - 1);
       const prevData = Script.getItemData(prevItem);
+
+      if (prevItem === this.ITEMS.CONTINUE || prevItem === this.ITEMS.BREAK) {
+        options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
+      }
 
       if (item !== this.ITEMS.END_SUBEXPRESSION
       && item !== this.ITEMS.END_ARGUMENTS
@@ -393,7 +434,8 @@ class Script {
       || prevItem === this.ITEMS.START_ARGUMENTS
       || prevItem === this.ITEMS.COMMA
       || prevItem === this.ITEMS.IN
-      || (prevItem === this.ITEMS.RETURN && this.getReturnType(row) !== this.CLASSES.VOID))) {
+      || prevItem === this.ITEMS.STEP
+      || (prevItem === this.ITEMS.RETURN && this.getReturnType(row) !== this.types.builtins.void))) {
         options.push( {text: "", style: "text-input", payload: this.PAYLOADS.LITERAL_INPUT} );
         options.push( {text: "f(x)", style: "function-definition", payload: this.PAYLOADS.FUNCTIONS_WITH_RETURN} );
 
@@ -452,7 +494,11 @@ class Script {
       } else {
         options = [
           {text: "f(x)", style: "function-definition", payload: this.PAYLOADS.FUNCTIONS},
-          {text: "print", style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.PRINT).scope, value: this.FUNCS.PRINT})},
+          {text: "print", style: "function-definition", payload: Script.makeItem({
+            format: Script.FUNCTION_REFERENCE,
+            meta: this.funcs.get(this.funcs.builtins.System_print).scope,
+            value: this.funcs.builtins.System_print})
+          },
           {text: "func", style: "keyword", payload: this.ITEMS.FUNC},
           {text: "let", style: "keyword", payload: this.ITEMS.LET},
           {text: "var", style: "keyword", payload: this.PAYLOADS.VAR_OPTIONS},
@@ -496,6 +542,19 @@ class Script {
           {text: "return", style: "keyword", payload: this.ITEMS.RETURN}
         );
 
+        for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
+          if (this.getIndentation(r) < indentation && this.getItemCount(r) > 1) {
+            if (this.getItem(r, 1) === this.ITEMS.WHILE
+            || this.getItem(r, 1) === this.ITEMS.DO_WHILE
+            || this.getItem(r, 1) === this.ITEMS.FOR) {
+              options.push(
+                {text: "break", style: "keyword", payload: this.ITEMS.BREAK},
+                {text: "continue", style: "keyword", payload: this.ITEMS.CONTINUE},
+              );
+            }
+          }
+        }
+
         options.push(...this.getVisibleVariables(Math.min(this.getRowCount(), row), true));
       }
 
@@ -519,6 +578,12 @@ class Script {
           ditto,
           ...this.getSizedClasses(1, this.PAYLOADS.DEFINE_ANOTHER_VAR)
         ];
+      }
+    }
+
+    if (this.getItem(row, 1) === this.ITEMS.FOR) {
+      if (!this.lines[row].includes(this.ITEMS.STEP)) {
+        return [{text: "step", style: "keyword", payload: this.ITEMS.STEP}];
       }
     }
 
@@ -572,7 +637,7 @@ class Script {
     }
 
     if (payloadData.format === Script.FUNCTION_REFERENCE) {
-      const func = this.functions.get(payloadData.value);
+      const func = this.funcs.get(payloadData.value);
       let replacementItems = [payload];
 
       for (let i = 0; i < func.parameters.length; ++i) {
@@ -630,12 +695,12 @@ class Script {
       
       case this.ITEMS.LET & 0xFFFF:
       case this.ITEMS.VAR & 0xFFFF: {
-        const varId = this.variables.nextId();
+        const varId = this.vars.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
         if (name) {
           this.appendRowsUpTo(row);
-          this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
-          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.EQUALS);
+          this.vars.set(varId, {name, type: this.types.builtins.void, scope: this.types.builtins.void});
+          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.types.builtins.void, value: varId}), this.ITEMS.EQUALS);
           return {rowUpdated: true, rowsInserted: 1};
         } else {
           return {};
@@ -675,40 +740,34 @@ class Script {
         return {rowUpdated: true};
 
       case this.ITEMS.FOR & 0xFFFF: {
-        let name = prompt("Enter for loop variable name:", "index");
-        if (name) {
-          this.appendRowsUpTo(row);
-          this.setIsStartingScope(row, true);
-          let varId = this.variables.nextId();
-  
-          this.variables.set(varId, {name, type: this.CLASSES.VOID, scope: this.CLASSES.VOID});
-  
-          this.pushItems(row, payload, Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.CLASSES.VOID, value: varId}), this.ITEMS.IN,
-            Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: this.functions.get(this.FUNCS.RANGE).scope, value: this.FUNCS.RANGE}),
-            this.ITEMS.START_ARGUMENTS,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 0, value: this.FUNCS.RANGE}),
-            this.ITEMS.COMMA,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 1, value: this.FUNCS.RANGE}),
-            this.ITEMS.COMMA,
-            Script.makeItem({format: Script.ARGUMENT_HINT, meta: 2, value: this.FUNCS.RANGE}),
-            this.ITEMS.END_ARGUMENTS);
-          return {rowUpdated: true, rowsInserted: 2, selectedCol: 8};
-        }
-
-        return {};
+        const varId = this.vars.nextId();
+        this.appendRowsUpTo(row);
+        this.vars.set(varId, {name: "index", type: this.types.builtins.i32, scope: this.types.builtins.void});
+        const varItem = Script.makeItem({format: Script.VARIABLE_DEFINITION, meta: this.types.builtins.i32, value: varId});
+        
+        const id = this.literals.nextId();
+        this.literals.set(id, "0");
+        const literalItem = Script.makeItem({format: Script.LITERAL, meta: 2, value: id});
+        
+        this.setIsStartingScope(row, true);
+        this.pushItems(row, payload, varItem, this.ITEMS.IN, literalItem, this.ITEMS.HALF_OPEN_RANGE, this.ITEMS.UNDERSCORE);
+        return {rowUpdated: true, rowsInserted: 2, selectedCol: 6};
       }
 
-      case this.ITEMS.SWITCH & 0xFFFF:
-        this.appendRowsUpTo(row);
-        this.setIsStartingScope(row, true);
+      case this.ITEMS.STEP & 0xFFFF: {
         this.pushItems(row, payload, this.ITEMS.UNDERSCORE);
-        return {rowUpdated: true, rowsInserted: 2, selectedCol: 2};
+        return {rowUpdated: true, selectedCol: col + 2};
+      } break;
+
+      case this.ITEMS.SWITCH & 0xFFFF:
+        //TODO
+        return {};
       
       case this.ITEMS.RETURN & 0xFFFF: {
         this.appendRowsUpTo(row);
         const returnType = this.getReturnType(row);
 
-        if (returnType === this.CLASSES.VOID) {
+        if (returnType === this.types.builtins.void) {
           this.pushItems(row, payload);
           return {rowUpdated: true, selectedCol: 1};
         } else {
@@ -717,8 +776,18 @@ class Script {
         }
       }
 
+      case this.ITEMS.BREAK & 0xFFFF: {
+        this.pushItems(row, payload);
+        return {rowUpdated: true};
+      }
+
+      case this.ITEMS.CONTINUE & 0xFFFF: {
+        this.pushItems(row, payload);
+        return {rowUpdated: true};
+      }
+
       case this.ITEMS.FUNC & 0xFFFF: {
-        let options = [{text: "none", style: "comment", payload: Script.makeItem({meta: this.CLASSES.VOID, value: this.PAYLOADS.FUNCTION_DEFINITION})}];
+        let options = [{text: "none", style: "comment", payload: Script.makeItem({meta: this.types.builtins.void, value: this.PAYLOADS.FUNCTION_DEFINITION})}];
         options.push(...this.getSizedClasses(0, this.PAYLOADS.FUNCTION_DEFINITION));
         return options;
       }
@@ -728,16 +797,24 @@ class Script {
         return {rowUpdated: true};
 
       case this.PAYLOADS.DEFINE_ANOTHER_VAR: {
-        let varId = this.variables.nextId();
+        let varId = this.vars.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
         if (name) {
           let type = payloadData.meta;
-          this.variables.set(varId, {name, type, scope: this.CLASSES.VOID});
+          this.vars.set(varId, {name, type, scope: this.types.builtins.void});
           this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
           return {rowUpdated: true};
         } else {
           return {};
         }
+      }
+
+      case this.PAYLOADS.APPEND_ARGUMENT: {
+        if (this.getItem(row, col) !== this.ITEMS.END_ARGUMENTS) {
+          ++col;
+        }
+        this.spliceRow(row, col, 0, this.ITEMS.COMMA, this.ITEMS.UNDERSCORE);
+        return {rowUpdated: true, selectedCol: col + 1};
       }
 
       case this.PAYLOADS.LITERAL_INPUT: {
@@ -795,12 +872,12 @@ class Script {
         switch (data.format) {
           case Script.VARIABLE_DEFINITION:
           case Script.VARIABLE_REFERENCE:
-            container = this.variables;
+            container = this.vars;
             break;
 
           case Script.FUNCTION_DEFINITION:
           case Script.FUNCTION_REFERENCE:
-            container = this.functions;
+            container = this.funcs;
             break;
         }
 
@@ -829,7 +906,7 @@ class Script {
         const data = Script.getItemData(item);
 
         if ((col === 1 && item !== this.ITEMS.ELSE)
-        || (col > 1 && data.format === Script.KEYWORD && item !== this.ITEMS.IF)
+        || (col > 1 && data.format === Script.KEYWORD && item !== this.ITEMS.IF && item !== this.ITEMS.STEP)
         || data.format === Script.FUNCTION_DEFINITION
         || this.ASSIGNMENT_OPERATORS.includes(item)
         || (data.format === Script.VARIABLE_DEFINITION && this.ASSIGNMENT_OPERATORS.includes(this.getItem(row, col + 1)))) {
@@ -857,7 +934,12 @@ class Script {
           } else if (this.UNARY_OPERATORS.includes(this.getItem(row, col - 1))) {
             this.spliceRow(row, col - 1, 1);
             return {rowUpdated: true, selectedCol: col - 1};
+          } else if (this.getItem(row, col -1) === this.ITEMS.COMMA) {
+            this.spliceRow(row, col - 1, 2);
+            return {rowUpdated: true, selectedCol: col - 1};
           }
+          console.trace();
+          throw "unhandled underscore delection";
         }
         else if (item === this.ITEMS.IF) {
           this.spliceRow(row, col, this.getItemCount(row) - col);
@@ -895,6 +977,17 @@ class Script {
             }
 
             if (funcID > -1) {
+              if (funcID === this.funcs.builtins.System_print) {
+                //when removing an argument to print, just delete the argument since it's just an Any[] paramater
+                if (paramIndex > 0) {
+                  this.spliceRow(row, col - 1, 2);
+                  return {rowUpdated: true, selectedCol: col - 2};
+                }
+                if (paramIndex === 0 && this.getItem(row, col + 1) === this.ITEMS.COMMA) {
+                  this.spliceRow(row, col, 2);
+                  return {rowUpdated: true};
+                }
+              }
               this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
             } else {
               if (end + 1 === this.getItemCount(row)) {
@@ -907,7 +1000,10 @@ class Script {
           }
           return {rowUpdated: true, selectedCol: isAppending ? 0 : start};
         }
-      }
+
+        console.trace();
+        throw "Reached bottom of DELETE_ITEM without hitting a case";
+      } break;
 
       case this.PAYLOADS.UNWRAP_PARENTHESIS: {
         const [start, end] = this.getExpressionBounds(row, col);
@@ -934,13 +1030,13 @@ class Script {
       }
 
       case this.PAYLOADS.TYPED_VARIABLE_DEFINITION: {
-        const varId = this.variables.nextId();
+        const varId = this.vars.nextId();
         const name = prompt("Enter variable name:", `var${varId}`);
 
         if (name) {
           const type = payloadData.meta;
           this.appendRowsUpTo(row);
-          this.variables.set(varId, {name, type, flag: 1, scope: this.CLASSES.VOID});
+          this.vars.set(varId, {name, type, flag: 1, scope: this.types.builtins.void});
           this.pushItems(row, this.ITEMS.VAR, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
 
           return {rowUpdated: true, rowsInserted: 1};
@@ -950,12 +1046,12 @@ class Script {
       }
 
       case this.PAYLOADS.FUNCTION_DEFINITION: {
-        let funcId = this.functions.nextId();
+        let funcId = this.funcs.nextId();
         const name = prompt(`Enter function name`, `f${funcId}`);
 
         if (name) {
           const returnType = payloadData.meta;
-          this.functions.set(funcId, {name, returnType, scope: this.CLASSES.VOID, parameters: []});
+          this.funcs.set(funcId, {name, returnType, scope: this.types.builtins.void, parameters: []});
           this.appendRowsUpTo(row);
           this.setIsStartingScope(row, true);
           this.pushItems(row, this.ITEMS.FUNC, Script.makeItem({format: Script.FUNCTION_DEFINITION, meta: returnType, value: funcId}));
@@ -967,16 +1063,16 @@ class Script {
       }
 
       case this.PAYLOADS.APPEND_PARAMETER: {
-        let varId = this.variables.nextId();
+        let varId = this.vars.nextId();
         let type = payloadData.meta;
-        const name = prompt(`Enter name for ${this.classes.get(type).name} parameter:`, `var${varId}`);
+        const name = prompt(`Enter name for ${this.types.get(type).name} parameter:`, `var${varId}`);
   
         if (name) {
-          const varMeta = {name, type, scope: this.CLASSES.VOID};
-          this.variables.set(varId, varMeta);
+          const varMeta = {name, type, scope: this.types.builtins.void};
+          this.vars.set(varId, varMeta);
           this.pushItems(row, Script.makeItem({format: Script.VARIABLE_DEFINITION, flag: 1, meta: type, value: varId}));
           const funcId = this.getData(row, 2).value;
-          const func = this.functions.get(funcId);
+          const func = this.funcs.get(funcId);
           func.parameters.push(varMeta)
 
           return {rowUpdated: true};
@@ -992,13 +1088,13 @@ class Script {
         this.setItem(row, col, newItem, true);
 
         if (format === Script.FUNCTION_DEFINITION) {
-          const func = this.functions.get(value);
+          const func = this.funcs.get(value);
           func.returnType = payloadData.meta;
-          this.functions.set(value, func);
+          this.funcs.set(value, func);
         } else {
-          const v = this.variables.get(value);
+          const v = this.vars.get(value);
           v.type = payloadData.meta;
-          this.variables.set(value, v);
+          this.vars.set(value, v);
         }
 
         return {rowUpdated: true};
@@ -1016,7 +1112,7 @@ class Script {
       }
     }
 
-    return this.CLASSES.VOID;
+    return this.types.builtins.void;
   }
 
   getVisibleVariables(row, requiresMutable) {
@@ -1033,7 +1129,7 @@ class Script {
           for (let col = 1; col < itemCount; ++col) {
             if (this.getData(r, col).format === Script.VARIABLE_DEFINITION) {
               let varId = this.getData(r, col).value;
-              const v = this.variables.get(varId);
+              const v = this.vars.get(varId);
               options.push({text: v.name, style: "declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: varId})});
             }
           }
@@ -1042,8 +1138,8 @@ class Script {
     }
 
     if (!requiresMutable) {
-      for (let i = -this.variables.builtinCount; i <= -1; ++i) {
-        const v = this.variables.get(i);
+      for (let i = -this.vars.builtinCount; i <= -1; ++i) {
+        const v = this.vars.get(i);
         options.push({text: v.name, style: "declaration", payload: Script.makeItem({format: Script.VARIABLE_REFERENCE, meta: v.scope, value: i})});
       }
     }
@@ -1055,9 +1151,9 @@ class Script {
   getFunctionList(requireReturn) {
     let options = [];
 
-    for (const id of this.functions.getIDs()) {
-      let func = this.functions.get(id);
-      if (!requireReturn || func.returnType !== 0) {
+    for (const id of this.funcs.getIDs()) {
+      let func = this.funcs.get(id);
+      if (!requireReturn || func.returnType !== this.types.builtins.void) {
         options.push({text: func.name, style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
       }
     }
@@ -1069,8 +1165,8 @@ class Script {
   getSizedClasses(flag, value) {
     const options = [];
 
-    for (const id of this.classes.getIDs()) {
-      const c = this.classes.get(id);
+    for (const id of this.types.getIDs()) {
+      const c = this.types.get(id);
       if (c.size > 0)
         options.push({text: c.name, style: "keyword", payload: Script.makeItem({flag, meta: id, value})});
     }
@@ -1082,7 +1178,7 @@ class Script {
    * Finds the bounds of the smallest expression that contains the item position
    * @param {Number} row
    * @param {Number} col
-   * @return {[Number, Number]} [startItem, endItem] 
+   * @return {[Number, Number]} [startItem, endItem]
    */
   getExpressionBounds(row, col) {
     let start = col;
@@ -1271,7 +1367,7 @@ class Script {
 
   /**
    * creates a new key that sorts after key
-   * @param {ArrayBuffer} key 
+   * @param {ArrayBuffer} key
    * @returns {ArrayBuffer} succeeding key
    */
   static incrementKey(key) {
@@ -1296,7 +1392,7 @@ class Script {
 
   /**
    * creates a new key that sorts between lowKey and highKey
-   * @param {ArrayBuffer} lowKey 
+   * @param {ArrayBuffer} lowKey
    * @param {ArrayBuffer} highKey
    * @return {ArrayBuffer} midway key
    */
@@ -1339,11 +1435,11 @@ class Script {
 
     switch (oldData.format) {
       case Script.VARIABLE_DEFINITION:
-        this.variables.delete(oldData.value);
+        this.vars.delete(oldData.value);
       break;
 
       case Script.FUNCTION_DEFINITION:
-        this.functions.delete(oldData.value);
+        this.funcs.delete(oldData.value);
       break;
       
       case Script.LITERAL:
@@ -1403,39 +1499,39 @@ class Script {
     switch (format) {
       case Script.VARIABLE_DEFINITION:
       {
-        let name = this.variables.get(value).name;
-        if (!flag)
+        let name = this.vars.get(value).name;
+        if (false)//!flag)
           return [name, "declaration"];
         else
-          return [this.classes.get(meta).name + '\n' + name, "keyword-declaration"];
+          return [this.types.get(meta).name + '\n' + name, "keyword-declaration"];
       }
 
       case Script.VARIABLE_REFERENCE:
       {
-        let name = this.variables.get(value).name;
-        if (meta === this.CLASSES.VOID)
+        let name = this.vars.get(value).name;
+        if (meta === this.types.builtins.void)
           return [name, ""];
         else
-          return [this.classes.get(meta).name + '\n' + name, "keyword"];
+          return [this.types.get(meta).name + '\n' + name, "keyword"];
       }
 
       case Script.FUNCTION_DEFINITION:
-        if (meta === this.CLASSES.VOID)
-          return [this.functions.get(value).name, "function-definition"];
+        if (meta === this.types.builtins.void)
+          return [this.funcs.get(value).name, "function-definition"];
         else
-          return [this.classes.get(meta).name + '\n' + this.functions.get(value).name, "keyword-def"];
+          return [this.types.get(meta).name + '\n' + this.funcs.get(value).name, "keyword-def"];
 
       case Script.FUNCTION_REFERENCE:
-        if (meta === this.CLASSES.VOID)
-          return [this.functions.get(value).name, "function-call"];
+        if (meta === this.types.builtins.void)
+          return [this.funcs.get(value).name, "function-call"];
         else
-          return [this.classes.get(meta).name + '\n' + this.functions.get(value).name, "keyword-call"];
+          return [this.types.get(meta).name + '\n' + this.funcs.get(value).name, "keyword-call"];
 
       case Script.ARGUMENT_HINT:
-        return [this.functions.get(value).parameters[meta].name, "comment"];
+        return [this.funcs.get(value).parameters[meta].name, "comment"];
 
       case Script.SYMBOL:
-        return [this.symbols[value], ""];
+        return [this.symbols[value].appearance, ""];
 
       case Script.KEYWORD:
         return [this.keywords[value].name, "keyword"];
@@ -1531,7 +1627,7 @@ class Script {
 
                 this.queuedDBwrites = {scope: new Set(), actions: []};
 
-                for (let container of [this.variables, this.classes, this.functions, this.literals]) {
+                for (let container of [this.vars, this.types, this.funcs, this.literals]) {
                   this.queuedDBwrites.scope.add(container.storeName);
                   this.queuedDBwrites.actions.push({storeName: container.storeName, arguments: [container], function: saveAllMetadata});
                 }
@@ -1553,133 +1649,763 @@ class Script {
   }
 
   /*
-  Generates a Function object from the binary script.
-  Run the function with an object argument to attach .initialize(), .onResize(), and .onDraw() to the object
+  Generates a Wasm binary from the script contents
   */
-  getJavaScript() {
-    let js = "";
-    for (let row = 0; row < this.getRowCount(); ++row) {
-      let indentation = this.getIndentation(row);
-      js += " ".repeat(indentation);
+  getWasm() {
+    let typeSection = [
+      ...Wasm.varuint(6), //count of type entries
+    
+      Wasm.types.func, //the form of the type
+      0, //parameters
+      0, //return count (0 or 1)
+    
+      Wasm.types.func,
+      1, Wasm.types.i32,
+      0,
 
-      let needsEndParenthesis = false;
-      let needsEndColon = false;
-      let needsCommas = false;
+      Wasm.types.func,
+      1, Wasm.types.i64,
+      0,
+    
+      Wasm.types.func,
+      1, Wasm.types.f32,
+      0,
+    
+      Wasm.types.func,
+      1, Wasm.types.f64,
+      0,
 
-      //check the first symbol
-      let firstItem = this.getItem(row, 1);
-      const firstData = this.getData(row, 1);
-      if (firstItem === this.ITEMS.CASE || firstItem === this.ITEMS.DEFAULT) {
-        needsEndColon = true;
-      } else if (firstData.format === Script.KEYWORD) {
-        if (this.keywords[firstData.value].js.endsWith("(")) {
-          needsEndParenthesis = true;
+      Wasm.types.func,
+      3, Wasm.types.f64, Wasm.types.f64, Wasm.types.f64,
+      1, Wasm.types.f64,
+    ];
+
+    const importedFunctionsCount = 6;
+    let importSection = [
+      ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
+
+      ...Wasm.getStringBytesAndData("js"),
+      ...Wasm.getStringBytesAndData("memory"),
+      Wasm.externalKind.Memory,
+      0, //flag that max pages is not specified
+      ...Wasm.varuint(1), //initially 1 page allocated
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("print"),
+      Wasm.externalKind.Function, //import type
+      ...Wasm.varuint(1), //type index (func signiture)
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printU32"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(1),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printI32"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(1),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printF32"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(3),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("printF64"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(4),
+
+      ...Wasm.getStringBytesAndData("System"),
+      ...Wasm.getStringBytesAndData("inputF64"),
+      Wasm.externalKind.Function,
+      ...Wasm.varuint(5),
+    ];
+
+    let functionSection = [
+      ...Wasm.varuint(3), //count of function bodies defined later
+      ...Wasm.varuint(0), //type indicies (func signitures)
+      ...Wasm.varuint(2),
+      ...Wasm.varuint(2),
+    ];
+
+    // let exportSection = [
+    //   ...Wasm.varuint(0), //count of exports
+
+    //   ...Wasm.getStringBytesAndData("init"), //length and bytes of function name
+    //   Wasm.externalKind.Function, //export type
+    //   ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
+    // ];
+    
+    const parent = this;
+    class NumericLiteral {
+      constructor(rawString) {
+        this.value = +rawString;
+        this.hasDecimalPoint = String(rawString).includes(".");
+      }
+      
+      performUnaryOp(unaryOp) {
+        switch (unaryOp) {
+        case "!":
+          this.value = ~this.value;
+          break;
+        case "-":
+          this.value = -this.value;
+          break;
+        default:
+          throw "unrecognized unary operator " + unaryOp;
+        }
+      }
+      
+      performBinaryOp(binOp, operand) {
+        switch (binOp) {
+          case "+":
+            this.value += operand.value;
+            break;
+          case "-":
+            this.value -= operand.value;
+            break;
+          case "*":
+            this.value *= operand.value;
+            break;
+          case "/":
+            this.value /= operand.value;
+            break;
+          case "%":
+            this.value %= operand.value;
+            break;
+          case "|":
+            this.value |= operand.value;
+            break;
+          case "^":
+            this.value ^= operand.value;
+            break;
+          case "&":
+            this.value &= operand.value;
+            break;
+          case "<<":
+            this.value <<= operand.value;
+            break;
+          case ">>":
+            this.value >>= operand.value;
+            break;
+          default:
+            throw "unrecognized binary operator: " + binOp;
+        }
+        
+        this.hasDecimalPoint = this.hasDecimalPoint || operand.hasDecimalPoint;
+        if (!this.hasDecimalPoint) {
+          this.value = Math.trunc(this.value);
+        }
+      }
+      
+      getWasmCode(expectedType) {
+        const outputType = this.getType(expectedType);
+        switch (outputType) {
+          case parent.types.builtins.i32:
+          case parent.types.builtins.u32:
+          case parent.types.bool:
+            return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
+          case parent.types.builtins.i64:
+          case parent.types.builtins.u64:
+            return [Wasm.opcodes.i64_const, ...Wasm.varint(this.value)];
+          case parent.types.builtins.f32:
+            return [Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(this.value)];
+          case parent.types.builtins.f64:
+            return [Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(this.value)];
+          default:
+            console.trace();
+            throw "unrecognized type for numeric literal: " + parent.types.get(expectedType).name;
         }
       }
 
-      for (let col = 1, end = this.getItemCount(row); col < end; ++col) {
-        const {format, meta, value} = this.getData(row, col);
+      getType(expectedType = parent.types.builtins.Any) {
+        if (expectedType !== parent.types.builtins.Any) {
+          return expectedType;
+        }
 
-        //append an end parenthesis to the end of the line
-        switch (format) {
-          case Script.VARIABLE_DEFINITION:
-          case Script.VARIABLE_REFERENCE:
-            if ("js" in this.variables.get(value)) {
-              js += this.variables.get(value).js;
+        if (this.hasDecimalPoint) {
+          return parent.types.builtins.f32;
+        } else {
+          return parent.types.builtins.i32;
+        }
+      }
+    }
+    
+    class StringLiteral {
+      constructor(address) {
+        this.address = address;
+      }
+      
+      getType() {
+        return parent.types.builtins.string;
+      }
+      
+      getWasmCode() {
+        return [Wasm.opcodes.i32_const, ...Wasm.varint(this.address)];
+      }
+    }
+    
+    class LocalVarReference {
+      constructor(index, variable) {
+        this.index = index;
+        this.variable = variable;
+      }
+      
+      getType() {
+        return this.variable.type;
+      }
+      
+      getWasmCode() {
+        return [Wasm.opcodes.get_local, ...Wasm.varuint(this.index)];
+      }
+    }
+    
+    class Placeholder {
+      constructor(type, ...wasmCode) {
+        this.type = type;
+        this.wasmCode = wasmCode;
+      }
+      
+      getType() {
+        return this.type;
+      }
+      
+      getWasmCode() {
+        return this.wasmCode;
+      }
+    }
+    
+    function compileExpression(expression, expectedType) {
+      const operators = [];
+      const operands = [];
+
+      expression.push(new TSSymbol("term", -1, {isFoldable: false})); //terminate expression
+      for (let i = 0; i < expression.length; ++i) {
+        const item = expression[i];
+        if (item.constructor === TSSymbol) {
+          //check if the previous operators have a higher precedence than the one that is about to be pushed
+          while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
+            const operator = operators.pop();
+            const rightOperand = operands.pop();
+            if (operator.isUnary) {
+              if (rightOperand.constructor === NumericLiteral) {
+                rightOperand.performUnaryOp(operator.appearance);
+              } else {
+                const {resultType, wasmCode} = operator.uses.get(rightOperand.getType(expectedType));
+                operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
+              }
             } else {
-              js += `v${value}`;
+              const leftOperand = operands.pop();
+              if (operator.isFoldable && leftOperand.constructor === NumericLiteral && rightOperand.constructor === NumericLiteral) {
+                leftOperand.performBinaryOp(operator.appearance, rightOperand);
+                operands.push(leftOperand);
+              } else {
+                const type = rightOperand.getType(leftOperand.getType(expectedType));
+                const {resultType, wasmCode} = operator.uses.get(type);
+                operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
+              }
+            }
+          }
+          
+          operators.push(item);
+        } else {
+          operands.push(item);
+        }
+      }
+      
+      //console.log("remaining operands", ...operands, "remaining operators", ...operators.slice(0, -1));
+      const expressionType = operands[0].getType(expectedType);
+      const wasmCode = operands[0].getWasmCode(expectedType);
+      
+      return [expressionType, wasmCode];
+    }
+
+    let initFunction = [];
+
+    const functionsBeingCalled = [];
+    const expression = [];
+    const localVarMapping = []; //maps local var indexes to TouchScript varIDs
+    let lvalueType, lvalueLocalIndex;
+    const endOfLineInstructions = [];
+    const endOfScopeData = [];
+    const linearMemoryInitialValues = [];
+
+    function insertPrecondition(wasmCode) {
+      //The wasmCode array has code that produces a start value and an end value on the
+      //operand stack, then a comparison opcode, then an increment opcode (typed add or sub).
+      //Backup the comparison opcode for the break condition and the increment opcode for
+      //the end of the loop body, then the start and stop values.;
+      const lvar = parent.vars.get(localVarMapping[lvalueLocalIndex].id);
+
+      //create a new local var with the same type as the looping var to hold the end value
+      const endValLocalIndex = localVarMapping.length;
+      localVarMapping.push({id: -1, type: lvar.type});
+
+      const comparisonOpcode = wasmCode.pop();
+
+      initFunction.push(...wasmCode);
+      endOfLineInstructions.push(Wasm.opcodes.set_local, endValLocalIndex);
+      endOfLineInstructions.push(Wasm.opcodes.set_local, lvalueLocalIndex);
+
+      endOfLineInstructions.push(Wasm.opcodes.block, Wasm.types.void);
+      endOfLineInstructions.push(Wasm.opcodes.loop, Wasm.types.void);
+
+      endOfLineInstructions.push(Wasm.opcodes.get_local, lvalueLocalIndex);
+      endOfLineInstructions.push(Wasm.opcodes.get_local, endValLocalIndex);
+      endOfLineInstructions.push(comparisonOpcode, Wasm.opcodes.i32_eqz);
+      endOfLineInstructions.push(Wasm.opcodes.br_if, 1);
+    }
+
+    for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
+      lvalueType = this.types.builtins.void;
+      lvalueLocalIndex = -1;
+      
+      if (row > 0) {
+        let scopeDrop = this.getIndentation(row - 1) - this.getIndentation(row);
+        if (this.getItem(row, 1) === this.ITEMS.ELSE) {
+          --scopeDrop;
+        }
+        for (let i = 0; i < scopeDrop; ++i) {
+          const scopeData = endOfScopeData.pop();
+          initFunction.push(...scopeData.wasmCode);
+          initFunction.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
+        }
+      }
+
+      for (let col = 1, endCol = this.getItemCount(row); col < endCol; ++col) {
+        const item = this.getItem(row, col);
+        const {format, meta, value} = Script.getItemData(item);
+
+        switch (format) {
+          case Script.VARIABLE_DEFINITION: {
+            expression.push(new LocalVarReference(localVarMapping.length, this.vars.get(value)));
+            localVarMapping.push({id: value, type: meta});
+          } break;
+          
+          case Script.VARIABLE_REFERENCE: {
+            const localIndex = localVarMapping.findIndex(localVar => localVar.id === value);
+            if (localIndex === -1) {
+              throw "var" + value + " is referenced before it is declared";
             }
             
-            js += (needsCommas) ? ", " : " ";
-            break;
-
-          case Script.FUNCTION_DEFINITION:
-          {
-            let func = this.functions.get(value);
-
-            if ("js" in func) {
-              js += `${func.js} = function ( `;
-            }
-            else {
-              js += `function f${value} (`;
-            }
-
-            needsEndParenthesis = true;
-            needsCommas = true;
-            break;
-          }
-
+            expression.push(new LocalVarReference(localIndex, localVarMapping[localIndex]));
+          } break;
+          
           case Script.FUNCTION_REFERENCE:
-          {
-            let func = this.functions.get(value);
-            let funcName;
-            if ("js" in func) {
-              funcName = func.js;
-            }
-            else {
-              funcName = `f${value}`;
-            }
-            js += `${funcName} `;
+            functionsBeingCalled.push(value);
             break;
-          }
 
           case Script.ARGUMENT_HINT: {
-            let val = this.functions.get(value).parameters[meta].default;
-            if (typeof val === "string") {
-              val = `"${val.replace("\n", "\\n")}"`;
+            const param = this.funcs.get(value).parameters[meta];
+            if (param.type === this.types.builtins.string) {
+              expression.push(new StringLiteral(param.default));
+            } else {
+              expression.push(new NumericLiteral(param.default));
+            }
+          } break;
+
+          case Script.SYMBOL: {
+            const funcId = functionsBeingCalled[functionsBeingCalled.length - 1];
+            
+            if (this.ASSIGNMENT_OPERATORS.includes(item)) {
+              const localVar = expression.pop();
+              lvalueType = localVar.getType();
+              lvalueLocalIndex = localVar.index;
+              
+              if (item !== this.ITEMS.EQUALS) {
+                initFunction.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
+                const wasmCode = this.symbols[value].uses.get(lvalueType);
+                endOfLineInstructions.push(...wasmCode);
+              }
+              
+              endOfLineInstructions.push(Wasm.opcodes.set_local, localVar.index);
             }
 
-            js += `${val} `;
-            break;
+            let expressionType = this.types.builtins.void;
+            if (item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) {
+              //find argument type
+              let expectedType = this.types.builtins.Any;
+              let funcCallDepth = 0;
+              let argumentIndex = 0;
+              for (let j = col - 1; j > 0; --j) {
+                const item = this.getItem(row, j);
+                if (item === this.ITEMS.END_ARGUMENTS) {
+                  ++funcCallDepth;
+                }
+                if (item === this.ITEMS.COMMA && funcCallDepth === 0) {
+                  ++argumentIndex;
+                }
+                if (item === this.ITEMS.START_ARGUMENTS) {
+                  if (funcCallDepth === 0) {
+                    const funcId = this.getData(row, j - 1).value;
+                    const func = this.funcs.get(funcId);
+                    if (funcId === this.funcs.builtins.System_print) {
+                      argumentIndex = 0;
+                    }
+                    const argumentType = func.parameters[argumentIndex].type;
+                    //console.log(expression, "is argument ", argumentIndex, "to ", func.name, "argument type is", this.types.get(argumentType).name);
+                    expectedType = argumentType;
+                    break;
+                  }
+                  
+                  --funcCallDepth;
+                }
+              }
+              
+              let wasmCode;
+              [expressionType, wasmCode] = compileExpression(expression, expectedType);
+              expression.length = 0;
+              initFunction.push(...wasmCode);
+            }
+
+            //print() takes an arbitrary count of Any arguments and overloads for each argument in order
+            if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && funcId == this.funcs.builtins.System_print) {
+              const overload = this.funcs.findOverloadId(funcId, expressionType);
+              if (overload === undefined) {
+                throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
+              }
+              const overloadedFunc = this.funcs.get(overload);
+              initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
+            }
+            else if (item === this.ITEMS.END_ARGUMENTS) {
+              const func = this.funcs.get(functionsBeingCalled.pop());
+              initFunction.push(Wasm.opcodes.call, func.importedFuncIndex);
+              if (func.returnType !== this.types.builtins.void) {
+                expression.push(new Placeholder(func.returnType)); //TODO place wasm code of function call as 2nd argument
+              }
+            }
+            
+            if (![this.ITEMS.COMMA, this.ITEMS.START_ARGUMENTS, this.ITEMS.END_ARGUMENTS].includes(item) && !this.ASSIGNMENT_OPERATORS.includes(item)) {
+              expression.push(this.symbols[value]);
+            }
+          } break;
+          
+          case Script.KEYWORD: {
+            switch (item) {
+              case this.ITEMS.IF: {
+                lvalueType = this.types.bool;
+                endOfLineInstructions.push(Wasm.opcodes.if, Wasm.types.void);
+                endOfScopeData.push({wasmCode: []});
+              } break;
+              case this.ITEMS.ELSE: {
+                endOfLineInstructions.push(Wasm.opcodes.else);
+              } break;
+              case this.ITEMS.WHILE: {
+                initFunction.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
+                endOfLineInstructions.push(Wasm.opcodes.i32_eqz, Wasm.opcodes.br_if, 1);
+                endOfScopeData.push({wasmCode: [Wasm.opcodes.br, 0], isBranchable: true, blockCount: 2});
+              } break;
+              case this.ITEMS.DO_WHILE: {
+                initFunction.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
+                endOfScopeData.push({wasmCode: [Wasm.opcodes.br_if, 0], isBranchable: true, blockCount: 2});
+              } break;
+              case this.ITEMS.BREAK: {
+                let requestedDepth = 1;
+
+                if (this.getItemCount(row) > 2) {
+                  const {value} = this.getData(row, col + 1);
+                  requestedDepth = +this.literals.get(value);
+                }
+
+                //branch depth must be 1 over the depth of the loop to break out rather than repeat
+                let depthTraveled = 1;
+                for (let i = endOfScopeData.length - 1; i >= 0; --i) {
+                  if (endOfScopeData[i].isBranchable && --requestedDepth <= 0) {
+                    initFunction.push(Wasm.opcodes.br, depthTraveled);
+                    break;
+                  }
+
+                  ++depthTraveled;
+                  if (endOfScopeData[i].isBranchable) {
+                    ++depthTraveled;
+                  }
+                }
+                col = 1000; //do not attempt to write any expression using the rest of this line
+              } break;
+              case this.ITEMS.CONTINUE: {
+                let requestedDepth = 1;
+
+                if (this.getItemCount(row) > 2) {
+                  const {value} = this.getData(row, col + 1);
+                  requestedDepth = +this.literals.get(value);
+                }
+
+                let depthTraveled = 0;
+                //work backward through the scopes until we find one that is branchable
+                for (let i = endOfScopeData.length - 1; i >= 0; --i) {
+                  const scopeData = endOfScopeData[i];
+                  if (scopeData.isBranchable && --requestedDepth <= 0) {
+                    //slice off the depth of the branch instruction and use our own
+                    initFunction.push(...scopeData.wasmCode.slice(0, -1), depthTraveled);
+                    break;
+                  }
+
+                  ++depthTraveled;
+                  if (scopeData.isBranchable) {
+                    ++depthTraveled;
+                  }
+                }
+                col = 1000; //do not attempt to write any expression using the rest of this line
+              } break;
+              case this.ITEMS.IN: {
+                const localVar = expression.pop(); //consume the looping variable reference
+                lvalueType = localVar.getType();
+                lvalueLocalIndex = localVar.index;
+              } break;
+              case this.ITEMS.STEP: { //part of a for loop
+                const [, wasmCode] = compileExpression(expression, lvalueType);
+                expression.length = 0;
+                const incrementOpcode = wasmCode.pop();
+
+                const lvar = this.vars.get(localVarMapping[lvalueLocalIndex]);
+                const stepSizeLocalIndex = localVarMapping.length;
+                localVarMapping.push({id: -1, type: lvar.type});
+
+                endOfLineInstructions.push(Wasm.opcodes.set_local, stepSizeLocalIndex);
+
+                endOfScopeData.push({wasmCode: [
+                  Wasm.opcodes.get_local, lvalueLocalIndex,
+                  Wasm.opcodes.get_local, stepSizeLocalIndex,
+                  incrementOpcode,
+                  Wasm.opcodes.set_local, lvalueLocalIndex,
+                  Wasm.opcodes.br, 0,
+                ], isBranchable: true, blockCount: 2});
+
+                insertPrecondition(wasmCode);
+              } break;
+            }
           }
 
-          case Script.SYMBOL:
-            js += `${this.symbols[value]} `;
-            break;
-
-          case Script.KEYWORD:
-            js += `${this.keywords[value].js} `;
-            break;
-
           case Script.LITERAL:
-            if (meta === 1)
-              js += `"${this.literals.get(value)}" `;
-            else
-              js += `${this.literals.get(value)} `;
-            break;
+            if (meta === 1) { //string
+              expression.push(new StringLiteral(linearMemoryInitialValues.length));
 
-          default:
-            js += `/*format ${format}*/ `;
+              const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
+              const bytes = Wasm.stringToUTF8(stringLiteral);
+              linearMemoryInitialValues.push(...Wasm.varuint(bytes.length), ...bytes);
+            } else if (meta === 2) { //number
+              const literal = this.literals.get(value);
+              expression.push(new NumericLiteral(literal));
+            } break;
         }
       }
 
-      if (needsEndParenthesis)
-        js += ") ";
+      //end of line delimits expression
+      if (expression.length > 0) {
+        const [, wasmCode] = compileExpression(expression, lvalueType);
+        expression.length = 0;
 
-      if (needsEndColon)
-        js += ": ";
+        if (this.getItem(row, 1) === this.ITEMS.DO_WHILE) {
+          //move the expression to right before the conditional loop branch
+          endOfScopeData[endOfScopeData.length - 1].wasmCode.unshift(...wasmCode);
+        } else if (this.getItem(row, 1) === this.ITEMS.FOR) {
+          if (!this.lines[row].includes(this.ITEMS.STEP)) {
+            const incrementOpcode = wasmCode.pop();
+            insertPrecondition(wasmCode)
 
-      if (this.isStartingScope(row))
-        js += "{ ";
+            //if the step size is not specified, use the numeric literal "1"
+            const constStep = (new NumericLiteral("1")).getWasmCode(lvalueType);
 
-      if (row < this.getRowCount() - 1) {
-        let nextIndentation = this.getIndentation(row + 1);
-        let expectedIndentation = indentation + this.isStartingScope(row);
-        if (nextIndentation < expectedIndentation) {
-          js += "}".repeat(expectedIndentation - nextIndentation);
+            endOfScopeData.push({wasmCode: [
+              Wasm.opcodes.get_local, lvalueLocalIndex,
+              ...constStep,
+              incrementOpcode,
+              Wasm.opcodes.set_local, lvalueLocalIndex,
+              Wasm.opcodes.br, 0,
+            ], isBranchable: true, blockCount: 2});
+          } else {
+            initFunction.push(...wasmCode);
+          }
+        } else {
+          initFunction.push(...wasmCode);
+          if (endOfLineInstructions.length === 0) {
+            initFunction.push(Wasm.opcodes.drop);
+          }
         }
       }
-
-      js += "\n";
+      
+      if (endOfLineInstructions.length > 0) {
+        initFunction.push(...endOfLineInstructions);
+        endOfLineInstructions.length = 0;
+      }
+    }
+    
+    while (endOfScopeData.length > 0) {
+      const scopeData = endOfScopeData.pop();
+      initFunction.push(...scopeData.wasmCode);
+      initFunction.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
     }
 
-    if (this.getRowCount() > 0) {
-      let lastIndentation = this.getIndentation(this.getRowCount() - 1);
-      if (lastIndentation > 0)
-        js += "}".repeat(lastIndentation);
+    const localVarDefinition = [
+      ...Wasm.varuint(localVarMapping.length), //count of local entries (count and type pairs, not total locals)
+    ];
+
+    //at the moment, I make no attempt to collapse repeating types into a single type description
+    for (let local of localVarMapping) {
+      let type = 0;
+      switch (local.type) {
+        case this.types.builtins.i32:
+        case this.types.builtins.u32:
+          type = Wasm.types.i32;
+          break;
+        case this.types.builtins.i64:
+        case this.types.builtins.u64:
+          type = Wasm.types.i64;
+          break;
+        case this.types.builtins.f32:
+          type = Wasm.types.f32;
+          break;
+        case this.types.builtins.f64:
+          type = Wasm.types.f64;
+          break;
+        default:
+          throw "cannot find Wasm type of " + this.types.get(local.type).name;
+      }
+
+      localVarDefinition.push(1, type);
     }
 
-    return js;
+    initFunction = [...localVarDefinition, ...initFunction, Wasm.opcodes.end];
+
+    const printU64 = [ // print(val: u64)
+      1, 1, Wasm.types.i32,
+      Wasm.opcodes.get_global, 0, //address = top of stack + 16
+      Wasm.opcodes.i32_const, 16,
+      Wasm.opcodes.i32_add,
+      Wasm.opcodes.set_local, 1,
+
+      Wasm.opcodes.loop, Wasm.types.void, //do
+        Wasm.opcodes.get_local, 1, //address
+
+        Wasm.opcodes.get_local, 0,
+        Wasm.opcodes.i64_const, 10,
+        Wasm.opcodes.i64_rem_u,
+        Wasm.opcodes.i32_wrap_from_i64,
+        Wasm.opcodes.i32_const, ...Wasm.varint('0'.charCodeAt(0)),
+        Wasm.opcodes.i32_add, //value = val % 10 + '0'
+
+        Wasm.opcodes.i32_store8, 0, 0, //store value at address
+
+        Wasm.opcodes.get_local, 1, //address--
+        Wasm.opcodes.i32_const, 1,
+        Wasm.opcodes.i32_sub,
+        Wasm.opcodes.set_local, 1,
+
+        Wasm.opcodes.get_local, 0, //val /= 10
+        Wasm.opcodes.i64_const, 10,
+        Wasm.opcodes.i64_div_u,
+        Wasm.opcodes.tee_local, 0,
+        Wasm.opcodes.i64_const, 0,
+        Wasm.opcodes.i64_gt_u,
+      Wasm.opcodes.br_if, 0, //while val > 0
+      Wasm.opcodes.end,
+
+      Wasm.opcodes.get_local, 1, //address of string length
+
+      Wasm.opcodes.i32_const, 16, //length = 16 - address + top of stack
+      Wasm.opcodes.get_local, 1,
+      Wasm.opcodes.i32_sub,
+      Wasm.opcodes.get_global, 0,
+      Wasm.opcodes.i32_add,
+
+      Wasm.opcodes.i32_store8, 0, 0, //store length of string at address
+      
+      Wasm.opcodes.get_local, 1, //print string we just created
+      Wasm.opcodes.call, 0,
+
+      Wasm.opcodes.end,
+    ];
+    
+    const printU64Id = this.funcs.get(this.funcs.findOverloadId(this.funcs.builtins.System_print, this.types.builtins.u64)).importedFuncIndex;
+    const printString = this.funcs.get(this.funcs.findOverloadId(this.funcs.builtins.System_print, this.types.builtins.string)).importedFuncIndex;
+    
+    const printI64 = [ // print(val: i64)
+      0,
+      Wasm.opcodes.get_local, 0,
+      Wasm.opcodes.i64_const, 0,
+      Wasm.opcodes.i64_lt_s,
+      Wasm.opcodes.if, Wasm.types.i64, //if val < 0
+        Wasm.opcodes.i64_const, 0,
+        Wasm.opcodes.get_local, 0,
+        Wasm.opcodes.i64_sub, //val = -val
+        Wasm.opcodes.get_global, 0, //print('-')
+        Wasm.opcodes.i32_const, ...Wasm.varint(1 + '-'.charCodeAt() * 256),
+        Wasm.opcodes.i32_store16, 0, 0,
+        Wasm.opcodes.get_global, 0,
+        Wasm.opcodes.call, printString,
+      Wasm.opcodes.else,
+        Wasm.opcodes.get_local, 0,
+      Wasm.opcodes.end,
+      
+      Wasm.opcodes.call, printU64Id, //print(u64(abs(val)))
+      Wasm.opcodes.end,
+    ]
+
+
+    let codeSection = [
+      ...Wasm.varuint(3), //count of functions to define
+      ...Wasm.varuint(initFunction.length),
+      ...initFunction,
+      ...Wasm.varuint(printU64.length),
+      ...printU64,
+      ...Wasm.varuint(printI64.length),
+      ...printI64,
+    ];
+
+    let dataSection = [
+      ...Wasm.varuint(1), //1 data segment
+
+      0, //memory index 0
+      Wasm.opcodes.i32_const, Wasm.varint(0), Wasm.opcodes.end, //fill memory starting at address 0
+      ...Wasm.varuint(linearMemoryInitialValues.length), //count of bytes to fill in
+      ...linearMemoryInitialValues,
+    ];
+
+    const globalSection = [
+      ...Wasm.varuint(1),
+      Wasm.types.i32, 1,
+      Wasm.opcodes.i32_const, ...Wasm.varuint(linearMemoryInitialValues.length),
+      Wasm.opcodes.end,
+    ];
+
+    let wasm = [
+      0x00, 0x61, 0x73, 0x6d, //magic numbers
+      0x01, 0x00, 0x00, 0x00, //binary version
+  
+      Wasm.section.Type,
+      ...Wasm.varuint(typeSection.length), //size in bytes of section
+      ...typeSection,
+  
+      Wasm.section.Import,
+      ...Wasm.varuint(importSection.length),
+      ...importSection,
+  
+      Wasm.section.Function,
+      ...Wasm.varuint(functionSection.length),
+      ...functionSection,
+
+      Wasm.section.Global,
+      ...Wasm.varuint(globalSection.length),
+      ...globalSection,
+  
+      // Wasm.section.Export,
+      // ...Wasm.varuint(exportSection.length),
+      // ...exportSection,
+
+      Wasm.section.Start,
+      [...Wasm.varuint(importedFunctionsCount)].length,
+      ...Wasm.varuint(importedFunctionsCount), //the start function is the first function after the imports
+  
+      Wasm.section.Code,
+      ...Wasm.varuint(codeSection.length),
+      ...codeSection,
+
+      Wasm.section.Data,
+      ...Wasm.varuint(dataSection.length),
+      ...dataSection,
+    ];
+
+    return (new Uint8Array(wasm)).buffer;
   }
 }
 

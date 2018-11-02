@@ -1,171 +1,383 @@
 "use strict";
 
+class TSSymbol {
+  constructor(appearance, precedence, {isUnary, isFoldable} = {isUnary: false, isFoldable: true}, ...uses) {
+    this.appearance = appearance;
+    this.precedence = precedence;
+    this.isUnary = isUnary;
+    this.isFoldable = isFoldable;
+    
+    this.uses = new Map();
+    for (const use of uses) {
+      const [resultType, operandType, ...wasmCode] = use;
+      this.uses.set(operandType, {resultType, wasmCode});
+    } 
+  }
+}
+
 function BuiltIns() {
-  this.classes = [
+  this.types = {};
+  this.types.data = [
     {name: "void", size: 0},
     {name: "Any", size: 0},
-    {name: "Boolean", size: 1},
-    {name: "Int8", size: 1},
-    {name: "UInt8", size: 1},
-    {name: "Int16", size: 2},
-    {name: "UInt16", size: 2},
-    {name: "Int32", size: 4},
-    {name: "UInt32", size: 4},
-    {name: "Int64", size: 8},
-    {name: "UInt64", size: 8},
-    {name: "Float", size: 4},
-    {name: "Double", size: 8},
-    {name: "String", size: 4},
+    {name: "bool", size: 4},
+    {name: "i8", size: 0}, //smaller ints not supported yet, but I want their IDs reserved
+    {name: "u8", size: 0},
+    {name: "i16", size: 0},
+    {name: "u16", size: 0},
+    {name: "i32", size: 4},
+    {name: "u32", size: 4},
+    {name: "i64", size: 8},
+    {name: "u64", size: 8},
+    {name: "f32", size: 4},
+    {name: "f64", size: 8},
+    {name: "string", size: 0}, //DEBUG don't allow the user to create string variables yet
     {name: "System", size: 0},
     {name: "Math", size: 0},
-    {name: "removed", size: 0},
     {name: "Iterable", size: 0},
   ].reverse();
 
-  const classMap = new Map();
-  for (let i = 0; i < this.classes.length; ++i) {
-    classMap.set(this.classes[i].name, (-this.classes.length + i) & 0x3FF);
+
+  //short-hand builtin name -> index mapping
+  const types = {};
+
+  for (let i = 0; i < this.types.data.length; ++i) {
+    types[this.types.data[i].name] = (-this.types.data.length + i) & 0x3FF;
   }
+  this.types.builtinNameMapping = types;
   
-  //static variables of classes only.  no instance variables
-  this.variables = [
-    {name: "E",        type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.E"},
-    {name: "PI",       type: classMap.get("Double"), scope: classMap.get("Math"), js: "Math.PI"},
-    {name: "non-breaking space", type: classMap.get("String"), scope: classMap.get("System"), js: '"\xa0"'},
+  //static variables only.  no instance variables
+  this.variables = {};
+  this.variables.data = [
+    // {name: "E",  type: types.f64, scope: clesses.Math},
+    // {name: "PI", type: types.f64, scope: types.Math},
   ].reverse();
-  
-  function parseFunction(js, returnType, scope, name, ...parameters) {
-    const formattedParameters = [];
-    for (let i = 0; i < parameters.length; i += 3) {
-      const param = {
-        name: parameters[i + 1],
-        type: classMap.get(parameters[i]),
-        default: parameters[i + 2]
-      };
+  this.variables.builtinNameMapping = {};
 
-      if (param.default !== undefined) {
-        param.name += "\n= ";
+  function parseFunction(scope, name, ...overloads) {
+    const formattedOverloads = [];
 
-        if (typeof param.default === "string") {
-          param.name += `"${param.default.replace("\n", "\\n")}"`;
-        } else {
-          param.name += param.default;
-        }
+    for (const overload of overloads) {
+      const formattedOverload = {
+        importedFuncIndex: overload[0],
+        returnType: overload[1],
+        parameters: [],
       }
 
-      formattedParameters.push(param);
+      for (let i = 2; i < overload.length; i += 3) {
+        const param = {
+          type: overload[i],
+          name: overload[i + 1],
+          default: overload[i + 2],
+        };
+
+        if (param.default !== undefined) {  
+          if (param.type === types.string) {
+            param.name += `\n"${param.default.replace("\n", "\\n")}"`;
+          } else {
+            param.name += "\n" + param.default;
+          }
+        }
+  
+        formattedOverload.parameters.push(param);
+      }
+
+      formattedOverloads.push(formattedOverload);
     }
     
     return {
-      js,
-      scope: classMap.get(scope),
-      returnType: classMap.get(returnType),
+      scope,
       name,
-      parameters: formattedParameters
+      overloads: formattedOverloads,
     };
   }
-  
-  /* The .js property prepresents the equivalent javascript function to use when translating. */
-  this.functions = [
-    parseFunction("stride", "Iterable", "Iterable", "range", "Int32", "start", 0, "Int32", "end", undefined, "Int32", "step", 1),
-    parseFunction("Math.cos", "Double", "Math", "cos", "Double", "angle", undefined),
-    parseFunction("Math.sin", "Double", "Math", "sin", "Double", "angle", undefined),
-    parseFunction("Math.tan", "Double", "Math", "tan", "Double", "angle", undefined),
-    parseFunction("Math.acos", "Double", "Math", "acos", "Double", "x/r", undefined),
-    parseFunction("Math.asin", "Double", "Math", "asin", "Double", "y/r", undefined),
-    parseFunction("Math.atan", "Double", "Math", "atan", "Double", "y/x", undefined),
-    parseFunction("Math.atan2", "Double", "Math", "atan2", "Double", "y", undefined, "Double", "x", undefined),
-    parseFunction("Math.min", "Double", "Math", "min", "Double", "a", undefined, "Double", "b", undefined),
-    parseFunction("Math.max", "Double", "Math", "max", "Double", "a", undefined, "Double", "b", undefined),
-    parseFunction("Math.random", "Double", "Math", "random"),
-    parseFunction("Math.abs", "Double", "Math", "abs", "Double", "number", undefined),
-    parseFunction("Math.sign", "Double", "Math", "sign", "Double", "number", undefined),
-    parseFunction("Math.sqrt", "Double", "Math", "sqrt", "Double", "number", undefined),
-    parseFunction("Math.power", "Double", "Math", "power", "Double", "base", undefined, "Double", "exponent", undefined),
-    parseFunction("Math.exp", "Double", "Math", "exp", "Double", "exponent", undefined),
-    parseFunction("Math.log", "Double", "Math", "log", "Double", "number", undefined),
-    parseFunction("Math.round", "Double", "Math", "round", "Double", "number", undefined),
-    parseFunction("Math.floor", "Double", "Math", "floor", "Double", "number", undefined),
-    parseFunction("Math.ceil", "Double", "Math", "ceil", "Double", "number", undefined),
-    parseFunction("print", "void", "System", "print", "Any", "item", "", "String", "terminator", "\n", "Boolean", "word wrap", false),
-  ].reverse();
+
+  const builtinFunctions = [
+    parseFunction(types.System, "print",
+      [-1, types.void, types.Any, "item", undefined],
+      [0, types.void, types.string, "item", undefined],
+      [1, types.void, types.u32, "item", undefined],
+      [2, types.void, types.i32, "item", undefined],
+      [3, types.void, types.f32, "item", undefined],
+      [4, types.void, types.f64, "item", undefined],
+      [7, types.void, types.u64, "item", undefined],
+      [8, types.void, types.i64, "item", undefined],
+    ),
+    parseFunction(types.System, "input",
+      [5, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
+    ),
+  ];
+
+  this.functions = {data: [], builtinNameMapping: {}};
+  for (const builtin of builtinFunctions) {
+    const scope = this.types.data[(builtin.scope + this.types.data.length) & 0x3FF];
+    const identifier = scope.name + "_" + builtin.name;
+    this.functions.builtinNameMapping[identifier] = (-this.functions.data.length - 1) & 0xFFFF;
+
+    for (const overload of builtin.overloads) {
+      this.functions.data.push({
+        name: builtin.name,
+        scope: builtin.scope,
+        importedFuncIndex: overload.importedFuncIndex,
+        returnType: overload.returnType,
+        parameters: overload.parameters,
+      });
+    }
+  }
+  this.functions.data.reverse();
   
   this.symbols = [
-    "=", //asignment operators
-    "+=",
-    "-=",
-    "*=",
-    "/=",
-    "%=",
-    "^=", //integer-specific assignment operators
-    "&=",
-    "|=",
-    "<<=",
-    ">>=",
-    "+", //arithmetic operators
-    "-",
-    "*",
-    "/",
-    "%",
-    "^", //integer-specific operators
-    "&",
-    "|",
-    "<<",
-    ">>",
-    "&&", //boolean binary operators
-    "||",
-    "===", //reference-specific comparison operators
-    "!==",
-    "==", //comparison operators
-    "!=",
-    ">",
-    "<",
-    ">=",
-    "<=",
-    "+", //string concatenation
-    "*", //string repetition
-    "U", //union operator
-    "??", //nil-coalescing operator
-    "...", //half-open range operator
-    "..", //closed range operator
-    ":", //range step operator
-    "+", //unary operators
-    "-",
-    "!", //boolean unary operator
-    "~", //bitwise unary operator
-    "*", //spread operator
-    "____", //misc
-    ",", //argument separator
-    ".", //property accessor
-    "?", //first part of ternary conditional operator
-    ":", //second part of ternary conditional operator
-    "(", //subexpression start
-    "(", //function arguments start
-    "[", //subscript start
-    "【", //array literal start
-    "{", //dictionary literal start
-    ")", //subexpression end
-    ")", //function arguments end
-    "]", //subscript end
-    "】", //array literal end
-    "}", //dictionary literal end
+    new TSSymbol("=", 0), //asignment operators
+    new TSSymbol("+=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_add],
+      [types.u32, types.u32, Wasm.opcodes.i32_add],
+      [types.i64, types.i64, Wasm.opcodes.i64_add],
+      [types.u64, types.u64, Wasm.opcodes.i64_add],
+      [types.f32, types.f32, Wasm.opcodes.f32_add],
+      [types.f64, types.f64, Wasm.opcodes.f64_add],
+    ),
+    new TSSymbol("-=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_sub],
+      [types.u32, types.u32, Wasm.opcodes.i32_sub],
+      [types.i64, types.i64, Wasm.opcodes.i64_sub],
+      [types.u64, types.u64, Wasm.opcodes.i64_sub],
+      [types.f32, types.f32, Wasm.opcodes.f32_sub],
+      [types.f64, types.f64, Wasm.opcodes.f64_sub],
+    ),
+    new TSSymbol("*=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_mul],
+      [types.u32, types.u32, Wasm.opcodes.i32_mul],
+      [types.i64, types.i64, Wasm.opcodes.i64_mul],
+      [types.u64, types.u64, Wasm.opcodes.i64_mul],
+      [types.f32, types.f32, Wasm.opcodes.f32_mul],
+      [types.f64, types.f64, Wasm.opcodes.f64_mul],
+    ),
+    new TSSymbol("/=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_div_s],
+      [types.u32, types.u32, Wasm.opcodes.i32_div_u],
+      [types.i64, types.i64, Wasm.opcodes.i64_div_s],
+      [types.u64, types.u64, Wasm.opcodes.i64_div_u],
+      [types.f32, types.f32, Wasm.opcodes.f32_div_s],
+      [types.f64, types.f64, Wasm.opcodes.f64_div_u],
+    ),
+    new TSSymbol("%=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_rem_s],
+      [types.u32, types.u32, Wasm.opcodes.i32_rem_u],
+      [types.i64, types.i64, Wasm.opcodes.i64_rem_s],
+      [types.u64, types.u64, Wasm.opcodes.i64_rem_u],
+    ),
+    new TSSymbol("&=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_and],
+      [types.u32, types.u32, Wasm.opcodes.i32_and],
+      [types.i64, types.i64, Wasm.opcodes.i64_and],
+      [types.u64, types.u64, Wasm.opcodes.i64_and],
+    ),//integer-specific assignment operators
+    new TSSymbol("|=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_or],
+      [types.u32, types.u32, Wasm.opcodes.i32_or],
+      [types.i64, types.i64, Wasm.opcodes.i64_or],
+      [types.u64, types.u64, Wasm.opcodes.i64_or],
+    ),
+    new TSSymbol("^=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_xor],
+      [types.u32, types.u32, Wasm.opcodes.i32_xor],
+      [types.i64, types.i64, Wasm.opcodes.i64_xor],
+      [types.u64, types.u64, Wasm.opcodes.i64_xor],
+    ),
+    new TSSymbol("<<=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_shl],
+      [types.u32, types.u32, Wasm.opcodes.i32_shl],
+      [types.i64, types.i64, Wasm.opcodes.i64_shl],
+      [types.u64, types.u64, Wasm.opcodes.i64_shl],
+    ),
+    new TSSymbol(">>=", 0, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_shr_s],
+      [types.u32, types.u32, Wasm.opcodes.i32_shr_u],
+      [types.i64, types.i64, Wasm.opcodes.i64_shr_s],
+      [types.u64, types.u64, Wasm.opcodes.i64_shr_u],
+    ),
+    new TSSymbol("+", 8, undefined, //arithmetic operators
+      [types.i32, types.i32, Wasm.opcodes.i32_add],
+      [types.u32, types.u32, Wasm.opcodes.i32_add],
+      [types.i64, types.i64, Wasm.opcodes.i64_add],
+      [types.u64, types.u64, Wasm.opcodes.i64_add],
+      [types.f32, types.f32, Wasm.opcodes.f32_add],
+      [types.f64, types.f64, Wasm.opcodes.f64_add],
+    ),
+    new TSSymbol("-", 8, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_sub],
+      [types.u32, types.u32, Wasm.opcodes.i32_sub],
+      [types.i64, types.i64, Wasm.opcodes.i64_sub],
+      [types.u64, types.u64, Wasm.opcodes.i64_sub],
+      [types.f32, types.f32, Wasm.opcodes.f32_sub],
+      [types.f64, types.f64, Wasm.opcodes.f64_sub],
+    ),
+    new TSSymbol("*", 9, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_mul],
+      [types.u32, types.u32, Wasm.opcodes.i32_mul],
+      [types.i64, types.i64, Wasm.opcodes.i64_mul],
+      [types.u64, types.u64, Wasm.opcodes.i64_mul],
+      [types.f32, types.f32, Wasm.opcodes.f32_mul],
+      [types.f64, types.f64, Wasm.opcodes.f64_mul],
+   ),
+    new TSSymbol("/", 9, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_div_s],
+      [types.u32, types.u32, Wasm.opcodes.i32_div_u],
+      [types.i64, types.i64, Wasm.opcodes.i64_div_s],
+      [types.u64, types.u64, Wasm.opcodes.i64_div_u],
+      [types.f32, types.f32, Wasm.opcodes.f32_div_s],
+      [types.f64, types.f64, Wasm.opcodes.f64_div_u],
+   ),
+    new TSSymbol("%", 9, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_rem_s],
+      [types.u32, types.u32, Wasm.opcodes.i32_rem_u],
+      [types.i64, types.i64, Wasm.opcodes.i64_rem_s],
+      [types.u64, types.u64, Wasm.opcodes.i64_rem_u],
+    ),
+    new TSSymbol("&", 6, undefined, //integer-specific operators
+      [types.i32, types.i32, Wasm.opcodes.i32_and],
+      [types.u32, types.u32, Wasm.opcodes.i32_and],
+      [types.i64, types.i64, Wasm.opcodes.i64_and],
+      [types.u64, types.u64, Wasm.opcodes.i64_and],
+    ),
+    new TSSymbol("|", 4, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_or],
+      [types.u32, types.u32, Wasm.opcodes.i32_or],
+      [types.i64, types.i64, Wasm.opcodes.i64_or],
+      [types.u64, types.u64, Wasm.opcodes.i64_or],
+    ),
+    new TSSymbol("^", 5, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_xor],
+      [types.u32, types.u32, Wasm.opcodes.i32_xor],
+      [types.i64, types.i64, Wasm.opcodes.i64_xor],
+      [types.u64, types.u64, Wasm.opcodes.i64_xor],
+    ),
+    new TSSymbol("<<", 7, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_shl],
+      [types.u32, types.u32, Wasm.opcodes.i32_shl],
+      [types.i64, types.i64, Wasm.opcodes.i64_shl],
+      [types.u64, types.u64, Wasm.opcodes.i64_shl],
+    ),
+    new TSSymbol(">>", 7, undefined,
+      [types.i32, types.i32, Wasm.opcodes.i32_shr_s],
+      [types.u32, types.u32, Wasm.opcodes.i32_shr_u],
+      [types.i64, types.i64, Wasm.opcodes.i64_shr_s],
+      [types.u64, types.u64, Wasm.opcodes.i64_shr_u],
+    ),
+    new TSSymbol("&&", 2, undefined, //boolean binary operators
+      [types.bool, types.bool, Wasm.opcodes.i32_and],
+    ),
+    new TSSymbol("||", 1, undefined,
+      [types.bool, types.bool, Wasm.opcodes.i32_or],
+    ),
+    new TSSymbol("===", 3), //reference-specific comparison operators
+    new TSSymbol("!==", 3),
+    new TSSymbol("==", 3, undefined,
+      [types.bool, types.i32, Wasm.opcodes.i32_eq],
+      [types.bool, types.u32, Wasm.opcodes.i32_eq],
+      [types.bool, types.i64, Wasm.opcodes.i64_eq],
+      [types.bool, types.u64, Wasm.opcodes.i64_eq],
+    ), //comparison operators
+    new TSSymbol("!=", 3, undefined,
+      [types.bool, types.i32, Wasm.opcodes.i32_eq, Wasm.opcodes.i32_eqz],
+      [types.bool, types.u32, Wasm.opcodes.i32_eq, Wasm.opcodes.i32_eqz],
+      [types.bool, types.i64, Wasm.opcodes.i64_eq, Wasm.opcodes.i64_eqz],
+      [types.bool, types.u64, Wasm.opcodes.i64_eq, Wasm.opcodes.i64_eqz],
+    ),
+    new TSSymbol(">", 3, undefined,
+      [types.bool, types.i32, Wasm.opcodes.i32_gt_s],
+      [types.bool, types.u32, Wasm.opcodes.i32_gt_u],
+      [types.bool, types.i64, Wasm.opcodes.i64_gt_s],
+      [types.bool, types.u64, Wasm.opcodes.i64_gt_u],
+    ),
+    new TSSymbol("<", 3, undefined,
+      [types.bool, types.i32, Wasm.opcodes.i32_lt_s],
+      [types.bool, types.u32, Wasm.opcodes.i32_lt_u],
+      [types.bool, types.i64, Wasm.opcodes.i64_lt_s],
+      [types.bool, types.u64, Wasm.opcodes.i64_lt_u],
+    ),
+    new TSSymbol(">=", 3, undefined,
+      [types.bool, types.i32, Wasm.opcodes.i32_ge_s],
+      [types.bool, types.u32, Wasm.opcodes.i32_ge_u],
+      [types.bool, types.i64, Wasm.opcodes.i64_ge_s],
+      [types.bool, types.u64, Wasm.opcodes.i64_ge_u],
+    ),
+    new TSSymbol("<=", 3, undefined,
+      [types.bool, types.i32, Wasm.opcodes.i32_le_s],
+      [types.bool, types.u32, Wasm.opcodes.i32_le_u],
+      [types.bool, types.i64, Wasm.opcodes.i64_le_s],
+      [types.bool, types.u64, Wasm.opcodes.i64_le_u],
+    ),
+    new TSSymbol("..<", 0, {isFoldable: false}, //half-open range operator
+      [types.Iterable, types.i32, Wasm.opcodes.i32_lt_s, Wasm.opcodes.i32_add],
+      [types.Iterable, types.u32, Wasm.opcodes.i32_lt_u, Wasm.opcodes.i32_add],
+      [types.Iterable, types.i64, Wasm.opcodes.i64_lt_s, Wasm.opcodes.i64_add],
+      [types.Iterable, types.u64, Wasm.opcodes.i64_lt_u, Wasm.opcodes.i64_add],
+      [types.Iterable, types.f32, Wasm.opcodes.f32_lt, Wasm.opcodes.f32_add],
+      [types.Iterable, types.f64, Wasm.opcodes.f64_lt, Wasm.opcodes.f64_add],
+    ),
+    new TSSymbol("..<=", 0, {isFoldable: false}, //closed range operator
+      [types.Iterable, types.i32, Wasm.opcodes.i32_le_s, Wasm.opcodes.i32_add],
+      [types.Iterable, types.u32, Wasm.opcodes.i32_le_u, Wasm.opcodes.i32_add],
+      [types.Iterable, types.i64, Wasm.opcodes.i64_le_s, Wasm.opcodes.i64_add],
+      [types.Iterable, types.u64, Wasm.opcodes.i64_le_u, Wasm.opcodes.i64_add],
+      [types.Iterable, types.f32, Wasm.opcodes.f32_le, Wasm.opcodes.f32_add],
+      [types.Iterable, types.f64, Wasm.opcodes.f64_le, Wasm.opcodes.f64_add],
+    ),
+    new TSSymbol("..>", 0, {isFoldable: false}, //reversed half-open range operator
+      [types.Iterable, types.i32, Wasm.opcodes.i32_gt_s, Wasm.opcodes.i32_sub],
+      [types.Iterable, types.u32, Wasm.opcodes.i32_gt_u, Wasm.opcodes.i32_sub],
+      [types.Iterable, types.i64, Wasm.opcodes.i64_gt_s, Wasm.opcodes.i64_sub],
+      [types.Iterable, types.u64, Wasm.opcodes.i64_gt_u, Wasm.opcodes.i64_sub],
+      [types.Iterable, types.f32, Wasm.opcodes.f32_gt, Wasm.opcodes.f32_sub],
+      [types.Iterable, types.f64, Wasm.opcodes.f64_gt, Wasm.opcodes.f64_sub],
+    ),
+    new TSSymbol("..>=", 0, {isFoldable: false}, //reversed closed range operator
+      [types.Iterable, types.i32, Wasm.opcodes.i32_ge_s, Wasm.opcodes.i32_sub],
+      [types.Iterable, types.u32, Wasm.opcodes.i32_ge_u, Wasm.opcodes.i32_sub],
+      [types.Iterable, types.i64, Wasm.opcodes.i64_ge_s, Wasm.opcodes.i64_sub],
+      [types.Iterable, types.u64, Wasm.opcodes.i64_ge_u, Wasm.opcodes.i64_sub],
+      [types.Iterable, types.f32, Wasm.opcodes.f32_ge, Wasm.opcodes.f32_sub],
+      [types.Iterable, types.f64, Wasm.opcodes.f64_ge, Wasm.opcodes.f64_sub],
+    ),
+    new TSSymbol("-", 10, {isUnary: true}, //arithmetic negation operator
+      [types.i32, types.i32, Wasm.opcodes.i32_const, 0, Wasm.opcodes.i32_sub],
+      [types.u32, types.u32, Wasm.opcodes.i32_const, 0, Wasm.opcodes.i32_sub],
+      [types.i64, types.i64, Wasm.opcodes.i64_const, 0, Wasm.opcodes.i64_sub],
+      [types.u64, types.u64, Wasm.opcodes.i64_const, 0, Wasm.opcodes.i64_sub],
+    ),
+    new TSSymbol("!", 10, {isUnary: true}, //binary or bitwise negation operator
+      [types.boolean, Wasm.opcodes.i32_eqz],
+      [types.i32, types.i32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
+      [types.u32, types.u32, Wasm.opcodes.i32_const, ...Wasm.varint(-1), Wasm.opcodes.i32_xor],
+      [types.i64, types.i64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
+      [types.u64, types.u64, Wasm.opcodes.i64_const, ...Wasm.varint(-1), Wasm.opcodes.i64_xor],
+    ),
+    new TSSymbol("____", 0), //misc
+    new TSSymbol(",", 0), //argument separator
+    new TSSymbol(".", 0), //property accessor
+    new TSSymbol("(", 0), //subexpression start
+    new TSSymbol("⟨", 0), //function arguments start
+    new TSSymbol(")", 0), //subexpression end
+    new TSSymbol("⟩", 0), //function arguments end
   ];
   
   this.keywords = [
-    {name: "func",     js: ""},
-    {name: "let",      js: "const"},
-    {name: "var",      js: "let"},
-    {name: "if",       js: "if ("},
-    {name: "else",     js: "else"},
-    {name: "for",      js: "for ("},
-    {name: "in",       js: "of"},
-    {name: "while",    js: "while ("},
-    {name: "do while", js: "do ("},
-    {name: "switch",   js: "switch ("},
-    {name: "case",     js: "case"},
-    {name: "default",  js: "default"},
-    {name: "return",   js: "return"},
-    {name: "break",    js: "break"},
-    {name: "continue", js: "continue"},
+    {name: "func"},
+    {name: "let"},
+    {name: "var"},
+    {name: "if"},
+    {name: "else"},
+    {name: "for"},
+    {name: "in"},
+    {name: "while"},
+    {name: "do while"},
+    {name: "switch"},
+    {name: "case"},
+    {name: "default"},
+    {name: "return"},
+    {name: "break"},
+    {name: "continue"},
+    {name: "step"},
   ];
 }
