@@ -111,7 +111,7 @@ class Script {
     this.ITEMS.END_ARGUMENTS       = this.ITEMS.END_SUBEXPRESSION + 1;
     this.ITEMS.COMMA               = makeSymbol(",");
     this.ITEMS.UNDERSCORE          = makeSymbol("____");
-    this.ITEMS.HALF_OPEN_RANGE     = makeSymbol("..");
+    this.ITEMS.HALF_OPEN_RANGE     = makeSymbol("..<");
 
     this.ITEMS.FALSE = makeLiteral("false", 0);
     this.ITEMS.TRUE  = makeLiteral("true", 0);
@@ -2200,7 +2200,7 @@ class Script {
       ...Wasm.varuint(1), //1 data segment
 
       0, //memory index 0
-      Wasm.opcodes.i32_const, Wasm.varint(0), Wasm.opcodes.end, //place memory at address 0
+      Wasm.opcodes.i32_const, Wasm.varint(0), Wasm.opcodes.end, //fill memory starting at address 0
       ...Wasm.varuint(linearMemoryInitialValues.length), //count of bytes to fill in
       ...linearMemoryInitialValues,
     ];

@@ -303,8 +303,17 @@ function BuiltIns() {
       [types.i64, Wasm.opcodes.i64_le_s],
       [types.u64, Wasm.opcodes.i64_le_u],
     ),
-    new TSSymbol("..", 0), //half-open range operator
-    new TSSymbol("..=", 0), //closed range operator
+    new TSSymbol("..<", 0, true,
+      [types.i32, Wasm.opcodes.i32_lt_s],
+      [types.u32, Wasm.opcodes.i32_lt_u],
+      [types.i64, Wasm.opcodes.i64_lt_s],
+      [types.u64, Wasm.opcodes.i64_lt_u],
+      [types.f32, Wasm.opcodes.i32_lt],
+      [types.f64, Wasm.opcodes.i64_lt],
+    ), //half-open range operator
+    new TSSymbol("..<=", 0), //closed range operator
+    new TSSymbol("..>", 0), //reversed half-open range operator
+    new TSSymbol("..>=", 0), //reversed closed range operator
     new TSSymbol("-", 10, true, //arithmetic negation operator
       [types.i32, Wasm.opcodes.i32_const, 0, Wasm.opcodes.i32_sub],
       [types.u32, Wasm.opcodes.i32_const, 0, Wasm.opcodes.i32_sub],
