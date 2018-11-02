@@ -229,13 +229,14 @@ class Script {
     }
 
     this.ASSIGNMENT_OPERATORS = new Operator(0, 11);
-    this.BINARY_OPERATORS = new Operator(11, 31);
-    this.UNARY_OPERATORS = new Operator(33, 35);
+    this.BINARY_OPERATORS = new Operator(11, 35);
     this.ARITHMETIC_OPERATORS = new Operator(11, 23);
     this.COMPARRISON_OPERATORS = new Operator(25, 31);
-    this.START_BRACKETS = new Operator(38, 40);
-    this.END_BRACKETS = new Operator(40, 42);
-    this.OPERATORS = new Operator(0, 35);
+    this.RANGE_OPERATORS = new Operator(31, 35);
+    this.UNARY_OPERATORS = new Operator(35, 37);
+    this.OPERATORS = new Operator(0, 37);
+    this.START_BRACKETS = new Operator(41, 43);
+    this.END_BRACKETS = new Operator(43, 45);
 
     this.UNARY_OPERATORS.postfix = " ____"
   }
@@ -347,6 +348,10 @@ class Script {
 
     if (col === 2 && this.ASSIGNMENT_OPERATORS.includes(item)) {
       return this.ASSIGNMENT_OPERATORS.getMenuItems();
+    }
+
+    if (this.RANGE_OPERATORS.includes(item)) {
+      return this.RANGE_OPERATORS.getMenuItems();
     }
 
     let options = [{text: "", style: "delete", payload: this.PAYLOADS.DELETE_ITEM}];
@@ -885,7 +890,12 @@ class Script {
           } else if (this.UNARY_OPERATORS.includes(this.getItem(row, col - 1))) {
             this.spliceRow(row, col - 1, 1);
             return {rowUpdated: true, selectedCol: col - 1};
+          } else if (this.getItem(row, col -1) === this.ITEMS.COMMA) {
+            this.spliceRow(row, col - 1, 2);
+            return {rowUpdated: true, selectedCol: col - 1};
           }
+          console.trace();
+          throw "unhandled underscore delection";
         }
         else if (item === this.ITEMS.IF) {
           this.spliceRow(row, col, this.getItemCount(row) - col);
@@ -924,7 +934,15 @@ class Script {
 
             if (funcID > -1) {
               if (funcID === this.funcs.builtins.System_print) {
-                paramIndex = 0;
+                //when removing an argument to print, just delete the argument since it's just an Any[] paramater
+                if (paramIndex > 0) {
+                  this.spliceRow(row, col - 1, 2);
+                  return {rowUpdated: true, selectedCol: col - 1};
+                }
+                if (paramIndex === 0 && this.getItem(row, col + 1) === this.ITEMS.COMMA) {
+                  this.spliceRow(row, col, 2);
+                  return {rowUpdated: true};
+                }
               }
               this.spliceRow(row, start, end - start + 1, Script.makeItem({format: Script.ARGUMENT_HINT, meta: paramIndex, value: funcID}));
             } else {
@@ -938,7 +956,10 @@ class Script {
           }
           return {rowUpdated: true, selectedCol: isAppending ? 0 : start};
         }
-      }
+
+        console.trace();
+        throw "Reached bottom of DELETE_ITEM without hitting a case";
+      } break;
 
       case this.PAYLOADS.UNWRAP_PARENTHESIS: {
         const [start, end] = this.getExpressionBounds(row, col);
@@ -1752,7 +1773,7 @@ class Script {
         }
       }
 
-      getType(expectedType) {
+      getType(expectedType = parent.types.builtins.Any) {
         if (expectedType !== parent.types.builtins.Any) {
           return expectedType;
         }
@@ -1825,18 +1846,18 @@ class Script {
               if (rightOperand.constructor === NumericLiteral) {
                 rightOperand.performUnaryOp(operator.appearance);
               } else {
-                const operationWasmCode = operator.uses.get(rightOperand.getType());
-                operands.push(new Placeholder(rightOperand.getType(), ...rightOperand.getWasmCode(), ...operationWasmCode));
+                const {resultType, wasmCode} = operator.uses.get(rightOperand.getType());
+                operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
               }
             } else {
               const leftOperand = operands.pop();
-              if (leftOperand.constructor === NumericLiteral && rightOperand.constructor === NumericLiteral) {
+              if (operator.isFoldable && leftOperand.constructor === NumericLiteral && rightOperand.constructor === NumericLiteral) {
                 leftOperand.performBinaryOp(operator.appearance, rightOperand);
                 operands.push(leftOperand);
               } else {
                 const type = rightOperand.getType(leftOperand.getType());
-                const operationWasmCode = operator.uses.get(type);
-                operands.push(new Placeholder(type, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...operationWasmCode));
+                const {resultType, wasmCode} = operator.uses.get(type);
+                operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
               }
             }
           }
@@ -1858,14 +1879,15 @@ class Script {
 
     const functionsBeingCalled = [];
     const expression = [];
-    const localVarMap = []; //maps local vars to varIDs
-    let lvalueType;
-    const endOfStatementInstructions = [];
+    const localVarMapping = []; //maps local var indexes to TouchScript varIDs
+    let lvalueType, lvalueLocalIndex;
+    const endOfLineInstructions = [];
     const endOfScopeInstructions = [];
     const linearMemoryInitialValues = [];
 
     for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
       lvalueType = this.types.builtins.void;
+      lvalueLocalIndex = -1;
       
       if (row > 0) {
         let scopeDrop = this.getIndentation(row - 1) - this.getIndentation(row);
@@ -1882,19 +1904,19 @@ class Script {
         const {format, meta, value} = Script.getItemData(item);
 
         switch (format) {
-          case Script.VARIABLE_DEFINITION:
-            expression.push(new LocalVarReference(localVarMap.length, this.vars.get(value)));
-            localVarMap.push({id: value, type: meta});
-            break;
+          case Script.VARIABLE_DEFINITION: {
+            expression.push(new LocalVarReference(localVarMapping.length, this.vars.get(value)));
+            localVarMapping.push({id: value, type: meta});
+          } break;
           
-          case Script.VARIABLE_REFERENCE:
-            const localIndex = localVarMap.findIndex(localVar => localVar.id === value);
+          case Script.VARIABLE_REFERENCE: {
+            const localIndex = localVarMapping.findIndex(localVar => localVar.id === value);
             if (localIndex === -1) {
               throw "var" + value + " is referenced before it is declared";
             }
             
-            expression.push(new LocalVarReference(localIndex, localVarMap[localIndex]));
-            break;
+            expression.push(new LocalVarReference(localIndex, localVarMapping[localIndex]));
+          } break;
           
           case Script.FUNCTION_REFERENCE:
             functionsBeingCalled.push(value);
@@ -1915,14 +1937,15 @@ class Script {
             if (this.ASSIGNMENT_OPERATORS.includes(item)) {
               const localVar = expression.pop();
               lvalueType = localVar.getType();
+              lvalueLocalIndex = localVar.index;
               
               if (item !== this.ITEMS.EQUALS) {
                 initFunction.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
                 const wasmCode = this.symbols[value].uses.get(lvalueType);
-                endOfStatementInstructions.push(...wasmCode);
+                endOfLineInstructions.push(...wasmCode);
               }
               
-              endOfStatementInstructions.push(Wasm.opcodes.set_local, localVar.index);
+              endOfLineInstructions.push(Wasm.opcodes.set_local, localVar.index);
             }
 
             let expressionType = this.types.builtins.void;
@@ -1987,16 +2010,16 @@ class Script {
           case Script.KEYWORD: {
             switch (item) {
               case this.ITEMS.IF: {
-                endOfStatementInstructions.push(Wasm.opcodes.if, Wasm.types.void);
+                endOfLineInstructions.push(Wasm.opcodes.if, Wasm.types.void);
                 endOfScopeInstructions.push([Wasm.opcodes.end]);
               } break;
               case this.ITEMS.ELSE: {
-                endOfStatementInstructions.push(Wasm.opcodes.else);
+                endOfLineInstructions.push(Wasm.opcodes.else);
                 endOfScopeInstructions.push([]);
               } break;
               case this.ITEMS.WHILE: {
                 initFunction.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
-                endOfStatementInstructions.push(Wasm.opcodes.i32_eqz, Wasm.opcodes.br_if, 1);
+                endOfLineInstructions.push(Wasm.opcodes.i32_eqz, Wasm.opcodes.br_if, 1);
                 endOfScopeInstructions.push([Wasm.opcodes.br, 0, Wasm.opcodes.end, Wasm.opcodes.end]);
               } break;
               case this.ITEMS.DO_WHILE: {
@@ -2004,39 +2027,13 @@ class Script {
                 endOfScopeInstructions.push([Wasm.opcodes.br_if, 0, Wasm.opcodes.end, Wasm.opcodes.end]);
               } break;
               case this.ITEMS.BREAK: {
-                endOfStatementInstructions.push(Wasm.opcodes.br, 1);
+                endOfLineInstructions.push(Wasm.opcodes.br, 1);
               }
-              case this.ITEMS.FOR: { //compile the entire line at once
-                //TODO at the moment assumes that the iterable is a range between two numeric literals
-                initFunction.push(Wasm.opcodes.block, Wasm.types.void);
-                const {value} = this.getData(row, col + 1);
-                const loopingVar = this.vars.get(value);
-                localVarMap.push({id: value, type: loopingVar.type});
-                const localIndex = localVarMap.findIndex(v => v.id === value);
-                const startValRep = (new NumericLiteral(this.literals.get(this.getItem(row, col + 3)))).getWasmCode(loopingVar.type);
-                const endValRep = (new NumericLiteral(this.literals.get(this.getItem(row, col + 5)))).getWasmCode(loopingVar.type);
-                const incValRep = (new NumericLiteral(1)).getWasmCode(loopingVar.type);
-                const exitCondCode = this.symbolMapping.get(">=").uses.get(loopingVar.type);
-                const incrementWasmCode = this.symbolMapping.get("+").uses.get(loopingVar.type);
-                
-                initFunction.push(...startValRep);
-                initFunction.push(Wasm.opcodes.set_local, localIndex);
-                initFunction.push(Wasm.opcodes.loop, Wasm.types.void);
-                initFunction.push(Wasm.opcodes.get_local, localIndex);
-                initFunction.push(...endValRep);
-                initFunction.push(...exitCondCode);
-                initFunction.push(Wasm.opcodes.br_if, 1);
-                
-                endOfScopeInstructions.push([
-                  Wasm.opcodes.get_local, localIndex,
-                  ...incValRep,
-                  ...incrementWasmCode,
-                  Wasm.opcodes.set_local, localIndex,
-                  Wasm.opcodes.br, 0,
-                  Wasm.opcodes.end, Wasm.opcodes.end
-                ]);
-                col = 10000;
-              } break;
+              case this.ITEMS.IN: {
+                const localVar = expression.pop(); //consume the looping variable reference
+                lvalueType = localVar.getType();
+                lvalueLocalIndex = localVar.index;
+              }
             }
           }
 
@@ -2056,23 +2053,59 @@ class Script {
 
       //end of line delimits expression
       if (expression.length > 0) {
-        const [expressionType, wasmCode] = compileExpression(expression, lvalueType);
-
+        const [, wasmCode] = compileExpression(expression, lvalueType);
         expression.length = 0;
+
         if (this.getItem(row, 1) === this.ITEMS.DO_WHILE) {
           //move the expression to right before the conditional loop branch
           endOfScopeInstructions[endOfScopeInstructions.length - 1].unshift(...wasmCode);
+        } else if (this.getItem(row, 1) === this.ITEMS.FOR) {
+          //The wasmCode array has code that produces a start value and an end value on the
+          //operand stack, then a comparison opcode, then an increment opcode (typed add or sub).
+          //Backup the comparison opcode for the break condition and the increment opcode for
+          //the end of the loop body, then the start and stop values.
+          const lvar = this.vars.get(localVarMapping[lvalueLocalIndex]);
+
+          //create a new local var with the same type as the looping var to hold the end value
+          const endValLocalIndex = localVarMapping.length;
+          localVarMapping.push({id: -1, type: lvar.type});
+
+          //for now, the increment is always 1 of the looping var's type
+          const incValRep = (new NumericLiteral(1)).getWasmCode(lvar.type);
+          const incrementOpcode = wasmCode.pop();
+          const comparisonOpcode = wasmCode.pop();
+
+          initFunction.push(...wasmCode);
+          initFunction.push(Wasm.opcodes.set_local, endValLocalIndex);
+          initFunction.push(Wasm.opcodes.set_local, lvalueLocalIndex);
+
+          initFunction.push(Wasm.opcodes.block, Wasm.types.void);
+          initFunction.push(Wasm.opcodes.loop, Wasm.types.void);
+
+          initFunction.push(Wasm.opcodes.get_local, lvalueLocalIndex);
+          initFunction.push(Wasm.opcodes.get_local, endValLocalIndex);
+          initFunction.push(comparisonOpcode, Wasm.opcodes.i32_eqz);
+          initFunction.push(Wasm.opcodes.br_if, 1);
+          
+          endOfScopeInstructions.push([
+            Wasm.opcodes.get_local, lvalueLocalIndex,
+            ...incValRep,
+            incrementOpcode,
+            Wasm.opcodes.set_local, lvalueLocalIndex,
+            Wasm.opcodes.br, 0,
+            Wasm.opcodes.end, Wasm.opcodes.end
+          ]);
         } else {
           initFunction.push(...wasmCode);
-          if (endOfStatementInstructions.length === 0) {
+          if (endOfLineInstructions.length === 0) {
             initFunction.push(Wasm.opcodes.drop);
           }
         }
       }
       
-      if (endOfStatementInstructions.length > 0) {
-        initFunction.push(...endOfStatementInstructions);
-        endOfStatementInstructions.length = 0;
+      if (endOfLineInstructions.length > 0) {
+        initFunction.push(...endOfLineInstructions);
+        endOfLineInstructions.length = 0;
       }
     }
     
@@ -2081,11 +2114,11 @@ class Script {
     }
 
     const localVarDefinition = [
-      ...Wasm.varuint(localVarMap.length), //count of local entries (count and type pairs, not total locals)
+      ...Wasm.varuint(localVarMapping.length), //count of local entries (count and type pairs, not total locals)
     ];
 
     //at the moment, I make no attempt to collapse repeating types into a single type description
-    for (let local of localVarMap) {
+    for (let local of localVarMapping) {
       let type = 0;
       switch (local.type) {
         case this.types.builtins.i32:
