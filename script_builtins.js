@@ -59,7 +59,7 @@ function BuiltIns() {
 
     for (const overload of overloads) {
       const formattedOverload = {
-        importedFuncIndex: overload[0],
+        ...overload[0],
         returnType: overload[1],
         parameters: [],
       }
@@ -72,7 +72,7 @@ function BuiltIns() {
         };
 
         if (param.default !== undefined) {  
-          if (param.type === types.string) {
+          if (typeof param.default === "string") {
             param.name += `\n"${param.default.replace("\n", "\\n")}"`;
           } else {
             param.name += "\n" + param.default;
@@ -94,17 +94,70 @@ function BuiltIns() {
 
   const builtinFunctions = [
     parseFunction(types.System, "print",
-      [-1, types.void, types.Any, "item", undefined],
-      [0, types.void, types.string, "item", undefined],
-      [1, types.void, types.u32, "item", undefined],
-      [2, types.void, types.i32, "item", undefined],
-      [3, types.void, types.f32, "item", undefined],
-      [4, types.void, types.f64, "item", undefined],
-      [7, types.void, types.u64, "item", undefined],
-      [8, types.void, types.i64, "item", undefined],
+      [{}, types.void, types.Any, "item", "\n"],
+      [{importedFuncIndex: 0}, types.void, types.string, "item"],
+      [{importedFuncIndex: 1}, types.void, types.u32, "item"],
+      [{importedFuncIndex: 2}, types.void, types.i32, "item"],
+      [{importedFuncIndex: 3}, types.void, types.f32, "item"],
+      [{importedFuncIndex: 4}, types.void, types.f64, "item"],
+      [{importedFuncIndex: 7}, types.void, types.u64, "item"],
+      [{importedFuncIndex: 8}, types.void, types.i64, "item"],
+
+      [{importedFuncIndex: 0,
+      beforeArguments: [
+        Wasm.opcodes.i32_const, 2,
+        Wasm.opcodes.i32_const, 8,
+      ],
+      afterArguments: [
+        Wasm.opcodes.select
+      ]}, types.void, types.bool, "item", undefined],
     ),
     parseFunction(types.System, "input",
-      [5, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
+      [{importedFuncIndex: 5}, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
+    ),
+    parseFunction(types.Math, "rotateLeft",
+      [{afterArguments: [Wasm.opcodes.i32_rotl]}, types.i32, types.i32, "num", undefined, types.i32, "shiftCount", 0],
+      [{afterArguments: [Wasm.opcodes.i64_rotl]}, types.i64, types.i64, "num", undefined, types.i64, "shiftCount", 0],
+    ),
+    parseFunction(types.Math, "rotateRight",
+      [{afterArguments: [Wasm.opcodes.i32_rotr]}, types.i32, types.i32, "num", undefined, types.i32, "shiftCount", 0],
+      [{afterArguments: [Wasm.opcodes.i64_rotr]}, types.i64, types.i64, "num", undefined, types.i64, "shiftCount", 0],
+    ),
+    parseFunction(types.Math, "abs",
+      [{afterArguments: [Wasm.opcodes.f32_abs]}, types.f32, types.f32, "num"],
+      [{afterArguments: [Wasm.opcodes.f64_abs]}, types.f64, types.f64, "num"],
+    ),
+    parseFunction(types.Math, "ceil",
+      [{afterArguments: [Wasm.opcodes.f32_ceil]}, types.f32, types.f32, "num"],
+      [{afterArguments: [Wasm.opcodes.f64_ceil]}, types.f64, types.f64, "num"],
+    ),
+    parseFunction(types.Math, "floor",
+      [{afterArguments: [Wasm.opcodes.f32_floor]}, types.f32, types.f32, "num"],
+      [{afterArguments: [Wasm.opcodes.f64_floor]}, types.f64, types.f64, "num"],
+    ),
+    parseFunction(types.Math, "trunc",
+      [{afterArguments: [Wasm.opcodes.f32_trunc]}, types.f32, types.f32, "num"],
+      [{afterArguments: [Wasm.opcodes.f64_trunc]}, types.f64, types.f64, "num"],
+    ),
+    parseFunction(types.Math, "nearest",
+      [{afterArguments: [Wasm.opcodes.f32_nearest]}, types.f32, types.f32, "num"],
+      [{afterArguments: [Wasm.opcodes.f64_nearest]}, types.f64, types.f64, "num"],
+    ),
+    parseFunction(types.Math, "sqrt",
+      [{afterArguments: [Wasm.opcodes.f32_sqrt]}, types.f32, types.f32, "num"],
+      [{afterArguments: [Wasm.opcodes.f64_sqrt]}, types.f64, types.f64, "num"],
+    ),
+    parseFunction(types.Math, "min",
+      [{afterArguments: [Wasm.opcodes.f32_min]}, types.f32, types.f32, "num1", undefined, types.f32, "num2", 0],
+      [{afterArguments: [Wasm.opcodes.f64_min]}, types.f64, types.f64, "num1", undefined, types.f64, "num2", 0],
+    ),
+    parseFunction(types.Math, "max",
+      [{afterArguments: [Wasm.opcodes.f32_max]}, types.f32, types.f32, "num1", undefined, types.f32, "num2", 0],
+      [{afterArguments: [Wasm.opcodes.f64_max]}, types.f64, types.f64, "num1", undefined, types.f64, "num2", 0],
+    ),
+    parseFunction(types.Math, "copysign",
+      [{afterArguments: [Wasm.opcodes.f32_copysign]}, types.f32, types.f32, "magNum", 1, types.f32, "signNum", undefined],
+      [{afterArguments: [Wasm.opcodes.f64_copysign]}, types.f64, types.f64, "magNum", 1, types.f64, "signNum", undefined],
     ),
   ];
 
@@ -119,6 +172,8 @@ function BuiltIns() {
         name: builtin.name,
         scope: builtin.scope,
         importedFuncIndex: overload.importedFuncIndex,
+        beforeArguments: overload.beforeArguments,
+        afterArguments: overload.afterArguments,
         returnType: overload.returnType,
         parameters: overload.parameters,
       });

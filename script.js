@@ -129,10 +129,11 @@ class Script {
       const index = this.data.findIndex(func => {
         return func.scope === scope
                && func.name === name
-               && func.parameters.length === argumentTypes.length
-               && func.parameters.every((param, index) => {
-                 return param.type === argumentTypes[index];
-               });
+              // && func.parameters.length === argumentTypes.length
+              //  && func.parameters.every((param, index) => {
+              //    return param.type === argumentTypes[index];
+              //  });
+               && func.parameters[0].type === argumentTypes[0]; //DEBUG until I can implement expressionTypes to be more than 1 type
       });
       
       if (index === -1) {
@@ -1151,10 +1152,15 @@ class Script {
   getFunctionList(requireReturn) {
     let options = [];
 
+    let prevFuncName, prevFuncScope;
     for (const id of this.funcs.getIDs()) {
       let func = this.funcs.get(id);
       if (!requireReturn || func.returnType !== this.types.builtins.void) {
-        options.push({text: func.name, style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
+        if (prevFuncName !== func.name || prevFuncScope !== func.scope) {
+          options.push({text: func.name, style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
+          prevFuncName = func.name;
+          prevFuncScope = func.scope;
+        }
       }
     }
 
@@ -1684,39 +1690,39 @@ class Script {
     let importSection = [
       ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
-      ...Wasm.getStringBytesAndData("js"),
-      ...Wasm.getStringBytesAndData("memory"),
+      ...Wasm.stringToLenPrefixedUTF8("js"),
+      ...Wasm.stringToLenPrefixedUTF8("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
       ...Wasm.varuint(1), //initially 1 page allocated
 
-      ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("print"),
+      ...Wasm.stringToLenPrefixedUTF8("System"),
+      ...Wasm.stringToLenPrefixedUTF8("print"),
       Wasm.externalKind.Function, //import type
       ...Wasm.varuint(1), //type index (func signiture)
 
-      ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printU32"),
+      ...Wasm.stringToLenPrefixedUTF8("System"),
+      ...Wasm.stringToLenPrefixedUTF8("printU32"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(1),
 
-      ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printI32"),
+      ...Wasm.stringToLenPrefixedUTF8("System"),
+      ...Wasm.stringToLenPrefixedUTF8("printI32"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(1),
 
-      ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printF32"),
+      ...Wasm.stringToLenPrefixedUTF8("System"),
+      ...Wasm.stringToLenPrefixedUTF8("printF32"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(3),
 
-      ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("printF64"),
+      ...Wasm.stringToLenPrefixedUTF8("System"),
+      ...Wasm.stringToLenPrefixedUTF8("printF64"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(4),
 
-      ...Wasm.getStringBytesAndData("System"),
-      ...Wasm.getStringBytesAndData("inputF64"),
+      ...Wasm.stringToLenPrefixedUTF8("System"),
+      ...Wasm.stringToLenPrefixedUTF8("inputF64"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(5),
     ];
@@ -1928,7 +1934,12 @@ class Script {
     let lvalueType, lvalueLocalIndex;
     const endOfLineInstructions = [];
     const endOfScopeData = [];
-    const linearMemoryInitialValues = [];
+
+    const initialData = [];
+    const minusSign = initialData.length;
+    initialData.push(...Wasm.stringToLenPrefixedUTF8("-"));
+    initialData.push(...Wasm.stringToLenPrefixedUTF8("false"));
+    initialData.push(...Wasm.stringToLenPrefixedUTF8("true"));
 
     function insertPrecondition(wasmCode) {
       //The wasmCode array has code that produces a start value and an end value on the
@@ -1997,8 +2008,9 @@ class Script {
 
           case Script.ARGUMENT_HINT: {
             const param = this.funcs.get(value).parameters[meta];
-            if (param.type === this.types.builtins.string) {
-              expression.push(new StringLiteral(param.default));
+            if (param.type === this.types.builtins.string || param.type === this.types.builtins.Any) {
+              expression.push(new StringLiteral(initialData.length));
+              initialData.push(...Wasm.stringToLenPrefixedUTF8(param.default));
             } else {
               expression.push(new NumericLiteral(param.default));
             }
@@ -2014,7 +2026,7 @@ class Script {
               
               if (item !== this.ITEMS.EQUALS) {
                 initFunction.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
-                const wasmCode = this.symbols[value].uses.get(lvalueType);
+                const {wasmCode, resultType} = this.symbols[value].uses.get(lvalueType);
                 endOfLineInstructions.push(...wasmCode);
               }
               
@@ -2022,6 +2034,7 @@ class Script {
             }
 
             let expressionType = this.types.builtins.void;
+            let wasmCode = [];
             if (item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) {
               //find argument type
               let expectedType = this.types.builtins.Any;
@@ -2052,10 +2065,8 @@ class Script {
                 }
               }
               
-              let wasmCode;
               [expressionType, wasmCode] = compileExpression(expression, expectedType);
               expression.length = 0;
-              initFunction.push(...wasmCode);
             }
 
             //print() takes an arbitrary count of Any arguments and overloads for each argument in order
@@ -2065,14 +2076,42 @@ class Script {
                 throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
               }
               const overloadedFunc = this.funcs.get(overload);
-              initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
+              if (overloadedFunc.beforeArguments !== undefined) {
+                initFunction.push(...overloadedFunc.beforeArguments);
+              }
+              initFunction.push(...wasmCode);
+              if (overloadedFunc.afterArguments !== undefined) {
+                initFunction.push(...overloadedFunc.afterArguments);
+              }
+              if (overloadedFunc.importedFuncIndex !== undefined) {
+                initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
+              }
             }
             else if (item === this.ITEMS.END_ARGUMENTS) {
-              const func = this.funcs.get(functionsBeingCalled.pop());
-              initFunction.push(Wasm.opcodes.call, func.importedFuncIndex);
-              if (func.returnType !== this.types.builtins.void) {
-                expression.push(new Placeholder(func.returnType)); //TODO place wasm code of function call as 2nd argument
+              const overload = this.funcs.findOverloadId(funcId, expressionType);
+              if (overload === undefined) {
+                throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
               }
+              const overloadedFunc = this.funcs.get(overload);
+              if (overloadedFunc.beforeArguments !== undefined) {
+                initFunction.push(...overloadedFunc.beforeArguments);
+              }
+              initFunction.push(...wasmCode);
+              if (overloadedFunc.afterArguments !== undefined) {
+                initFunction.push(...overloadedFunc.afterArguments);
+              }
+              if (overloadedFunc.importedFuncIndex !== undefined) {
+                initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
+              }
+              if (overloadedFunc.returnType !== this.types.builtins.void) {
+                expression.push(new Placeholder(overloadedFunc.returnType)); //TODO place wasm code of function call as 2nd argument
+              }
+            } else {
+              initFunction.push(...wasmCode);
+            }
+
+            if (item === this.ITEMS.END_ARGUMENTS) {
+              functionsBeingCalled.pop()
             }
             
             if (![this.ITEMS.COMMA, this.ITEMS.START_ARGUMENTS, this.ITEMS.END_ARGUMENTS].includes(item) && !this.ASSIGNMENT_OPERATORS.includes(item)) {
@@ -2174,15 +2213,16 @@ class Script {
                 insertPrecondition(wasmCode);
               } break;
             }
-          }
+          } break;
 
           case Script.LITERAL:
-            if (meta === 1) { //string
-              expression.push(new StringLiteral(linearMemoryInitialValues.length));
+            if (meta === 0) { //bool
+              expression.push(new Placeholder(this.types.builtins.bool, Wasm.opcodes.i32_const, this.literals.mask - value));
+            } else if (meta === 1) { //string
+              expression.push(new StringLiteral(initialData.length));
 
               const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
-              const bytes = Wasm.stringToUTF8(stringLiteral);
-              linearMemoryInitialValues.push(...Wasm.varuint(bytes.length), ...bytes);
+              initialData.push(...Wasm.stringToLenPrefixedUTF8(stringLiteral));
             } else if (meta === 2) { //number
               const literal = this.literals.get(value);
               expression.push(new NumericLiteral(literal));
@@ -2246,6 +2286,7 @@ class Script {
       switch (local.type) {
         case this.types.builtins.i32:
         case this.types.builtins.u32:
+        case this.types.builtins.bool:
           type = Wasm.types.i32;
           break;
         case this.types.builtins.i64:
@@ -2270,7 +2311,7 @@ class Script {
     const printU64 = [ // print(val: u64)
       1, 1, Wasm.types.i32,
       Wasm.opcodes.get_global, 0, //address = top of stack + 16
-      Wasm.opcodes.i32_const, 16,
+      Wasm.opcodes.i32_const, 20,
       Wasm.opcodes.i32_add,
       Wasm.opcodes.set_local, 1,
 
@@ -2302,7 +2343,7 @@ class Script {
 
       Wasm.opcodes.get_local, 1, //address of string length
 
-      Wasm.opcodes.i32_const, 16, //length = 16 - address + top of stack
+      Wasm.opcodes.i32_const, 20, //length = 20 - address + top of stack
       Wasm.opcodes.get_local, 1,
       Wasm.opcodes.i32_sub,
       Wasm.opcodes.get_global, 0,
@@ -2328,10 +2369,7 @@ class Script {
         Wasm.opcodes.i64_const, 0,
         Wasm.opcodes.get_local, 0,
         Wasm.opcodes.i64_sub, //val = -val
-        Wasm.opcodes.get_global, 0, //print('-')
-        Wasm.opcodes.i32_const, ...Wasm.varint(1 + '-'.charCodeAt() * 256),
-        Wasm.opcodes.i32_store16, 0, 0,
-        Wasm.opcodes.get_global, 0,
+        Wasm.opcodes.i32_const, minusSign, //print('-')
         Wasm.opcodes.call, printString,
       Wasm.opcodes.else,
         Wasm.opcodes.get_local, 0,
@@ -2357,14 +2395,14 @@ class Script {
 
       0, //memory index 0
       Wasm.opcodes.i32_const, Wasm.varint(0), Wasm.opcodes.end, //fill memory starting at address 0
-      ...Wasm.varuint(linearMemoryInitialValues.length), //count of bytes to fill in
-      ...linearMemoryInitialValues,
+      ...Wasm.varuint(initialData.length), //count of bytes to fill in
+      ...initialData,
     ];
 
     const globalSection = [
       ...Wasm.varuint(1),
       Wasm.types.i32, 1,
-      Wasm.opcodes.i32_const, ...Wasm.varuint(linearMemoryInitialValues.length),
+      Wasm.opcodes.i32_const, ...Wasm.varuint(initialData.length),
       Wasm.opcodes.end,
     ];
 
