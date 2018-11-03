@@ -59,7 +59,7 @@ function BuiltIns() {
 
     for (const overload of overloads) {
       const formattedOverload = {
-        importedFuncIndex: overload[0],
+        ...overload[0],
         returnType: overload[1],
         parameters: [],
       }
@@ -72,7 +72,7 @@ function BuiltIns() {
         };
 
         if (param.default !== undefined) {  
-          if (param.type === types.string) {
+          if (typeof param.default === "string") {
             param.name += `\n"${param.default.replace("\n", "\\n")}"`;
           } else {
             param.name += "\n" + param.default;
@@ -94,17 +94,26 @@ function BuiltIns() {
 
   const builtinFunctions = [
     parseFunction(types.System, "print",
-      [-1, types.void, types.Any, "item", undefined],
-      [0, types.void, types.string, "item", undefined],
-      [1, types.void, types.u32, "item", undefined],
-      [2, types.void, types.i32, "item", undefined],
-      [3, types.void, types.f32, "item", undefined],
-      [4, types.void, types.f64, "item", undefined],
-      [7, types.void, types.u64, "item", undefined],
-      [8, types.void, types.i64, "item", undefined],
+      [{}, types.void, types.Any, "item", "\n"],
+      [{importedFuncIndex: 0}, types.void, types.string, "item", undefined],
+      [{importedFuncIndex: 1}, types.void, types.u32, "item", undefined],
+      [{importedFuncIndex: 2}, types.void, types.i32, "item", undefined],
+      [{importedFuncIndex: 3}, types.void, types.f32, "item", undefined],
+      [{importedFuncIndex: 4}, types.void, types.f64, "item", undefined],
+      [{importedFuncIndex: 7}, types.void, types.u64, "item", undefined],
+      [{importedFuncIndex: 8}, types.void, types.i64, "item", undefined],
+
+      [{importedFuncIndex: 0,
+      beforeArguments: [
+        Wasm.opcodes.i32_const, 2,
+        Wasm.opcodes.i32_const, 8,
+      ],
+      afterArguments: [
+        Wasm.opcodes.select
+      ]}, types.void, types.bool, "item", undefined],
     ),
     parseFunction(types.System, "input",
-      [5, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
+      [{importedFuncIndex: 5}, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
     ),
   ];
 
@@ -119,6 +128,8 @@ function BuiltIns() {
         name: builtin.name,
         scope: builtin.scope,
         importedFuncIndex: overload.importedFuncIndex,
+        beforeArguments: overload.beforeArguments,
+        afterArguments: overload.afterArguments,
         returnType: overload.returnType,
         parameters: overload.parameters,
       });
