@@ -2174,10 +2174,12 @@ class Script {
                 insertPrecondition(wasmCode);
               } break;
             }
-          }
+          } break;
 
           case Script.LITERAL:
-            if (meta === 1) { //string
+            if (meta === 0) { //bool
+              expression.push(new Placeholder(this.types.builtins.bool, Wasm.opcodes.i32_const, this.literals.mask - value));
+            } else if (meta === 1) { //string
               expression.push(new StringLiteral(linearMemoryInitialValues.length));
 
               const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
@@ -2246,6 +2248,7 @@ class Script {
       switch (local.type) {
         case this.types.builtins.i32:
         case this.types.builtins.u32:
+        case this.types.builtins.bool:
           type = Wasm.types.i32;
           break;
         case this.types.builtins.i64:
