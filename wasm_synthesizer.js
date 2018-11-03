@@ -90,7 +90,7 @@ class Wasm {
       return string.split('').map(a => a.charCodeAt());
     }
 
-    static stringToPrependedUTF8(string) {
+    static stringToLenPrefixedUTF8(string) {
         const encoding = Wasm.stringToUTF8(string);
         return [...Wasm.varuint(encoding.length), ...encoding];
     }
