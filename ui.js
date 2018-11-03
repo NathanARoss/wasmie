@@ -735,6 +735,11 @@ function menuItemClicked(payload) {
 
 
 document.addEventListener("keydown", function(event) {
+  if (history.state) {
+    //ignore keyboard commands when the editor is open
+    return;
+  }
+
   if (event.key === "Escape") {
     closeMenu();
   }
