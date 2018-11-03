@@ -2270,7 +2270,7 @@ class Script {
     const printU64 = [ // print(val: u64)
       1, 1, Wasm.types.i32,
       Wasm.opcodes.get_global, 0, //address = top of stack + 16
-      Wasm.opcodes.i32_const, 16,
+      Wasm.opcodes.i32_const, 20,
       Wasm.opcodes.i32_add,
       Wasm.opcodes.set_local, 1,
 
@@ -2302,7 +2302,7 @@ class Script {
 
       Wasm.opcodes.get_local, 1, //address of string length
 
-      Wasm.opcodes.i32_const, 16, //length = 16 - address + top of stack
+      Wasm.opcodes.i32_const, 20, //length = 20 - address + top of stack
       Wasm.opcodes.get_local, 1,
       Wasm.opcodes.i32_sub,
       Wasm.opcodes.get_global, 0,
