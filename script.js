@@ -2014,7 +2014,7 @@ class Script {
               
               if (item !== this.ITEMS.EQUALS) {
                 initFunction.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
-                const wasmCode = this.symbols[value].uses.get(lvalueType);
+                const {wasmCode, resultType} = this.symbols[value].uses.get(lvalueType);
                 endOfLineInstructions.push(...wasmCode);
               }
               
