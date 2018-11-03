@@ -129,10 +129,11 @@ class Script {
       const index = this.data.findIndex(func => {
         return func.scope === scope
                && func.name === name
-               && func.parameters.length === argumentTypes.length
-               && func.parameters.every((param, index) => {
-                 return param.type === argumentTypes[index];
-               });
+              // && func.parameters.length === argumentTypes.length
+              //  && func.parameters.every((param, index) => {
+              //    return param.type === argumentTypes[index];
+              //  });
+               && func.parameters[0].type === argumentTypes[0]; //DEBUG until I can implement expressionTypes to be more than 1 type
       });
       
       if (index === -1) {
@@ -1151,10 +1152,15 @@ class Script {
   getFunctionList(requireReturn) {
     let options = [];
 
+    let prevFuncName, prevFuncScope;
     for (const id of this.funcs.getIDs()) {
       let func = this.funcs.get(id);
       if (!requireReturn || func.returnType !== this.types.builtins.void) {
-        options.push({text: func.name, style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
+        if (prevFuncName !== func.name || prevFuncScope !== func.scope) {
+          options.push({text: func.name, style: "function-definition", payload: Script.makeItem({format: Script.FUNCTION_REFERENCE, meta: func.scope, value: id})});
+          prevFuncName = func.name;
+          prevFuncScope = func.scope;
+        }
       }
     }
 
@@ -2081,15 +2087,31 @@ class Script {
                 initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
               }
             }
-            else {
-              initFunction.push(...wasmCode);
-              if (item === this.ITEMS.END_ARGUMENTS) {
-                const func = this.funcs.get(functionsBeingCalled.pop());
-                initFunction.push(Wasm.opcodes.call, func.importedFuncIndex);
-                if (func.returnType !== this.types.builtins.void) {
-                  expression.push(new Placeholder(func.returnType)); //TODO place wasm code of function call as 2nd argument
-                }
+            else if (item === this.ITEMS.END_ARGUMENTS) {
+              const overload = this.funcs.findOverloadId(funcId, expressionType);
+              if (overload === undefined) {
+                throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
               }
+              const overloadedFunc = this.funcs.get(overload);
+              if (overloadedFunc.beforeArguments !== undefined) {
+                initFunction.push(...overloadedFunc.beforeArguments);
+              }
+              initFunction.push(...wasmCode);
+              if (overloadedFunc.afterArguments !== undefined) {
+                initFunction.push(...overloadedFunc.afterArguments);
+              }
+              if (overloadedFunc.importedFuncIndex !== undefined) {
+                initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
+              }
+              if (overloadedFunc.returnType !== this.types.builtins.void) {
+                expression.push(new Placeholder(overloadedFunc.returnType)); //TODO place wasm code of function call as 2nd argument
+              }
+            } else {
+              initFunction.push(...wasmCode);
+            }
+
+            if (item === this.ITEMS.END_ARGUMENTS) {
+              functionsBeingCalled.pop()
             }
             
             if (![this.ITEMS.COMMA, this.ITEMS.START_ARGUMENTS, this.ITEMS.END_ARGUMENTS].includes(item) && !this.ASSIGNMENT_OPERATORS.includes(item)) {
