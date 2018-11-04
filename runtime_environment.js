@@ -15,6 +15,7 @@ class RuntimeEnvironment {
     this.js = {
       memory: new WebAssembly.Memory({initial: 1}),
     }
+    this.Math = Math;
   }
   
   print(location) {

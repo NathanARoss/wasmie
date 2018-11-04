@@ -1200,10 +1200,10 @@ class Script {
 
     if (this.START_BRACKETS.includes(symbol)) {
       step = 1;
-      matchingSymbol = symbol + 5;
+      matchingSymbol = symbol + 2;
     } else if (this.END_BRACKETS.includes(symbol)) {
       step = -1;
-      matchingSymbol = symbol - 5;
+      matchingSymbol = symbol - 2;
     }
 
     if (step !== 0) {
@@ -1658,75 +1658,121 @@ class Script {
   Generates a Wasm binary from the script contents
   */
   getWasm() {
-    let typeSection = [
-      ...Wasm.varuint(6), //count of type entries
-    
-      Wasm.types.func, //the form of the type
-      0, //parameters
-      0, //return count (0 or 1)
-    
-      Wasm.types.func,
-      1, Wasm.types.i32,
-      0,
-
-      Wasm.types.func,
-      1, Wasm.types.i64,
-      0,
-    
-      Wasm.types.func,
-      1, Wasm.types.f32,
-      0,
-    
-      Wasm.types.func,
-      1, Wasm.types.f64,
-      0,
-
-      Wasm.types.func,
-      3, Wasm.types.f64, Wasm.types.f64, Wasm.types.f64,
-      1, Wasm.types.f64,
+    const types = [
+      [[], []],
+      [[], [Wasm.types.i32]],
+      [[], [Wasm.types.i64]],
+      [[], [Wasm.types.f32]],
+      [[], [Wasm.types.f64]],
+      [[Wasm.types.f64], []],
+      [[Wasm.types.f64], [Wasm.types.f64]],
+      [[Wasm.types.f64], [Wasm.types.f64, Wasm.types.f64]],
+      [[Wasm.types.f64], [Wasm.types.f64, Wasm.types.f64, Wasm.types.f64]],
+      [[Wasm.types.f32], [Wasm.types.f32]],
+      [[Wasm.types.f32], [Wasm.types.f32, Wasm.types.f32]],
+      [[Wasm.types.f32], [Wasm.types.f32, Wasm.types.f32, Wasm.types.f32]],
     ];
+    const funcSigs = {};
 
-    const importedFunctionsCount = 5;
+    let typeSection = [
+      ...Wasm.varuint(types.length), //count of type entries
+    ];
+    for (let i = 0; i < types.length; ++i) {
+      const [results, params] = types[i];
+      typeSection.push(Wasm.types.func);
+      typeSection.push(params.length, ...params);
+      typeSection.push(results.length, ...results);
+
+
+      let propName;
+      if (results.length === 0) {
+        propName = "void";
+      } else {
+        propName = Wasm.typeNames[results[0]];
+      }
+
+      for (const type of params) {
+        propName += "_" + Wasm.typeNames[type];
+      }
+
+      funcSigs[propName] = i;
+    }
+
+    const importedFuncNames = [
+      "System", "print", funcSigs.void_i32,
+      "System", "printNum", funcSigs.void_i32,
+      "System", "printNum", funcSigs.void_f32,
+      "System", "printNum", funcSigs.void_f64,
+      "System", "inputF64", funcSigs.f64_f64_f64_f64,
+      "Math", "cos", funcSigs.f32_f32,
+      "Math", "cos", funcSigs.f64_f64,
+      "Math", "sin", funcSigs.f32_f32,
+      "Math", "sin", funcSigs.f64_f64,
+      "Math", "tan", funcSigs.f32_f32,
+      "Math", "tan", funcSigs.f64_f64,
+      "Math", "acos", funcSigs.f32_f32,
+      "Math", "acos", funcSigs.f64_f64,
+      "Math", "asin", funcSigs.f32_f32,
+      "Math", "asin", funcSigs.f64_f64,
+      "Math", "atan", funcSigs.f32_f32,
+      "Math", "atan", funcSigs.f64_f64,
+      "Math", "atan2", funcSigs.f32_f32_f32,
+      "Math", "atan2", funcSigs.f64_f64_f64,
+      "Math", "cosh", funcSigs.f32_f32,
+      "Math", "cosh", funcSigs.f64_f64,
+      "Math", "sinh", funcSigs.f32_f32,
+      "Math", "sinh", funcSigs.f64_f64,
+      "Math", "tanh", funcSigs.f32_f32,
+      "Math", "tanh", funcSigs.f64_f64,
+      "Math", "acosh", funcSigs.f32_f32,
+      "Math", "acosh", funcSigs.f64_f64,
+      "Math", "asinh", funcSigs.f32_f32,
+      "Math", "asinh", funcSigs.f64_f64,
+      "Math", "atanh", funcSigs.f32_f32,
+      "Math", "atanh", funcSigs.f64_f64,
+      "Math", "cbrt", funcSigs.f32_f32,
+      "Math", "cbrt", funcSigs.f64_f64,
+      "Math", "exp", funcSigs.f32_f32,
+      "Math", "exp", funcSigs.f64_f64,
+      "Math", "log", funcSigs.f32_f32,
+      "Math", "log", funcSigs.f64_f64,
+      "Math", "log10", funcSigs.f32_f32,
+      "Math", "log10", funcSigs.f64_f64,
+      "Math", "log2", funcSigs.f32_f32,
+      "Math", "log2", funcSigs.f64_f64,
+      "Math", "pow", funcSigs.f32_f32_f32,
+      "Math", "pow", funcSigs.f64_f64_f64,
+      "Math", "random", funcSigs.f64,
+      "Math", "sign", funcSigs.f32_f32,
+      "Math", "sign", funcSigs.f64_f64,
+    ];
+    const importedFuncCount = importedFuncNames.length / 3;
+
     let importSection = [
-      ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
+      ...Wasm.varuint(importedFuncCount + 1), //count of things to import
 
       ...Wasm.stringToLenPrefixedUTF8("js"),
       ...Wasm.stringToLenPrefixedUTF8("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
       ...Wasm.varuint(1), //initially 1 page allocated
+    ]
 
-      ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("print"),
-      Wasm.externalKind.Function, //import type
-      ...Wasm.varuint(1), //type index (func signiture)
-
-      ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("printNum"),
-      Wasm.externalKind.Function,
-      ...Wasm.varuint(1),
-
-      ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("printNum"),
-      Wasm.externalKind.Function,
-      ...Wasm.varuint(3),
-
-      ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("printNum"),
-      Wasm.externalKind.Function,
-      ...Wasm.varuint(4),
-
-      ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("inputF64"),
-      Wasm.externalKind.Function,
-      ...Wasm.varuint(5),
-    ];
+    for (let i = 0; i < importedFuncNames.length; i += 3) {
+      const [moduleName, name, signiture] = importedFuncNames.slice(i, i + 3);
+      importSection.push(
+        ...Wasm.stringToLenPrefixedUTF8(moduleName),
+        ...Wasm.stringToLenPrefixedUTF8(name),
+        Wasm.externalKind.Function,
+        ...Wasm.varuint(signiture),
+      );
+    }
 
     let functionSection = [
       ...Wasm.varuint(3), //count of function bodies defined later
-      ...Wasm.varuint(0), //type indicies (func signitures)
-      ...Wasm.varuint(2),
-      ...Wasm.varuint(2),
+      ...Wasm.varuint(funcSigs.void), //type indicies (func signitures)
+      ...Wasm.varuint(funcSigs.void_i64),
+      ...Wasm.varuint(funcSigs.void_i64),
     ];
 
     // let exportSection = [
@@ -2410,8 +2456,8 @@ class Script {
       // ...exportSection,
 
       Wasm.section.Start,
-      [...Wasm.varuint(importedFunctionsCount)].length,
-      ...Wasm.varuint(importedFunctionsCount), //the start function is the first function after the imports
+      [...Wasm.varuint(importedFuncCount)].length,
+      ...Wasm.varuint(importedFuncCount), //the start function is the first function after the imports
   
       Wasm.section.Code,
       ...Wasm.varuint(codeSection.length),
