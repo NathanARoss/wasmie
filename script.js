@@ -1896,6 +1896,7 @@ class Script {
             if (operator.isUnary) {
               if (rightOperand.constructor === NumericLiteral) {
                 rightOperand.performUnaryOp(operator.appearance);
+                operands.push(rightOperand);
               } else {
                 const {resultType, wasmCode} = operator.uses.get(rightOperand.getType(expectedType));
                 operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
@@ -2070,24 +2071,7 @@ class Script {
             }
 
             //print() takes an arbitrary count of Any arguments and overloads for each argument in order
-            if ((item === this.ITEMS.COMMA || item === this.ITEMS.END_ARGUMENTS) && funcId == this.funcs.builtins.System_print) {
-              const overload = this.funcs.findOverloadId(funcId, expressionType);
-              if (overload === undefined) {
-                throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
-              }
-              const overloadedFunc = this.funcs.get(overload);
-              if (overloadedFunc.beforeArguments !== undefined) {
-                initFunction.push(...overloadedFunc.beforeArguments);
-              }
-              initFunction.push(...wasmCode);
-              if (overloadedFunc.afterArguments !== undefined) {
-                initFunction.push(...overloadedFunc.afterArguments);
-              }
-              if (overloadedFunc.importedFuncIndex !== undefined) {
-                initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
-              }
-            }
-            else if (item === this.ITEMS.END_ARGUMENTS) {
+            if (item === this.ITEMS.END_ARGUMENTS || item === this.ITEMS.COMMA && funcId == this.funcs.builtins.System_print) {
               const overload = this.funcs.findOverloadId(funcId, expressionType);
               if (overload === undefined) {
                 throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
