@@ -96,12 +96,15 @@ function BuiltIns() {
     parseFunction(types.System, "print",
       [{}, types.void, types.Any, "item", "\n"],
       [{importedFuncIndex: 0}, types.void, types.string, "item"],
-      [{importedFuncIndex: 1}, types.void, types.u32, "item"],
-      [{importedFuncIndex: 2}, types.void, types.i32, "item"],
-      [{importedFuncIndex: 3}, types.void, types.f32, "item"],
-      [{importedFuncIndex: 4}, types.void, types.f64, "item"],
-      [{importedFuncIndex: 7}, types.void, types.u64, "item"],
-      [{importedFuncIndex: 8}, types.void, types.i64, "item"],
+      [{importedFuncIndex: 6,
+      afterArguments: [
+        Wasm.opcodes.i64_extend_u_from_i32
+      ]}, types.void, types.u32, "item"],
+      [{importedFuncIndex: 1}, types.void, types.i32, "item"],
+      [{importedFuncIndex: 2}, types.void, types.f32, "item"],
+      [{importedFuncIndex: 3}, types.void, types.f64, "item"],
+      [{importedFuncIndex: 6}, types.void, types.u64, "item"],
+      [{importedFuncIndex: 7}, types.void, types.i64, "item"],
 
       [{importedFuncIndex: 0,
       beforeArguments: [
@@ -113,7 +116,7 @@ function BuiltIns() {
       ]}, types.void, types.bool, "item", undefined],
     ),
     parseFunction(types.System, "input",
-      [{importedFuncIndex: 5}, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
+      [{importedFuncIndex: 4}, types.f64, types.f64, "default", 0, types.f64, "min", -Infinity, types.f64, "max", Infinity],
     ),
     parseFunction(types.Math, "rotateLeft",
       [{afterArguments: [Wasm.opcodes.i32_rotl]}, types.i32, types.i32, "num", undefined, types.i32, "shiftCount", 0],

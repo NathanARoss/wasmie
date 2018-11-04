@@ -1686,7 +1686,7 @@ class Script {
       1, Wasm.types.f64,
     ];
 
-    const importedFunctionsCount = 6;
+    const importedFunctionsCount = 5;
     let importSection = [
       ...Wasm.varuint(importedFunctionsCount + 1), //count of things to import
 
@@ -1702,22 +1702,17 @@ class Script {
       ...Wasm.varuint(1), //type index (func signiture)
 
       ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("printU32"),
+      ...Wasm.stringToLenPrefixedUTF8("printNum"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(1),
 
       ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("printI32"),
-      Wasm.externalKind.Function,
-      ...Wasm.varuint(1),
-
-      ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("printF32"),
+      ...Wasm.stringToLenPrefixedUTF8("printNum"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(3),
 
       ...Wasm.stringToLenPrefixedUTF8("System"),
-      ...Wasm.stringToLenPrefixedUTF8("printF64"),
+      ...Wasm.stringToLenPrefixedUTF8("printNum"),
       Wasm.externalKind.Function,
       ...Wasm.varuint(4),
 

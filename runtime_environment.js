@@ -5,20 +5,8 @@ class RuntimeEnvironment {
       print(location) {
         self.print(location)
       },
-      printI32(i32Num) {
-        print(String(i32Num));
-      },
-      printU32(u32Num) {
-        if (u32Num < 0) {
-          u32Num += 4294967296;
-        }
-        print(String(u32Num));
-      },
-      printF32(f32Num) {
-        print(String(f32Num));
-      },
-      printF64(f64Num) {
-        print(String(f64Num));
+      printNum(num) {
+        print(String(num));
       },
       inputF64(defaultVal, min, max) {
         return self.inputDouble(defaultVal, min, max);
