@@ -1,11 +1,10 @@
 "use strict";
 
 class TSSymbol {
-  constructor(appearance, precedence, {isUnary, isFoldable} = {isUnary: false, isFoldable: true}, ...uses) {
+  constructor(appearance, precedence, options = {isFoldable: true}, ...uses) {
     this.appearance = appearance;
     this.precedence = precedence;
-    this.isUnary = isUnary;
-    this.isFoldable = isFoldable;
+    Object.assign(this, options);
     
     this.uses = new Map();
     for (const use of uses) {
@@ -497,10 +496,10 @@ function BuiltIns() {
     new TSSymbol("____", 0), //misc
     new TSSymbol(",", 0), //argument separator
     new TSSymbol(".", 0), //property accessor
-    new TSSymbol("(", 0), //subexpression start
-    new TSSymbol("⟨", 0), //function arguments start
-    new TSSymbol(")", 0), //subexpression end
-    new TSSymbol("⟩", 0), //function arguments end
+    new TSSymbol("(", -2, {isStartBracket: true}), //subexpression start
+    new TSSymbol("⟨", -2, {isStartBracket: true}), //function arguments start
+    new TSSymbol(")", -1, {isEndBracket: true}), //subexpression end
+    new TSSymbol("⟩", -1, {isEndBracket: true}), //function arguments end
   ];
   
   this.keywords = [

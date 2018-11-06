@@ -599,7 +599,6 @@ class Script {
     return null;
   }
 
-  //0 -> no change, 1 -> click item changed, 2-> row changed, 3 -> row(s) inserted
   menuItemClicked(row, col, payload) {
     let isAppending = false;
 
@@ -1926,36 +1925,42 @@ class Script {
       const operators = [];
       const operands = [];
 
-      expression.push(new TSSymbol("term", -1, {isFoldable: false})); //terminate expression
+      expression.push(new TSSymbol("term", -1000, {isFoldable: false})); //terminate expression
       for (let i = 0; i < expression.length; ++i) {
         const item = expression[i];
         if (item.constructor === TSSymbol) {
-          //check if the previous operators have a higher precedence than the one that is about to be pushed
-          while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
-            const operator = operators.pop();
-            const rightOperand = operands.pop();
-            if (operator.isUnary) {
-              if (rightOperand.constructor === NumericLiteral) {
-                rightOperand.performUnaryOp(operator.appearance);
-                operands.push(rightOperand);
+          if (!item.isStartBracket) {
+            //check if the previous operators have a higher precedence than the one that is about to be pushed
+            while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
+              const operator = operators.pop();
+              const rightOperand = operands.pop();
+              if (operator.isUnary) {
+                if (rightOperand.constructor === NumericLiteral) {
+                  rightOperand.performUnaryOp(operator.appearance);
+                  operands.push(rightOperand);
+                } else {
+                  const {resultType, wasmCode} = operator.uses.get(rightOperand.getType(expectedType));
+                  operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
+                }
               } else {
-                const {resultType, wasmCode} = operator.uses.get(rightOperand.getType(expectedType));
-                operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
-              }
-            } else {
-              const leftOperand = operands.pop();
-              if (operator.isFoldable && leftOperand.constructor === NumericLiteral && rightOperand.constructor === NumericLiteral) {
-                leftOperand.performBinaryOp(operator.appearance, rightOperand);
-                operands.push(leftOperand);
-              } else {
-                const type = rightOperand.getType(leftOperand.getType(expectedType));
-                const {resultType, wasmCode} = operator.uses.get(type);
-                operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
+                const leftOperand = operands.pop();
+                if (operator.isFoldable && leftOperand.constructor === NumericLiteral && rightOperand.constructor === NumericLiteral) {
+                  leftOperand.performBinaryOp(operator.appearance, rightOperand);
+                  operands.push(leftOperand);
+                } else {
+                  const type = rightOperand.getType(leftOperand.getType(expectedType));
+                  const {resultType, wasmCode} = operator.uses.get(type);
+                  operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
+                }
               }
             }
           }
-          
-          operators.push(item);
+
+          if (item.isEndBracket) {
+            operators.pop();
+          } else {
+            operators.push(item);
+          }
         } else {
           operands.push(item);
         }
