@@ -1939,7 +1939,7 @@ class Script {
                   rightOperand.performUnaryOp(operator.appearance);
                   operands.push(rightOperand);
                 } else {
-                  const {resultType, wasmCode} = operator.uses.get(rightOperand.getType(expectedType));
+                  const {resultType, wasmCode} = operator.uses.get(rightOperand.getType());
                   operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
                 }
               } else {
@@ -1948,7 +1948,7 @@ class Script {
                   leftOperand.performBinaryOp(operator.appearance, rightOperand);
                   operands.push(leftOperand);
                 } else {
-                  const type = rightOperand.getType(leftOperand.getType(expectedType));
+                  const type = rightOperand.getType(leftOperand.getType());
                   const {resultType, wasmCode} = operator.uses.get(type);
                   operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
                 }
