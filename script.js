@@ -1699,7 +1699,6 @@ class Script {
 
     const importedFuncNames = [
       "System", "print", funcSigs.void_i32,
-      "System", "printNum", funcSigs.void_i32,
       "System", "printNum", funcSigs.void_f32,
       "System", "printNum", funcSigs.void_f64,
       "System", "inputF64", funcSigs.f64_f64_f64_f64,
