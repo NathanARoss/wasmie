@@ -259,6 +259,11 @@ button {
   width: 6em;
   height: 100%;
   box-sizing: border-box;
+  transition: width 0.5s ease-in-out;
+}
+
+.menu-input:focus {
+  width: 100%;
 }
 
 /* small portrait screens */
@@ -271,7 +276,7 @@ button {
     left: 0;
     right: 0;
     bottom: calc(var(--line-height) * -2);
-    height: calc(var(--line-height) * 2);
+    height: calc(var(--line-height));
     transition: bottom 0.25s;
     overflow-x: auto;
     overflow-y: hidden;
@@ -289,7 +294,7 @@ button {
   }
 
   .selected #FAB-menu {
-    bottom: calc(var(--line-height) * 2 + 20px);
+    bottom: calc(var(--line-height) + 20px);
   }
 }
 
