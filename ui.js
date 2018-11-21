@@ -7,8 +7,7 @@ let loadedCount = 0;
 let firstLoadedPosition = 0;
 
 const list = document.getElementById("list");
-const debug = document.getElementById("debug");
-const editor = document.getElementById("editor_div");
+const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
@@ -19,7 +18,8 @@ const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
 
-let itemPool = [];
+const itemPool = [];
+let selectedItem;
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
@@ -27,13 +27,17 @@ let script = new Script();
 menuButton.addEventListener("click", function(event) {
   event.stopPropagation();
 
-  if (menuButton.toggled) {
-    history.pushState({action: "run"}, "TouchScript Runtime");
-    window.onpopstate();
+  if (menu.row !== -1) {
+    closeMenu();
+  } else {
+    if (menuButton.toggled) {
+      history.pushState({action: "run"}, "TouchScript Runtime");
+      window.onpopstate();
+    }
+  
+    fabMenu.classList.toggle("expanded");
+    menuButton.toggled = !menuButton.toggled;
   }
-
-  fabMenu.classList.toggle("expanded");
-  menuButton.toggled = !menuButton.toggled;
 });
 
 createButton.addEventListener("click", function(event) {
@@ -68,33 +72,6 @@ viewCodeButton.addEventListener("click", function(event) {
   window.onpopstate();
 });
 
-menu.addEventListener("touchstart", function(event) {
-  if (this.touchId === undefined) {
-    const touch = event.changedTouches[0];
-    this.touchId = touch.identifier;
-    this.touchStartX = touch.pageX;
-    this.touchStartY = touch.pageY;
-  }
-});
-
-menu.addEventListener("touchend", detectMenuCloseGesture);
-menu.addEventListener("touchcancel", detectMenuCloseGesture);
-
-function detectMenuCloseGesture(event) {
-  for (const touch of event.changedTouches) {
-    if (touch.identifier === this.touchId) {
-      const travelX = touch.pageX - this.touchStartX;
-      const travelY = touch.pageY - this.touchStartY;
-  
-      if (travelX > 50 && travelX > Math.abs(travelY)) {
-        closeMenu();
-      }
-
-      this.touchId = undefined;
-    }
-  }
-}
-
 
 
 document.body.onresize = function () {
@@ -116,11 +93,11 @@ document.body.onresize = function () {
     let lastChild = list.lastChild;
     list.removeChild(lastChild);
 
-    let innerRow = lastChild.childNodes[1];
+    let innerDiv = lastChild.firstChild;
   
-    while (innerRow.childNodes.length > 2) {
-      itemPool.push(innerRow.lastChild);
-      innerRow.removeChild(innerRow.lastChild);
+    while (innerDiv.childNodes.length > 2) {
+      itemPool.push(innerDiv.lastChild);
+      innerDiv.removeChild(innerDiv.lastChild);
     }
   }
 };
@@ -130,7 +107,7 @@ document.body.onresize();
 
 //detect when items need to be loaded in the direction of scroll, take nodes from the back to add to the front
 window.onscroll = function() {
-  let firstVisiblePosition = Math.floor(window.scrollY / rowHeight);
+  const firstVisiblePosition = Math.floor(window.scrollY / rowHeight);
   
   //keep a number of rows prepared for both direction
   while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition) && (firstLoadedPosition + loadedCount < getRowCount())) {
@@ -146,10 +123,6 @@ window.onscroll = function() {
     loadRow(position, outerDiv);
     --firstLoadedPosition;
   }
-  
-  list.childNodes.forEach(touchCanceled);
-
-  debug.textContent = `[${firstLoadedPosition}, ${(firstLoadedPosition + loadedCount - 1)}]`;
 };
 window.onscroll();
 
@@ -161,46 +134,47 @@ window.onpopstate = function(event) {
   editor.style.display = "none";
   runtime.style.display = "none";
   programList.style.display = "none";
-
+  
   if (!event.state) {
-    editor.style.display = "";
-
+    document.title = "TouchScript"
+    
     while (programList.childNodes.length > 1) {
       programList.removeChild(programList.lastChild);
     }
 
     consoleOutput.innerHTML = "";
-    document.title = "TouchScript"
+    editor.style.display = "";
   }
   else if (event.state.action === "run") {
+    document.title = "TouchScript Runtime";
+
     let wasm;
     try {
       wasm = script.getWasm();
     } catch (error) {
       console.log(error);
-      history.back();
-      return;
+      print(error);
     }
 
     const environment = new RuntimeEnvironment();
     try {
       WebAssembly.instantiate(wasm, environment)
     } catch (error) {
-      console.log(error);
-      history.back();
-      return;
+      print(error);
     }
     
     runtime.style.display = "";
-    document.title = "TouchScript Runtime"
   }
   else if (event.state.action === "disassemble") {
+    document.title = "TouchScript Disassembly"
+
     let wasmBinary;
     try {
       wasmBinary = script.getWasm();
     } catch (error) {
       console.log(error);
-      history.back();
+      print(error);
+      runtime.style.display = "";
       return;
     }
 
@@ -246,8 +220,6 @@ window.onpopstate = function(event) {
       printDisassembly(bytesRead, beginComment + val + endComment);
       return val;
     }
-    
-    
 
     printEncodedString(4, 'Wasm magic number: "');
     printDisassembly(4, "Wasm version");
@@ -381,10 +353,8 @@ window.onpopstate = function(event) {
     }
 
     runtime.style.display = "";
-    document.title = "TouchScript Disassembly"
   }
   else if (event.state.action === "load") {
-    programList.style.display = "";
     document.title = "TouchScript Project Manager"
 
     performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
@@ -426,6 +396,8 @@ window.onpopstate = function(event) {
         }
       }
     });
+
+    programList.style.display = "";
   }
 }
 
@@ -530,24 +502,9 @@ function getRowCount() {
 
 
 function createRow() {
-  let lineNumberItem = document.createElement("p");
-  lineNumberItem.className= "line-number-item slide-menu-item no-select";
-  
-  let newlineItem = document.createElement("p");
-  newlineItem.className = "newline-item slide-menu-item";
-  
-  let deleteLineItem = document.createElement("p");
-  deleteLineItem.className = "delete-line-item slide-menu-item";
-  
-  let slideMenu = document.createElement("div");
-  slideMenu.className = "slide-menu slow-transition";
-  slideMenu.appendChild(lineNumberItem);
-  slideMenu.appendChild(newlineItem);
-  slideMenu.appendChild(deleteLineItem);
-
   let append = document.createElement("button");
   append.className = "append";
-  append.position = 0;
+  append.position = -1;
 
   let indentation = document.createElement("div");
   indentation.classList.add("indentation");
@@ -560,13 +517,7 @@ function createRow() {
   
   let outerDiv = document.createElement("div");
   outerDiv.className = "outer-row";
-  outerDiv.appendChild(slideMenu);
   outerDiv.appendChild(innerDiv);
-  
-  outerDiv.addEventListener("touchstart", touchStartHandler, {passive: true});
-  outerDiv.addEventListener("touchmove", existingTouchHandler, {passive: false});
-  outerDiv.addEventListener("touchend", existingTouchHandler, {passive: true});
-  outerDiv.addEventListener("touchcancel", existingTouchHandler, {passive: true});
   
   return outerDiv;
 }
@@ -603,44 +554,45 @@ function refreshRows(pos, oldRowCount) {
 
 
 function loadRow(position, outerDiv) {
-  let innerRow = outerDiv.childNodes[1];
+  let innerDiv = outerDiv.firstChild;
   
-  while (innerRow.childNodes.length > 2) {
-    itemPool.push(innerRow.lastChild);
-    innerRow.removeChild(innerRow.lastChild);
+  while (innerDiv.childNodes.length > 2) {
+    itemPool.push(innerDiv.lastChild);
+    innerDiv.removeChild(innerDiv.lastChild);
   }
 
   if (position >= script.getRowCount()) {
-    innerRow.style.setProperty("--indentation", 0);
-    innerRow.classList.remove("starting-scope");
+    innerDiv.style.setProperty("--indentation", 0);
+    innerDiv.classList.remove("starting-scope");
   } else {
     let itemCount = script.getItemCount(position);
-    for (let col = 1; col < itemCount; ++col) {
+
+    for (let col = 0; col < itemCount; ++col) {
       const [text, style] = script.getItemDisplay(position, col);
       
       let node = getItem(text, "item " + style, col);
-      innerRow.appendChild(node);
+      innerDiv.appendChild(node);
     }
     
     const indentation = script.getIndentation(position);
-    innerRow.style.setProperty("--indentation", indentation);
+    innerDiv.style.setProperty("--indentation", indentation);
 
     if (script.isStartingScope(position)) {
-      innerRow.classList.add("starting-scope");
+      innerDiv.classList.add("starting-scope");
     } else {
-      innerRow.classList.remove("starting-scope");
+      innerDiv.classList.remove("starting-scope");
     }
   }
 
-  if (innerRow.position !== position) {
-    outerDiv.style.transform = "translateY(" + Math.floor(position / loadedCount) * loadedCount * rowHeight + "px)";
-    innerRow.position = position;
-    innerRow.previousSibling.firstChild.textContent = String(position).padStart(4);
+  if (innerDiv.position !== position) {
+    outerDiv.style.setProperty("--line-number", position);
+    innerDiv.childNodes[1].textContent = position;
+    innerDiv.position = position;
 
-    let button = innerRow.childNodes[1 + menu.col];
+    let button = innerDiv.childNodes[2 + menu.col];
 
     if (menu.row === position) {
-      innerRow.scrollLeft = button.offsetLeft - window.innerWidth / 2;
+      innerDiv.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     }
   }
 }
@@ -649,7 +601,7 @@ function reloadAllRows() {
   list.style.height = getRowCount() * rowHeight + "px";
 
   for (const outerDiv of list.childNodes) {
-    loadRow(outerDiv.childNodes[1].position, outerDiv);
+    loadRow(outerDiv.firstChild.position, outerDiv);
   }
 }
 
@@ -667,76 +619,53 @@ function getItem(text, className, position) {
 
 function configureMenu(options) {
   while (menu.hasChildNodes()) {
-    itemPool.push(menu.lastChild);
+    menu.lastChild.action = undefined;
+    menu.lastChild.args = undefined;
+    if (menu.tagName === "BUTTON") {
+      itemPool.push(menu.lastChild);
+    }
     menu.removeChild(menu.lastChild);
   }
 
   for (const option of options) {
-    let button = getItem(option.text, "menu-item no-select " + option.style, option.payload);
-    menu.appendChild(button);
+    let menuItem;
+    if (option.style === "input") {
+      menuItem = document.createElement("input");
+      menuItem.classList = "menu-input";
+      menuItem.value = option.text;
+      menuItem.placeholder = option.hint;
+      const [args = []] = [option.args];
+      menuItem.addEventListener("change", () => {
+        handleMenuItemResponse(option.action(menuItem.value, ...args));
+      })
+      menuItem.addEventListener("click", event => event.stopPropagation());
+      menuItem.addEventListener("keydown", event => event.stopPropagation());
+    } else {
+      const {text, style = ""} = option;
+      menuItem = getItem(text, "menu-item " + style);
+      menuItem.action = option.action;
+      menuItem.args = option.args;
+    }
+    
+    menu.appendChild(menuItem);
   }
 }
 
 function closeMenu() {
   menu.row = -1;
   document.body.classList.remove("selected");
-  document.activeElement.blur();
+  selectedItem && selectedItem.classList.remove("selected");
+  selectedItem = undefined;
 
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
-}
-
-function menuItemClicked(payload) {
-  const oldItemCount = menu.row < script.getRowCount() ? script.getItemCount(menu.row) : 1;
-  let response = script.menuItemClicked(menu.row, menu.col, payload);
-
-  if (Array.isArray(response) && response.length > 0) {
-    configureMenu(response);
-  } else {
-    if ("rowUpdated" in response) {
-      if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
-        const outerDiv = list.childNodes[menu.row % loadedCount];
-        loadRow(menu.row, outerDiv);
-        if (menu.col === 0) {
-          outerDiv.childNodes[1].scrollLeft = 1e10;
-        }
-        const selectedItem = list.childNodes[menu.row % loadedCount].childNodes[1].childNodes[1 + menu.col];
-        if (selectedItem)
-          selectedItem.focus();
-        list.style.height = getRowCount() * rowHeight + "px";
-      }
-    }
-
-    if ("rowsInserted" in response) {
-      insertRow(menu.row + 1, response.rowsInserted);
-    }
-
-    if ("selectedCol" in response) {
-      itemClicked(menu.row, response.selectedCol);
-    }
-
-    if ("rowDeleted" in response) {
-      deleteRow(menu.row);
-      menu.col = 0;
-      if (menu.row > 0) {
-        menu.row = menu.row - 1;
-      }
-    }
-
-    if ("scriptChanged" in response) {
-      reloadAllRows();
-      menu.col = 0;
-    }
-    
-    itemClicked(menu.row, menu.col);
-  }
 }
 
 
 
 document.addEventListener("keydown", function(event) {
   if (history.state) {
-    //ignore keyboard commands when the editor is open
+    //ignore keyboard commands unless the editor is open
     return;
   }
 
@@ -748,8 +677,7 @@ document.addEventListener("keydown", function(event) {
     if (event.key === "Delete") {
       if (menu.row < script.getRowCount()) {
         deleteRow(menu.row);
-        menu.col = 0;
-        itemClicked(menu.row, 0);
+        itemClicked(menu.row, -1);
       }
 
       event.preventDefault();
@@ -767,15 +695,15 @@ document.addEventListener("keydown", function(event) {
 
     if (event.key === "Enter") {
       if (menu.row <= script.getRowCount()) {
-        if (menu.col === 1 || menu.row === script.getRowCount() || script.getItemCount(menu.row) === 1) {
+        if (menu.col === 0 || menu.row === script.getRowCount() || script.getItemCount(menu.row) === 0) {
           insertRow(menu.row);
           itemClicked(menu.row + 1, menu.col);
         } else {
           insertRow(menu.row + 1);
-          itemClicked(menu.row + 1, 0);
+          itemClicked(menu.row + 1, -1);
         }
       } else {
-        itemClicked(menu.row + 1, 0);
+        itemClicked(menu.row + 1, -1);
       }
       
       event.preventDefault();
@@ -784,12 +712,62 @@ document.addEventListener("keydown", function(event) {
 });
 
 menu.addEventListener("click", function (event) {
-  if (event.target !== this) {
-    menuItemClicked(event.target.position);
-  } else {
-    closeMenu();
+  if (event.target != this) {
+    const menuItem = event.target;
+
+    if (menuItem.tagName === "INPUT") {
+      return;
+    }
+
+    const [args = []] = [menuItem.args];
+    const response = menuItem.action(...args);
+
+    if (Array.isArray(response) && response.length > 0) {
+      configureMenu(response);
+    } else {
+      handleMenuItemResponse(response);
+    }
   }
 });
+
+function handleMenuItemResponse(response) {
+  if ("rowUpdated" in response) {
+    if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
+      const outerDiv = list.childNodes[menu.row % loadedCount];
+      loadRow(menu.row, outerDiv);
+      if (menu.col === -1) {
+        outerDiv.firstChild.scrollLeft = 1e10;
+      }
+      list.style.height = getRowCount() * rowHeight + "px";
+    }
+  }
+
+  if ("rowsInserted" in response) {
+    insertRow(menu.row + 1, response.rowsInserted);
+  }
+
+  if ("selectedCol" in response) {
+    if (response.selectedCol >= script.getItemCount(menu.row)) {
+      response.selectedCol = -1;
+    }
+    itemClicked(menu.row, response.selectedCol);
+  }
+
+  if ("rowDeleted" in response) {
+    deleteRow(menu.row);
+    menu.col = -1;
+    if (menu.row > 0) {
+      menu.row = menu.row - 1;
+    }
+  }
+
+  if ("scriptChanged" in response) {
+    reloadAllRows();
+    menu.col = -1;
+  }
+  
+  itemClicked(menu.row, menu.col);
+}
 
 function rowClickHandler(event) {
   if (menuButton.toggled) {
@@ -803,114 +781,25 @@ function rowClickHandler(event) {
 
 function itemClicked(row, col) {
   if (row !== undefined && col !== undefined) {
-    const selectedItem = list.childNodes[row % loadedCount].childNodes[1].childNodes[1 + col];
-    if (selectedItem)
+    selectedItem && selectedItem.classList.remove("selected");
+
+    selectedItem = list.childNodes[row % loadedCount].firstChild.childNodes[2 + col];
+    if (selectedItem) {
+      selectedItem.classList.add("selected");
       selectedItem.focus();
+    }
     
     menu.row = row;
     menu.col = col;
     
-    let options = script.itemClicked(row, col);
+    const options = script.itemClicked(row, col);
     configureMenu(options);
   }
 }
 
 function selectPreviousLine() {
-  menu.col = 0;
-  if (menu.row === 0) {
-    itemClicked(0, 0);
-  } else {
-    itemClicked(menu.row - 1, 0);
-  }
+  itemClicked(Math.max(0, menu.row - 1), -1);
 }
-
-
-
-function touchStartHandler(event) {
-  if (this.touchId === undefined) {
-    const touch = event.changedTouches[0];
-    this.touchId = touch.identifier;
-    this.touchStartX = touch.pageX + this.childNodes[1].scrollLeft;
-  }
-}
-
-function existingTouchHandler(event) {
-  for (const touch of event.changedTouches) {
-    if (touch.identifier === this.touchId) {
-      switch (event.type) {
-        case "touchmove":
-          touchMoved(this, touch);
-          if (this.touchCaptured)
-            event.preventDefault();
-        break;
-
-        case "touchend":
-          touchEnded(this, touch);
-        break;
-
-        case "touchcancel":
-          touchCanceled(this);
-        break;
-      }
-    }
-  }
-}
-
-function touchMoved(outerDiv, touch) {
-  let travel = touch.pageX - outerDiv.touchStartX;
-  
-  if (!outerDiv.touchCaptured && travel > 10) {
-    outerDiv.touchCaptured = true;
-    outerDiv.firstChild.classList.remove("slow-transition");
-    outerDiv.slideMenuStartWidth = outerDiv.firstChild.offsetWidth;
-    outerDiv.touchStartX += 10;
-    travel -= 10;
-  }
-  
-  if (outerDiv.touchCaptured) {
-    outerDiv.firstChild.style.width = outerDiv.slideMenuStartWidth + Math.max(travel, 0) + "px";
-  }
-}
-
-function touchEnded(outerDiv, touch) {
-  if (outerDiv.touchCaptured) {
-    const position = outerDiv.childNodes[1].position;
-    const travel = touch.pageX - outerDiv.touchStartX;
-    
-    if (travel > 200) {
-      if (position < script.getRowCount()) {
-        deleteRow(position);
-        if (position === menu.row) {
-          menu.col = 0;
-        } else if (menu.row > position) {
-          --menu.row;
-        }
-        itemClicked(menu.row, menu.col);
-      }
-    }
-    else if (travel > 80) {
-      if (position <= script.getRowCount()) {
-        insertRow(position);
-        if (menu.row >= position) {
-          ++menu.row;
-        }
-        itemClicked(menu.row, menu.col);
-      }
-    }
-  }
-  
-  touchCanceled(outerDiv);
-}
-
-function touchCanceled(outerDiv) {
-  outerDiv.touchId = undefined;
-  if (outerDiv.touchCaptured) {
-    outerDiv.touchCaptured = false;
-    outerDiv.firstChild.classList.add("slow-transition");
-    outerDiv.firstChild.style.width = "";
-  }
-}
-
 
 function print(value) {
   const textNode = document.createTextNode(value);

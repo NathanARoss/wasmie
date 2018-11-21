@@ -384,6 +384,6 @@ Wasm.opcodes = {};
 for (let i = 0; i < Wasm.opcodeData.length; ++i) {
   if (Wasm.opcodeData[i]) {
     const propName = Wasm.opcodeData[i].name.replace(/\./, "_").replace(/\//, "_from_");
-    Wasm.opcodes[propName] = i;
+    Wasm[propName] = i;
   }
 }
