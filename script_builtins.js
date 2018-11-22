@@ -111,21 +111,24 @@ class TypeDefinition {
 }
 
 class ArgHint {
-  constructor(funcRef, argIndex) {
-    this.funcRef = funcRef;
+  constructor(signature, argIndex) {
+    this.signature = signature;
     this.argIndex = argIndex;
   }
 
   getDisplay() {
-    return [this.funcRef.parameters[this.argIndex].name, "comment"];
+    return [this.signature.parameters[this.argIndex].name, "comment"];
   }
 }
 
 class Symbol {
-  constructor(text, precedence, options = {isFoldable: true}, ...uses) {
+  constructor(text, precedence, options, ...uses) {
     this.text = text;
     this.precedence = precedence;
     Object.assign(this, options);
+    if (!options || options.preceedsExpression === undefined) {
+      this.preceedsExpression = true;
+    }
     
     this.uses = new Map();
     for (const use of uses) {
@@ -140,8 +143,9 @@ class Symbol {
 }
 
 class Keyword {
-  constructor(text) {
+  constructor(text, preceedsExpression = false) {
     this.text = text;
+    this.preceedsExpression = preceedsExpression;
   }
 
   getDisplay() {
@@ -457,8 +461,8 @@ function BuiltIns() {
   ];
   
   this.SYMBOLS = [
-    this.ASSIGN     = new Symbol("=", 0),
-    this.ADD_ASSIGN = new Symbol("+=", 0, undefined,
+    this.ASSIGN     = new Symbol("=", 0, {isAssignment: true}),
+    this.ADD_ASSIGN = new Symbol("+=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_add],
       [this.VOID, this.U32, Wasm.i32_add],
       [this.VOID, this.I64, Wasm.i64_add],
@@ -466,7 +470,7 @@ function BuiltIns() {
       [this.VOID, this.F32, Wasm.f32_add],
       [this.VOID, this.F64, Wasm.f64_add],
     ),
-    this.SUB_ASSIGN = new Symbol("-=", 0, undefined,
+    this.SUB_ASSIGN = new Symbol("-=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_sub],
       [this.VOID, this.U32, Wasm.i32_sub],
       [this.VOID, this.I64, Wasm.i64_sub],
@@ -474,7 +478,7 @@ function BuiltIns() {
       [this.VOID, this.F32, Wasm.f32_sub],
       [this.VOID, this.F64, Wasm.f64_sub],
     ),
-    this.MUL_ASSIGN = new Symbol("*=", 0, undefined,
+    this.MUL_ASSIGN = new Symbol("*=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_mul],
       [this.VOID, this.U32, Wasm.i32_mul],
       [this.VOID, this.I64, Wasm.i64_mul],
@@ -482,7 +486,7 @@ function BuiltIns() {
       [this.VOID, this.F32, Wasm.f32_mul],
       [this.VOID, this.F64, Wasm.f64_mul],
     ),
-    this.DIV_ASSIGN = new Symbol("/=", 0, undefined,
+    this.DIV_ASSIGN = new Symbol("/=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_div_s],
       [this.VOID, this.U32, Wasm.i32_div_u],
       [this.VOID, this.I64, Wasm.i64_div_s],
@@ -490,37 +494,37 @@ function BuiltIns() {
       [this.VOID, this.F32, Wasm.f32_div_s],
       [this.VOID, this.F64, Wasm.f64_div_u],
     ),
-    this.MOD_ASSIGN = new Symbol("%=", 0, undefined,
+    this.MOD_ASSIGN = new Symbol("%=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_rem_s],
       [this.VOID, this.U32, Wasm.i32_rem_u],
       [this.VOID, this.I64, Wasm.i64_rem_s],
       [this.VOID, this.U64, Wasm.i64_rem_u],
     ),
-    this.AND_ASSIGN = new Symbol("&=", 0, undefined,
+    this.AND_ASSIGN = new Symbol("&=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_and],
       [this.VOID, this.U32, Wasm.i32_and],
       [this.VOID, this.I64, Wasm.i64_and],
       [this.VOID, this.U64, Wasm.i64_and],
     ),
-    this.OR_ASSIGN = new Symbol("|=", 0, undefined,
+    this.OR_ASSIGN = new Symbol("|=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_or],
       [this.VOID, this.U32, Wasm.i32_or],
       [this.VOID, this.I64, Wasm.i64_or],
       [this.VOID, this.U64, Wasm.i64_or],
     ),
-    this.XOR_ASSIGN = new Symbol("^=", 0, undefined,
+    this.XOR_ASSIGN = new Symbol("^=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_xor],
       [this.VOID, this.U32, Wasm.i32_xor],
       [this.VOID, this.I64, Wasm.i64_xor],
       [this.VOID, this.U64, Wasm.i64_xor],
     ),
-    this.LSH_ASSIGN = new Symbol("<<=", 0, undefined,
+    this.LSH_ASSIGN = new Symbol("<<=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_shl],
       [this.VOID, this.U32, Wasm.i32_shl],
       [this.VOID, this.I64, Wasm.i64_shl],
       [this.VOID, this.U64, Wasm.i64_shl],
     ),
-    this.RSH_ASSIGN = new Symbol(">>=", 0, undefined,
+    this.RSH_ASSIGN = new Symbol(">>=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_shr_s],
       [this.VOID, this.U32, Wasm.i32_shr_u],
       [this.VOID, this.I64, Wasm.i64_shr_s],
@@ -638,7 +642,7 @@ function BuiltIns() {
       [this.BOOL, this.I64, Wasm.i64_le_s],
       [this.BOOL, this.U64, Wasm.i64_le_u],
     ),
-    this.HALF_OPEN_RANGE = new Symbol("..<", 0, {isFoldable: false},
+    this.HALF_OPEN_RANGE = new Symbol("..<", 0, {isRange: true},
       [this.ITERABLE, this.I32, Wasm.i32_lt_s, Wasm.i32_add],
       [this.ITERABLE, this.U32, Wasm.i32_lt_u, Wasm.i32_add],
       [this.ITERABLE, this.I64, Wasm.i64_lt_s, Wasm.i64_add],
@@ -646,7 +650,7 @@ function BuiltIns() {
       [this.ITERABLE, this.F32, Wasm.f32_lt, Wasm.f32_add],
       [this.ITERABLE, this.F64, Wasm.f64_lt, Wasm.f64_add],
     ),
-    this.CLOSED_RANGE = new Symbol("..≤", 0, {isFoldable: false},
+    this.CLOSED_RANGE = new Symbol("..≤", 0, {isRange: true},
       [this.ITERABLE, this.I32, Wasm.i32_le_s, Wasm.i32_add],
       [this.ITERABLE, this.U32, Wasm.i32_le_u, Wasm.i32_add],
       [this.ITERABLE, this.I64, Wasm.i64_le_s, Wasm.i64_add],
@@ -654,7 +658,7 @@ function BuiltIns() {
       [this.ITERABLE, this.F32, Wasm.f32_le, Wasm.f32_add],
       [this.ITERABLE, this.F64, Wasm.f64_le, Wasm.f64_add],
     ),
-    this.BACKWARDS_HALF_OPEN_RANGE = new Symbol("..>", 0, {isFoldable: false},
+    this.BACKWARDS_HALF_OPEN_RANGE = new Symbol("..>", 0, {isRange: true},
       [this.ITERABLE, this.I32, Wasm.i32_gt_s, Wasm.i32_sub],
       [this.ITERABLE, this.U32, Wasm.i32_gt_u, Wasm.i32_sub],
       [this.ITERABLE, this.I64, Wasm.i64_gt_s, Wasm.i64_sub],
@@ -662,7 +666,7 @@ function BuiltIns() {
       [this.ITERABLE, this.F32, Wasm.f32_gt, Wasm.f32_sub],
       [this.ITERABLE, this.F64, Wasm.f64_gt, Wasm.f64_sub],
     ),
-    this.BACKWARDS_CLOSED_RANGE = new Symbol("..≥", 0, {isFoldable: false},
+    this.BACKWARDS_CLOSED_RANGE = new Symbol("..≥", 0, {isRange: true},
       [this.ITERABLE, this.I32, Wasm.i32_ge_s, Wasm.i32_sub],
       [this.ITERABLE, this.U32, Wasm.i32_ge_u, Wasm.i32_sub],
       [this.ITERABLE, this.I64, Wasm.i64_ge_s, Wasm.i64_sub],
@@ -683,30 +687,47 @@ function BuiltIns() {
       [this.I64, this.I64, Wasm.i64_const, ...Wasm.varint(-1), Wasm.i64_xor],
       [this.U64, this.U64, Wasm.i64_const, ...Wasm.varint(-1), Wasm.i64_xor],
     ),
-    this.PLACEHOLDER      = new Symbol("____", 0),
+    this.PLACEHOLDER      = new Symbol("____", 0, {preceedsExpression: false}),
     this.ARG_SEPARATOR    = new Symbol(",", 0),
-    this.ACCESSOR         = new Symbol(".", 0),
+    this.ACCESSOR         = new Symbol(".", 0, {preceedsExpression: false}),
     this.BEGIN_EXPRESSION = new Symbol("(", -2, {direction: 1, matching: null}),
     this.BEGIN_ARGS       = new Symbol("⟨", -2, {direction: 1, matching: null}),
-    this.END_EXPRESSION   = new Symbol(")", -1, {direction: -1, matching: this.BEGIN_EXPRESSION}),
-    this.END_ARGS         = new Symbol("⟩", -1, {direction: -1, matching: this.BEGIN_ARGS}),
+    this.END_EXPRESSION   = new Symbol(")", -1, {
+      direction: -1,
+      matching: this.BEGIN_EXPRESSION,
+      preceedsExpression: false
+    }),
+    this.END_ARGS         = new Symbol("⟩", -1, {
+      direction: -1,
+      matching: this.BEGIN_ARGS,
+      preceedsExpression: false
+    }),
   ];
   this.BEGIN_EXPRESSION.matching = this.END_EXPRESSION;
   this.BEGIN_ARGS.matching = this.END_ARGS;
   
   this.LET = new Keyword("let");
   this.VAR = new Keyword("var");
-  this.IF = new Keyword("if");
+  this.IF = new Keyword("if", true);
   this.ELSE = new Keyword("else");
   this.FOR = new Keyword("for");
   this.IN = new Keyword("in");
-  this.WHILE = new Keyword("while");
-  this.DO_WHILE = new Keyword("post while");
+  this.WHILE = new Keyword("while", true);
+  this.DO_WHILE = new Keyword("post while", true);
   this.BREAK = new Keyword("break");
   this.CONTINUE = new Keyword("continue");
   this.RETURN = new Keyword("return");
-  this.STEP = new Keyword("step");
+  this.STEP = new Keyword("step", true);
   this.FUNC = new Keyword("fn");
+
+  this.VAR.suggestion = this.LET;
+  this.LET.suggestion = this.VAR;
+  this.BREAK.suggestion = this.CONTINUE;
+  this.WHILE.suggestion = this.DO_WHILE;
+  this.DO_WHILE.suggestion = this.WHILE;
+  this.CONTINUE.suggestion = this.BREAK;
+  this.BREAK.suggestion = this.CONTINUE;
+  this.CONTINUE.suggestion = this.BREAK;
 
   this.FALSE = new BooleanLiteral(false);
   this.TRUE = new BooleanLiteral(true);

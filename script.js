@@ -50,98 +50,173 @@ class Script {
   }
 
   itemClicked(row, col) {
-    let item = {};
     if (col < 0) {
       const options = this.appendClicked(row);
       if (options) {
         return options;
       }
       col = this.getItemCount(row);
-    } else {
-      item = this.getItem(row, col);
+    }
+
+    const [item = {}] = [this.getItem(row, col)];
+    const [nextItem = {}] = [this.getItem(row, col + 1)];
+
+    const replace = (col, item) => {
+      this.setItem(row, col, item);
+      return {rowUpdated: true};
+    }
+
+    const insert = (col, ...items) => {
+      this.spliceRow(row, col, 0, ...items);
+      return {rowUpdated: true, selectedCol: col + 1};
     }
 
     let options = [];
 
-    if (col === 0) {
+    if (item.suggestion) {
+      const isAssignment = this.getItem(row, 2) && this.getItem(row, 2).isAssignment;
+      if (item !== this.BuiltIns.VAR || isAssignment) {
+        const [text, style] = item.suggestion.getDisplay();
+        options.push({text, style, action: replace, args: [col, item.suggestion]});
+      }
+    }
 
+    if (item.isAssignment) {
+      for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.isAssignment)) {
+        const [text, style] = op.getDisplay();
+        options.push({text, style, action: replace, args: [col, op]});
+      }
+    }
+
+    if (item.isRange) {
+      for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.isRange)) {
+        const [text, style] = op.getDisplay();
+        options.push({text, style, action: replace, args: [col, op]});
+      }
+    }
+
+    if (col === 0) {
+      if (item.constructor === VarRef) {
+        ///options.push(...this.getVisibleVariables(row, true));
+      } else if (item.constructor === FuncRef) {
+        ///options.push(...this.getFunctionList(false));
+      } else if (item === this.BuiltIns.IF) {
+        const indentation = this.getIndentation(row);
+        for (let r = row - 1; r >= 0; --r) {
+          if (this.getIndentation(r) < indentation)
+            break;
+
+          if (this.getItem(r, 0) === this.BuiltIns.IF
+          || this.getItem(r, 1) === this.BuiltIns.IF) {
+            options.push({text: "else", style: "keyword",
+              action: insert, args: [col, this.BuiltIns.ELSE]
+            });
+            break;
+          }
+        }
+      }
     } else {
+      if (item === this.BuiltIns.BEGIN_EXPRESSION
+      || item === this.BuiltIns.END_EXPRESSION) {
+        options.push({text: "", style: "delete-outline", action: () => {
+          const [start, end] = this.getExpressionBounds(row, col);
+          this.spliceRow(row, end, 1);
+          this.spliceRow(row, start, 1);
+          return {rowUpdated: true, selectedCol: col === start ? col : col - 2};
+        }});
+      }
+
+      //allow the user to enter additional arguments for variadic functions
+      if ([this.BuiltIns.ARG_SEPARATOR, this.BuiltIns.END_ARGS].includes(nextItem)) {
+        //find signiture of function this argument belongs to
+        let depth = 0;
+        for (let i = col - 1; i >= 0; --i) {
+          const item = this.getItem(row, i);
+          if (item === this.BuiltIns.END_ARGS) {
+            ++depth;
+          } else if (item === this.BuiltIns.BEGIN_ARGS) {
+            --depth;
+            if (depth === -1) {
+              const sig = this.getItem(row, i - 1).funcDef.signature;
+              //TODO make sure function is actually variadic
+              options.push({text: ",", action: insert,
+                args: [col + 1, this.BuiltIns.ARG_SEPARATOR, new ArgHint(sig, 0)]
+              });
+            }
+          }
+        }
+      }
+
+      if (item.constructor === FuncRef
+      || item == this.BuiltIns.BEGIN_ARGS
+      || item === this.BuiltIns.BEGIN_EXPRESSION) {
+        options.push( {text: "( )", action: () => {
+          const [start, end] = this.getExpressionBounds(row, col);
+          this.spliceRow(row, end + 1, 0, this.BuiltIns.END_EXPRESSION);
+          this.spliceRow(row, start, 0, this.BuiltIns.BEGIN_EXPRESSION);
+          return {rowUpdated: true, selectedCol: col + 1};
+        }});
+      }
+
       const prevItem = this.getItem(row, col - 1);
 
-      
+      if (prevItem.preceedsExpression
+      || prevItem === this.BuiltIns.RETURN && this.getReturnType(row)) {
+        if (!item.isUnary) {
+          let text = "";
+          let style = "";
+          if ([NumericLiteral, BooleanLiteral].includes(item.constructor)) {
+            [text, style] = item.getDisplay();
+          }
+          if (item.constructor === StringLiteral) {
+            [text, style] = [item.text, "string"];
+            if (text === "true" || text === "false" || !isNaN(text)) {
+              text = '"' + text + '"';
+            }
+          }
+          options.unshift(
+            {text, isInput: true, style, hint: "literal", onchange: (text) => {
+              let newItem;
 
-      if (
-           prevItem.constructor === Symbol
-        || prevItem === this.BuiltIns.WHILE
-        || prevItem === this.BuiltIns.DO_WHILE
-        || prevItem === this.BuiltIns.SWITCH
-        || prevItem === this.BuiltIns.CASE
-        || prevItem === this.BuiltIns.IF
-        || prevItem === this.BuiltIns.START_SUBEXPRESSION
-        || prevItem === this.BuiltIns.START_ARGUMENTS
-        || prevItem === this.BuiltIns.COMMA
-        || prevItem === this.BuiltIns.IN
-        || prevItem === this.BuiltIns.STEP
-        || (prevItem === this.BuiltIns.RETURN && this.getReturnType(row))) {
-          if (!item.isUnary) {
-            let text = "";
-            let style = "";
-            if ([NumericLiteral, BooleanLiteral].includes(item.constructor)) {
-              [text, style] = item.getDisplay();
-            }
-            if (item.constructor === StringLiteral) {
-              [text, style] = [item.text, "string"];
-              if (text === "true" || text === "false" || !isNaN(text)) {
-                text = '"' + text + '"';
+              if (text.toLowerCase() === "true") {
+                newItem = this.BuiltIns.TRUE;
+              } else if (text.toLowerCase() === "false") {
+                newItem = this.BuiltIns.FALSE;
+              } else if (text.trim().length !== 0 && !isNaN(text)) {
+                newItem = new NumericLiteral(text.trim());
+              } else {
+                if (text.startsWith('"'))
+                  text = text.substring(1);
+                
+                if (text.endsWith('"'))
+                  text = text.substring(0, text.length - 1);
+
+                newItem = new StringLiteral(text);
               }
-            }
-            options.push(
-              {text, isInput: true, style, hint: "literal", onchange: (text) => {
-                let newItem;
-  
-                if (text.toLowerCase() === "true") {
-                  newItem = this.BuiltIns.TRUE;
-                } else if (text.toLowerCase() === "false") {
-                  newItem = this.BuiltIns.FALSE;
-                } else if (text.trim().length !== 0 && !isNaN(text)) {
-                  newItem = new NumericLiteral(text.trim());
-                } else {
-                  if (text.startsWith('"'))
-                    text = text.substring(1);
-                  
-                  if (text.endsWith('"'))
-                    text = text.substring(0, text.length - 1);
-  
-                  newItem = new StringLiteral(text);
-                }
-  
-                this.setItem(row, col, newItem);
-                return {rowUpdated: true, selectedCol: col + 1};
-              }, oninput: (inputNode) => {
-                if (["true", "false"].includes(inputNode.value.toLowerCase())) {
-                  inputNode.classList = "menu-input keyword literal";
-                } else if (!isNaN(inputNode.value)) {
-                  inputNode.classList = "menu-input number literal";
-                } else {
-                  inputNode.classList = "menu-input string literal";
-                }
-              }},
-            );
-          }
-  
-          if (!prevItem.isUnary) {
-            const action = (row, col, symbol) => {
-              const replace = (item.constructor === Symbol)|0;
-              this.spliceRow(row, col, replace, symbol);
+
+              this.setItem(row, col, newItem);
               return {rowUpdated: true, selectedCol: col + 1};
-            }
-            for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.isUnary)) {
-              options.push({text: op.text + " ___", action, args: [row, col, op]});
-            }
-          }
-  
-          //options.push(...this.getVisibleVariables(row, false));
+            }, oninput: (inputNode) => {
+              if (["true", "false"].includes(inputNode.value.toLowerCase())) {
+                inputNode.classList = "menu-input keyword literal";
+              } else if (!isNaN(inputNode.value)) {
+                inputNode.classList = "menu-input number literal";
+              } else {
+                inputNode.classList = "menu-input string literal";
+              }
+            }},
+          );
         }
+
+        if (!prevItem.isUnary) {
+          const action = (item.constructor === Symbol) ? replace : insert;
+          for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.isUnary)) {
+            options.push({text: op.text + " ___", action, args: [col, op]});
+          }
+        }
+
+        //options.push(...this.getVisibleVariables(row, false));
+      }
     }
 
     return options;
@@ -176,10 +251,10 @@ class Script {
           return {rowUpdated: true, rowsInserted: 1, selectedCol: 1};
         }},
 
-        {text: "let", style: "keyword", action: () => {
+        {text: "var", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
           this.pushItems(row,
-            this.BuiltIns.LET,
+            this.BuiltIns.VAR,
             new VarDef("myVar", this.BuiltIns.I32),
             this.BuiltIns.ASSIGN
           );
@@ -334,26 +409,18 @@ class Script {
     let start = col;
     let end = col;
 
-    if (this.getData(row, col).format === Script.FUNCTION_REFERENCE) {
+    if (this.getItem(row, col).constructor === FuncRef) {
       ++end;
     }
 
-    let step = 0;
-    let symbol = this.getItem(row, end);
-    let matchingSymbol = symbol;
-
-    if (this.START_BRACKETS.includes(symbol)) {
-      step = 1;
-      matchingSymbol = symbol + 2;
-    } else if (this.END_BRACKETS.includes(symbol)) {
-      step = -1;
-      matchingSymbol = symbol - 2;
-    }
+    const symbol = this.getItem(row, end);
+    const matchingSymbol = symbol.matching;
+    const step = symbol.direction|0;
 
     if (step !== 0) {
       let matchingIndex = end;
       let depth = 0;
-      while (matchingIndex > 1 && matchingIndex < this.getItemCount(row)) {
+      while (matchingIndex > 0 && matchingIndex < this.getItemCount(row)) {
         if (this.getItem(row, matchingIndex) === symbol) {
           ++depth;
         }
@@ -374,8 +441,9 @@ class Script {
       }
     }
 
-    if (this.getData(row, start - 1).format === Script.FUNCTION_REFERENCE)
+    if (start > 0 && this.getItem(row, start - 1).constructor === FuncRef) {
       --start;
+    }
 
     return [start, end];
   }
