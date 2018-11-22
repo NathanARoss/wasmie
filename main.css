@@ -256,17 +256,11 @@ button {
 
 .menu-input {
   padding: 0.5em;
-  width: 6em;
-  height: 100%;
   box-sizing: border-box;
   transition: width 0.5s ease-in-out;
   background: #2B2B2B;
   border: thin solid #808080;
   color: white;
-}
-
-.menu-input:focus {
-  width: 100%;
 }
 
 /* small portrait screens */
@@ -296,6 +290,15 @@ button {
     min-width: 3.5em;
   }
 
+  .menu-input {
+    width: 6em;
+    height: var(--line-height);
+  }
+
+  .menu-input:focus {
+    width: 100%;
+  }
+
   .selected #FAB-menu {
     bottom: calc(var(--line-height) + 20px);
   }
@@ -319,6 +322,11 @@ button {
   .menu-item {
     width: 100%;
     min-height: var(--line-height);
+  }
+
+  .menu-input {
+    width: 100%;
+    height: var(--line-height);
   }
 
   .selected #FAB-menu {

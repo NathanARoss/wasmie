@@ -63,10 +63,12 @@ class Script {
 
     let options = [];
 
-    if (col < 1) {
+    if (col === 0) {
 
     } else {
       const prevItem = this.getItem(row, col - 1);
+
+      
 
       if (
            prevItem.constructor === Symbol
@@ -81,83 +83,56 @@ class Script {
         || prevItem === this.BuiltIns.IN
         || prevItem === this.BuiltIns.STEP
         || (prevItem === this.BuiltIns.RETURN && this.getReturnType(row))) {
-          let text = "";
-          let style = "";
-          if ([NumericLiteral, BooleanLiteral].includes(item.constructor)) {
-            [text, style] = item.getDisplay();
-          }
-          if (item.constructor === StringLiteral) {
-            [text, style] = [item.text, "string"];
-            if (text === "true" || text === "false" || !isNaN(text)) {
-              text = '"' + text + '"';
+          if (!item.isUnary) {
+            let text = "";
+            let style = "";
+            if ([NumericLiteral, BooleanLiteral].includes(item.constructor)) {
+              [text, style] = item.getDisplay();
             }
-          }
-          options.push(
-            {text, isInput: true, style, hint: "literal", onchange: (text) => {
-              let newItem;
-
-              if (text.toLowerCase() === "true") {
-                newItem = this.BuiltIns.TRUE;
-              } else if (text.toLowerCase() === "false") {
-                newItem = this.BuiltIns.FALSE;
-              } else if (text.trim().length !== 0 && !isNaN(text)) {
-                newItem = new NumericLiteral(text.trim());
-              } else {
-                if (text.startsWith('"'))
-                  text = text.substring(1);
-                
-                if (text.endsWith('"'))
-                  text = text.substring(0, text.length - 1);
-
-                newItem = new StringLiteral(text);
+            if (item.constructor === StringLiteral) {
+              [text, style] = [item.text, "string"];
+              if (text === "true" || text === "false" || !isNaN(text)) {
+                text = '"' + text + '"';
               }
-
-              this.setItem(row, col, newItem);
-              return {rowUpdated: true, selectedCol: col + 1};
-            }, oninput: (inputNode) => {
-              if (["true", "false"].includes(inputNode.value.toLowerCase())) {
-                inputNode.classList = "menu-input keyword";
-              } else if (!isNaN(inputNode.value)) {
-                inputNode.classList = "menu-input number";
-              } else {
-                inputNode.classList = "menu-input string";
-              }
-            }},
-          );
-
-          /*
-          case this.PAYLOADS.LITERAL_INPUT: {            
-            if (input.toLowerCase() === "true") {
-              payload = this.ITEMS.TRUE;
-            } else if (input.toLowerCase() === "false") {
-              payload = this.ITEMS.FALSE;
-            } else {
-              const id = this.literals.nextId();
-
-              if (input.trim().length !== 0 && !isNaN(input)) {
-                input = input.trim();
-                payload = Script.makeItem({format: Script.LITERAL, meta: 2, value: id});
-              } else {
-                if (input.startsWith('"'))
-                  input = input.substring(1);
-                
-                if (input.endsWith('"'))
-                  input = input.substring(0, input.length - 1);
-
-                payload = Script.makeItem({format: Script.LITERAL, meta: 1, value: id});
-              }
-              
-              this.literals.set(id, input);
             }
-
-            const [start, end] = this.getExpressionBounds(row, col);
-            this.spliceRow(row, start, end - start + 1, payload);
-            return {rowUpdated: true, selectedCol: isAppending ? 0 : start};
-          }*/
+            options.push(
+              {text, isInput: true, style, hint: "literal", onchange: (text) => {
+                let newItem;
+  
+                if (text.toLowerCase() === "true") {
+                  newItem = this.BuiltIns.TRUE;
+                } else if (text.toLowerCase() === "false") {
+                  newItem = this.BuiltIns.FALSE;
+                } else if (text.trim().length !== 0 && !isNaN(text)) {
+                  newItem = new NumericLiteral(text.trim());
+                } else {
+                  if (text.startsWith('"'))
+                    text = text.substring(1);
+                  
+                  if (text.endsWith('"'))
+                    text = text.substring(0, text.length - 1);
+  
+                  newItem = new StringLiteral(text);
+                }
+  
+                this.setItem(row, col, newItem);
+                return {rowUpdated: true, selectedCol: col + 1};
+              }, oninput: (inputNode) => {
+                if (["true", "false"].includes(inputNode.value.toLowerCase())) {
+                  inputNode.classList = "menu-input keyword literal";
+                } else if (!isNaN(inputNode.value)) {
+                  inputNode.classList = "menu-input number literal";
+                } else {
+                  inputNode.classList = "menu-input string literal";
+                }
+              }},
+            );
+          }
   
           if (!prevItem.isUnary) {
             const action = (row, col, symbol) => {
-              this.spliceRow(row, col, 0, symbol);
+              const replace = (item.constructor === Symbol)|0;
+              this.spliceRow(row, col, replace, symbol);
               return {rowUpdated: true, selectedCol: col + 1};
             }
             for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.isUnary)) {
