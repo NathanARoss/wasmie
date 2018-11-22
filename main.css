@@ -260,6 +260,9 @@ button {
   height: 100%;
   box-sizing: border-box;
   transition: width 0.5s ease-in-out;
+  background: #2B2B2B;
+  border: thick solid #808080;
+  color: white;
 }
 
 .menu-input:focus {
