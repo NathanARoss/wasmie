@@ -261,7 +261,7 @@ button {
   box-sizing: border-box;
   transition: width 0.5s ease-in-out;
   background: #2B2B2B;
-  border: thick solid #808080;
+  border: thin solid #808080;
   color: white;
 }
 
@@ -326,23 +326,19 @@ button {
   }
 }
 
-.global-var {
-  color: #9876AA;
-}
 .class {
   color: #A9B7C6;
 }
 .keyword::first-line {
   color: #CC7832;
 }
-.literal {
+.number {
   color: #6897BB;
 }
-.string-literal {
+.string {
   color: #A5C25C;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+.literal {
   font-family: monospace;
 }
 .comment {

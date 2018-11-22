@@ -629,17 +629,18 @@ function configureMenu(options) {
 
   for (const option of options) {
     let menuItem;
-    if (option.style === "input") {
+    if (option.isInput) {
       menuItem = document.createElement("input");
-      menuItem.classList = "menu-input";
+      menuItem.classList = "menu-input literal " + option.style;
       menuItem.value = option.text;
       menuItem.placeholder = option.hint;
       const [args = []] = [option.args];
-      menuItem.addEventListener("change", () => {
-        handleMenuItemResponse(option.action(menuItem.value, ...args));
-      })
-      menuItem.addEventListener("click", event => event.stopPropagation());
-      menuItem.addEventListener("keydown", event => event.stopPropagation());
+      menuItem.onchange = () => {
+        handleMenuItemResponse(option.onchange(menuItem.value, ...args));
+      };
+      menuItem.oninput = event => option.oninput(event.target);
+      menuItem.onclick = event => event.stopPropagation();
+      menuItem.onkeydown = event => event.stopPropagation();
     } else {
       const {text, style = ""} = option;
       menuItem = getItem(text, "menu-item " + style);

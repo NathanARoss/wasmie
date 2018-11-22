@@ -82,39 +82,46 @@ class Script {
         || prevItem === this.BuiltIns.STEP
         || (prevItem === this.BuiltIns.RETURN && this.getReturnType(row))) {
           let text = "";
+          let style = "";
           if ([NumericLiteral, BooleanLiteral].includes(item.constructor)) {
-            text = item.text;
+            [text, style] = item.getDisplay();
           }
           if (item.constructor === StringLiteral) {
-            text = item.text;
+            [text, style] = [item.text, "string"];
             if (text === "true" || text === "false" || !isNaN(text)) {
               text = '"' + text + '"';
             }
           }
           options.push(
-            {text, style: "input", hint: "literal", action: (input) => {
+            {text, isInput: true, style, hint: "literal", onchange: (text) => {
               let newItem;
 
-              if (input.toLowerCase() === "true") {
+              if (text.toLowerCase() === "true") {
                 newItem = this.BuiltIns.TRUE;
-              } else if (input.toLowerCase() === "false") {
+              } else if (text.toLowerCase() === "false") {
                 newItem = this.BuiltIns.FALSE;
-              } else {  
-                if (input.trim().length !== 0 && !isNaN(input)) {
-                  newItem = new NumericLiteral(input.trim());
-                } else {
-                  if (input.startsWith('"'))
-                    input = input.substring(1);
-                  
-                  if (input.endsWith('"'))
-                    input = input.substring(0, input.length - 1);
-  
-                  newItem = new StringLiteral(input);
-                }
+              } else if (text.trim().length !== 0 && !isNaN(text)) {
+                newItem = new NumericLiteral(text.trim());
+              } else {
+                if (text.startsWith('"'))
+                  text = text.substring(1);
+                
+                if (text.endsWith('"'))
+                  text = text.substring(0, text.length - 1);
+
+                newItem = new StringLiteral(text);
               }
 
               this.setItem(row, col, newItem);
               return {rowUpdated: true, selectedCol: col + 1};
+            }, oninput: (inputNode) => {
+              if (["true", "false"].includes(inputNode.value.toLowerCase())) {
+                inputNode.classList = "menu-input keyword";
+              } else if (!isNaN(inputNode.value)) {
+                inputNode.classList = "menu-input number";
+              } else {
+                inputNode.classList = "menu-input string";
+              }
             }},
           );
 

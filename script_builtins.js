@@ -157,7 +157,7 @@ class NumericLiteral {
   }
 
   getDisplay() {
-    return [this.text, "literal"];
+    return [this.text, "number literal"];
   }
 
   performUnaryOp(unaryOp) {
@@ -249,12 +249,12 @@ class NumericLiteral {
 
 class BooleanLiteral {
   constructor(value) {
-    this.text = value ? "true" : "false";
-    this.value = value;
+    this.text = String(value);
+    this.value = value|0;
   }
 
   getDisplay() {
-    return [this.text, "keyword"];
+    return [this.text, "keyword literal"];
   }
 }
 
@@ -264,7 +264,7 @@ class StringLiteral {
   }
 
   getDisplay() {
-    return ['"' + this.text + '"', "string-literal"];
+    return ['"' + this.text + '"', "string literal"];
   }
 
   getType() {
