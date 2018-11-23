@@ -631,14 +631,16 @@ function configureMenu(options) {
     let menuItem;
     if (option.isInput) {
       menuItem = document.createElement("input");
-      menuItem.classList = "menu-input literal " + option.style;
+      menuItem.classList = "menu-input " + option.style;
       menuItem.value = option.text;
       menuItem.placeholder = option.hint;
       const [args = []] = [option.args];
       menuItem.onchange = () => {
         handleMenuItemResponse(option.onchange(menuItem.value, ...args));
       };
-      menuItem.oninput = event => option.oninput(event.target);
+      if (option.oninput) {
+        menuItem.oninput = event => option.oninput(event.target);
+      }
       menuItem.onclick = event => event.stopPropagation();
       menuItem.onkeydown = event => event.stopPropagation();
     } else {

@@ -81,7 +81,7 @@ class Script {
       }
     }
 
-    if (item.isAssignment) {
+    if (col === 1 && item.isAssignment) {
       for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.isAssignment)) {
         const [text, style] = op.getDisplay();
         options.push({text, style, action: replace, args: [col, op]});
@@ -93,6 +93,16 @@ class Script {
         const [text, style] = op.getDisplay();
         options.push({text, style, action: replace, args: [col, op]});
       }
+    }
+    
+    if (item.constructor === FuncSig || item.constructor === VarDef) {
+      const style = (item.constructor === FuncSig) ? "funcdef" : "vardef";
+      options.push({
+        text: item.name, style, isInput: true, onchange: (text) => {
+          item.name = text;
+          return {scriptChanged: true};
+        }
+      });
     }
 
     if (col === 0) {
@@ -146,19 +156,55 @@ class Script {
           }
         }
       }
+      
+      const wrapInParens = {
+        text: "( )", action: () => {
+        const [start, end] = this.getExpressionBounds(row, col);
+        this.spliceRow(row, end + 1, 0, this.BuiltIns.END_EXPRESSION);
+        this.spliceRow(row, start, 0, this.BuiltIns.BEGIN_EXPRESSION);
+        return {rowUpdated: true, selectedCol: col + 1};
+      }};
 
       if (item.constructor === FuncRef
-      || item == this.BuiltIns.BEGIN_ARGS
-      || item === this.BuiltIns.BEGIN_EXPRESSION) {
-        options.push( {text: "( )", action: () => {
-          const [start, end] = this.getExpressionBounds(row, col);
-          this.spliceRow(row, end + 1, 0, this.BuiltIns.END_EXPRESSION);
-          this.spliceRow(row, start, 0, this.BuiltIns.BEGIN_EXPRESSION);
-          return {rowUpdated: true, selectedCol: col + 1};
-        }});
+      || item.direction === 1) {
+        options.push(wrapInParens);
+      }
+      
+      if (item.constructor === FuncSig) {
+        const setReturnType = (item, type) => {
+          item.returnType = type;
+          return {rowUpdated: true};
+        };
+        
+        options.push({text: "void", style: "comment",
+          action: setReturnType, args: [item, this.BuiltIns.ANY]
+        });
+        
+        options.push(...this.getSizedTypes(setReturnType, item));
+      }
+
+      if (item.constructor === VarDef) {
+        const setType = (item, type) => {
+          item.type = type;
+          return {rowUpdated: true};
+        }
+        
+        if (this.getItemCount(row) > 2 && this.getItem(row, 2).isAssignment) {
+          options.push({text: "auto", style: "comment",
+            action: setType, args: [item, this.BuiltIns.ANY]
+          });
+        }
+
+        options.push(...this.getSizedTypes(setType, item));
       }
 
       const prevItem = this.getItem(row, col - 1);
+      
+      if (prevItem === this.BuiltIns.CONTINUE || prevItem === this.BuiltIns.BREAK) {
+        options.push({text: "", style: "text-input", action: () => {
+          //TODO list the valid scope levels
+        }});
+      }
 
       if (prevItem.preceedsExpression
       || prevItem === this.BuiltIns.RETURN && this.getReturnType(row)) {
@@ -169,7 +215,7 @@ class Script {
             [text, style] = item.getDisplay();
           }
           if (item.constructor === StringLiteral) {
-            [text, style] = [item.text, "string"];
+            [text, style] = [item.text, "string literal"];
             if (text === "true" || text === "false" || !isNaN(text)) {
               text = '"' + text + '"';
             }
@@ -215,7 +261,40 @@ class Script {
           }
         }
 
-        //options.push(...this.getVisibleVariables(row, false));
+        options.push(...this.getVisibleVariables(row, false, (varDef) => {
+          return replace(col, new VarRef(varDef, this.BuiltIns.VOID));
+        }));
+      }
+      
+      if (item.constructor === VarRef
+      || item.constructor === NumericLiteral
+      || item === this.BuiltIns.END_EXPRESSION
+      || item === this.BuiltIns.END_ARGS) {
+        options.push(wrapInParens);
+        const isAppending = (col === this.getItemCount(row) - 1);
+        for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.arithmetic || sym.comparrison)) {
+          const args = [col + 1, op];
+          if (!isAppending) {
+            args.push(this.BuiltIns.PLACEHOLDER);
+          }
+          options.push({text: op.text, action: insert, args});
+        }
+      }
+      
+      if (prevItem.constructor === VarRef
+      || prevItem.constructor === NumericLiteral
+      || prevItem === this.BuiltIns.END_EXPRESSION
+      || prevItem === this.BuiltIns.END_ARGS) {
+        for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.arithmetic || sym.comparrison)) {
+          options.push({text: op.text, action: replace, args: [col, op]});
+        }
+      }
+
+      if (item !== this.BuiltIns.IF && prevItem === this.BuiltIns.ELSE) {
+        options.push({text: "if", style: "keyword", action: () => {
+          this.pushItems(row, this.BuiltIns.IF);
+          return {rowUpdated: true};
+        }});
       }
     }
 
@@ -230,9 +309,9 @@ class Script {
       const indentation = (row < rowCount) ? this.getIndentation(row) : 0;
 
       const options = [
-        {text: "f(x)", style: "definition", action: this.getFunctionList, args: [false]},
+        {text: "f(x)", style: "funcdef", action: this.getFunctionList, args: [false]},
 
-        {text: "print", style: "definition", action: () => {
+        {text: "print", style: "funcdef", action: () => {
           this.appendRowsUpTo(row);
           this.pushItems(row,
             new FuncRef(this.BuiltIns.PRINT, this.BuiltIns.VOID),
@@ -255,7 +334,7 @@ class Script {
           this.appendRowsUpTo(row);
           this.pushItems(row,
             this.BuiltIns.VAR,
-            new VarDef("myVar", this.BuiltIns.I32),
+            new VarDef("myVar", this.BuiltIns.I32, this.BuiltIns.VOID),
             this.BuiltIns.ASSIGN
           );
           return {rowUpdated: true, selectedCol: 1};
@@ -314,7 +393,7 @@ class Script {
           this.setIsStartingScope(row, true);
           this.pushItems(row,
             this.BuiltIns.FOR,
-            new VarDef("index", this.BuiltIns.I32),
+            new VarDef("index", this.BuiltIns.I32, this.BuiltIns.VOID),
             this.BuiltIns.IN,
             new NumericLiteral("0"),
             this.BuiltIns.HALF_OPEN_RANGE
@@ -352,25 +431,31 @@ class Script {
 
       return options;
     }
+    
+    const defineVar = (item, type) => {
+      const newVar = new VarDef("$" + (this.getItemCount(row) - 2), type, this.BuiltIns.VOID);
+      this.pushItems(row, newVar);
+      return {rowUpdated: true};
+    }
 
     if (this.getItem(row, 0) === this.BuiltIns.VAR) {
       const ditto = {text: "ditto", style: "comment", action: () => {
         const cloneVariable = Object.assign({}, this.getItem(row, itemCount - 1));
         this.pushItems(cloneVariable)
-      }};
+      }}
 
       if (itemCount === 2) {
         return [
           {text: "=", action: this.pushItems, args: [row, this.BuiltIns.ASSIGN, this.BuiltIns.PLACEHOLDER]},
           ditto,
-          //...this.getSizedClasses(1, this.PAYLOADS.DEFINE_ANOTHER_VAR)
+          ...this.getSizedTypes(defineVar, null)
         ];
       }
 
       if (this.getItem(row, itemCount - 1).constructor === VarDef) {
         return [
           ditto,
-          //...this.getSizedClasses(1, this.PAYLOADS.DEFINE_ANOTHER_VAR)
+          ...this.getSizedTypes(defineVar, null)
         ];
       }
     }
@@ -383,7 +468,7 @@ class Script {
     }
 
     if (this.getItem(row, 0) === this.BuiltIns.FUNC) {
-      //return this.getSizedClasses(0, this.PAYLOADS.APPEND_PARAMETER);
+      return this.getSizedTypes(defineVar);
     }
 
     return null;
@@ -629,6 +714,37 @@ class Script {
     }
 
     return lowKey.slice();
+  }
+  
+  getSizedTypes(action, arg) {
+    const options = [];
+
+    for (const type of this.BuiltIns.TYPES.filter(t => t.size > 0)) {
+      options.push({text: type.text, style: "keyword", action, args: [arg, type]});
+    }
+
+    return options;
+  }
+  
+  getVisibleVariables(row, requiresMutable, action, ...args) {
+    const options = [];
+
+    let indentation = (row < this.getRowCount()) ? this.getIndentation(row) : 0;
+
+    for (let r = row - 1; r >= 0; --r) {
+      const lineIndentation = this.getIndentation(r);
+      if (lineIndentation + this.isStartingScope(r) <= indentation && this.getItemCount(r) > 1) {
+        indentation = Math.min(indentation, lineIndentation);
+        if (!requiresMutable || this.getItem(r, 0) === this.ITEMS.VAR) {
+          for (const item of this.lines[r].items.filter(item => item.constructor === VarDef)) {
+            options.push({text: item.name, style: "vardef", action, args: [...args, item]});
+          }
+        }
+      }
+    }
+
+    options.sort((a, b) => a.text.localeCompare(b.text));
+    return options;
   }
 
   getRowCount() {

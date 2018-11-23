@@ -1,13 +1,14 @@
 "use strict";
 
 class VarDef {
-  constructor(name, type) {
+  constructor(name, type, scope) {
     this.name = name;
     this.type = type;
+    this.scope = scope;
   }
 
   getDisplay() {
-    return [this.type.text + '\n' + this.name, "keyword declaration"];
+    return [this.type.text + '\n' + this.name, "keyword vardef"];
   }
 }
 
@@ -19,7 +20,7 @@ class VarRef {
 
   getDisplay() {
     if (this.displayScope)
-      return [this.varDef.scope + '\n' + this.varDef.name, "keyword"];
+      return [this.varDef.scope.text + '\n' + this.varDef.name, "keyword"];
     else
       return [this.varDef.name, ""];
   }
@@ -49,9 +50,9 @@ class FuncSig {
 
   getDisplay() {
     if (this.returnType.size === 0)
-      return [this.name, "definition"];
+      return [this.name, "funcdef"];
     else
-      return [this.returnType.name + '\n' + this.name, "keyword definition"];
+      return [this.returnType.text + '\n' + this.name, "keyword funcdef"];
   }
 }
 
@@ -63,7 +64,7 @@ class ImportedFunc {
   }
 
   getDisplay() {
-    return [this.signature.name, "definition"];
+    return [this.signature.name, "funcdef"];
   }
 }
 
@@ -74,7 +75,7 @@ class PredefinedFunc {
   }
 
   getDisplay() {
-    return [this.signature.name, "definition"];
+    return [this.signature.name, "funcdef"];
   }
 }
 
@@ -85,7 +86,7 @@ class MacroFunction {
   }
 
   getDisplay() {
-    return [this.signature.name, "definition"];
+    return [this.signature.name, "funcdef"];
   }
 }
 
@@ -283,19 +284,21 @@ class StringLiteral {
 }
 
 function BuiltIns() {
-  this.VOID = new TypeDefinition("void", 0);
-  this.ANY = new TypeDefinition("Any", 0);
-  this.BOOL = new TypeDefinition("bool", 4);
-  this.I32 = new TypeDefinition("int", 4);
-  this.U32 = new TypeDefinition("uint", 4);
-  this.I64 = new TypeDefinition("long", 8);
-  this.U64 = new TypeDefinition("ulong", 8);
-  this.F32 = new TypeDefinition("float", 4);
-  this.F64 = new TypeDefinition("double", 8);
-  this.STRING = new TypeDefinition("string", 4);
-  this.SYSTEM = new TypeDefinition("System", 0);
-  this.MATH = new TypeDefinition("Math", 0);
-  this.ITERABLE = new TypeDefinition("iterable", 0);
+  this.TYPES = [
+    this.VOID = new TypeDefinition("void", 0),
+    this.ANY = new TypeDefinition("Any", 0),
+    this.BOOL = new TypeDefinition("bool", 4),
+    this.I32 = new TypeDefinition("int", 4),
+    this.U32 = new TypeDefinition("uint", 4),
+    this.I64 = new TypeDefinition("long", 8),
+    this.U64 = new TypeDefinition("ulong", 8),
+    this.F32 = new TypeDefinition("float", 4),
+    this.F64 = new TypeDefinition("double", 8),
+    this.STRING = new TypeDefinition("string", 4),
+    this.SYSTEM = new TypeDefinition("System", 0),
+    this.MATH = new TypeDefinition("Math", 0),
+    this.ITERABLE = new TypeDefinition("iterable", 0),
+  ];
 
   this.PRINT = new ImportedFunc(
     new FuncSig(this.SYSTEM, "print", this.VOID, [this.Any, "item"]),
@@ -530,7 +533,7 @@ function BuiltIns() {
       [this.VOID, this.I64, Wasm.i64_shr_s],
       [this.VOID, this.U64, Wasm.i64_shr_u],
     ),
-    this.ADDITION = new Symbol("+", 8, undefined,
+    this.ADDITION = new Symbol("+", 8, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_add],
       [this.U32, this.U32, Wasm.i32_add],
       [this.I64, this.I64, Wasm.i64_add],
@@ -538,7 +541,7 @@ function BuiltIns() {
       [this.F32, this.F32, Wasm.f32_add],
       [this.F64, this.F64, Wasm.f64_add],
     ),
-    this.SUBTRACTION = new Symbol("-", 8, undefined,
+    this.SUBTRACTION = new Symbol("-", 8, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_sub],
       [this.U32, this.U32, Wasm.i32_sub],
       [this.I64, this.I64, Wasm.i64_sub],
@@ -546,7 +549,7 @@ function BuiltIns() {
       [this.F32, this.F32, Wasm.f32_sub],
       [this.F64, this.F64, Wasm.f64_sub],
     ),
-    this.MULTIPLICATION = new Symbol("*", 9, undefined,
+    this.MULTIPLICATION = new Symbol("*", 9, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_mul],
       [this.U32, this.U32, Wasm.i32_mul],
       [this.I64, this.I64, Wasm.i64_mul],
@@ -554,7 +557,7 @@ function BuiltIns() {
       [this.F32, this.F32, Wasm.f32_mul],
       [this.F64, this.F64, Wasm.f64_mul],
     ),
-    this.DIVISION = new Symbol("/", 9, undefined,
+    this.DIVISION = new Symbol("/", 9, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_div_s],
       [this.U32, this.U32, Wasm.i32_div_u],
       [this.I64, this.I64, Wasm.i64_div_s],
@@ -562,37 +565,37 @@ function BuiltIns() {
       [this.F32, this.F32, Wasm.f32_div_s],
       [this.F64, this.F64, Wasm.f64_div_u],
     ),
-    this.MODULUS = new Symbol("%", 9, undefined,
+    this.MODULUS = new Symbol("%", 9, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_rem_s],
       [this.U32, this.U32, Wasm.i32_rem_u],
       [this.I64, this.I64, Wasm.i64_rem_s],
       [this.U64, this.U64, Wasm.i64_rem_u],
     ),
-    this.BITWISE_AND = new Symbol("&", 6, undefined,
+    this.BITWISE_AND = new Symbol("&", 6, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_and],
       [this.U32, this.U32, Wasm.i32_and],
       [this.I64, this.I64, Wasm.i64_and],
       [this.U64, this.U64, Wasm.i64_and],
     ),
-    this.BITWISE_OR = new Symbol("|", 4, undefined,
+    this.BITWISE_OR = new Symbol("|", 4, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_or],
       [this.U32, this.U32, Wasm.i32_or],
       [this.I64, this.I64, Wasm.i64_or],
       [this.U64, this.U64, Wasm.i64_or],
     ),
-    this.BITWISE_XOR = new Symbol("^", 5, undefined,
+    this.BITWISE_XOR = new Symbol("^", 5, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_xor],
       [this.U32, this.U32, Wasm.i32_xor],
       [this.I64, this.I64, Wasm.i64_xor],
       [this.U64, this.U64, Wasm.i64_xor],
     ),
-    this.LEFT_SHIFT = new Symbol("<<", 7, undefined,
+    this.LEFT_SHIFT = new Symbol("<<", 7, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_shl],
       [this.U32, this.U32, Wasm.i32_shl],
       [this.I64, this.I64, Wasm.i64_shl],
       [this.U64, this.U64, Wasm.i64_shl],
     ),
-    this.RIGHT_SHIFT = new Symbol(">>", 7, undefined,
+    this.RIGHT_SHIFT = new Symbol(">>", 7, {arithmetic: true},
       [this.I32, this.I32, Wasm.i32_shr_s],
       [this.U32, this.U32, Wasm.i32_shr_u],
       [this.I64, this.I64, Wasm.i64_shr_s],
@@ -606,37 +609,37 @@ function BuiltIns() {
     ),
     this.REF_EQUALITY   = new Symbol("===", 3),
     this.REF_INEQUALITY = new Symbol("!==", 3),
-    this.VAL_EQUALITY   = new Symbol("=", 3, undefined,
+    this.VAL_EQUALITY   = new Symbol("=", 3, {comparisson: true},
       [this.BOOL, this.I32, Wasm.i32_eq],
       [this.BOOL, this.U32, Wasm.i32_eq],
       [this.BOOL, this.I64, Wasm.i64_eq],
       [this.BOOL, this.U64, Wasm.i64_eq],
     ),
-    this.VAL_INEQUALITY = new Symbol("≠", 3, undefined,
+    this.VAL_INEQUALITY = new Symbol("≠", 3, {comparisson: true},
       [this.BOOL, this.I32, Wasm.i32_eq, Wasm.i32_eqz],
       [this.BOOL, this.U32, Wasm.i32_eq, Wasm.i32_eqz],
       [this.BOOL, this.I64, Wasm.i64_eq, Wasm.i64_eqz],
       [this.BOOL, this.U64, Wasm.i64_eq, Wasm.i64_eqz],
     ),
-    this.GREATER = new Symbol(">", 3, undefined,
+    this.GREATER = new Symbol(">", 3, {comparisson: true},
       [this.BOOL, this.I32, Wasm.i32_gt_s],
       [this.BOOL, this.U32, Wasm.i32_gt_u],
       [this.BOOL, this.I64, Wasm.i64_gt_s],
       [this.BOOL, this.U64, Wasm.i64_gt_u],
     ),
-    this.LESS = new Symbol("<", 3, undefined,
+    this.LESS = new Symbol("<", 3, {comparisson: true},
       [this.BOOL, this.I32, Wasm.i32_lt_s],
       [this.BOOL, this.U32, Wasm.i32_lt_u],
       [this.BOOL, this.I64, Wasm.i64_lt_s],
       [this.BOOL, this.U64, Wasm.i64_lt_u],
     ),
-    this.GREATER_EQUAL = new Symbol("≥", 3, undefined,
+    this.GREATER_EQUAL = new Symbol("≥", 3, {comparisson: true},
       [this.BOOL, this.I32, Wasm.i32_ge_s],
       [this.BOOL, this.U32, Wasm.i32_ge_u],
       [this.BOOL, this.I64, Wasm.i64_ge_s],
       [this.BOOL, this.U64, Wasm.i64_ge_u],
     ),
-    this.LESS_EQUAL = new Symbol("≤", 3, undefined,
+    this.LESS_EQUAL = new Symbol("≤", 3, {comparisson: true},
       [this.BOOL, this.I32, Wasm.i32_le_s],
       [this.BOOL, this.U32, Wasm.i32_le_u],
       [this.BOOL, this.I64, Wasm.i64_le_s],

@@ -352,10 +352,10 @@ button {
 .comment {
   color: #808080;
 }
-.definition {
+.funcdef {
   color: #FFC66D;
 }
-.declaration {
+.vardef {
   color: rgb(204, 189, 166);
 }
 .call, {
