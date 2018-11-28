@@ -283,6 +283,31 @@ class StringLiteral {
   }
 }
 
+class LoopLabel {
+  constructor(layersOutward) {
+    this.layersOutward = layersOutward;
+  }
+
+  getDisplay() {
+    let text = "outer";
+    if (this.layersOutward > 2) {
+      const num = this.layersOutward;
+      const lastDigit = num % 10;
+
+      if (lastDigit === 1 && num !== 11) {
+        text = num + "st out";
+      } else if (lastDigit === 2 && num !== 12) {
+        text = num + "nd out"
+      } else if (lastDigit === 3 && num !== 13) {
+        text = num + "rd out"
+      } else {
+        text = num + "th out"
+      }
+    }
+    return [text, "call"];
+  }
+}
+
 function BuiltIns() {
   this.TYPES = [
     this.VOID = new TypeDefinition("void", 0),

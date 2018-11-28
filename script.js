@@ -201,7 +201,29 @@ class Script {
       const prevItem = this.getItem(row, col - 1);
       
       if (prevItem === this.BuiltIns.CONTINUE || prevItem === this.BuiltIns.BREAK) {
-        //TODO count the number of nested loops this statement is inside
+        //count the number of nested loops this statement is inside
+        let loopStructureCount = 0;
+
+        let indentation = this.getIndentation(row);
+        for (let r = row - 1; r >= 0; --r) {
+          const lineIndentation = this.getIndentation(r);
+          if (lineIndentation < indentation && this.getItemCount(r) >= 1) {
+            indentation = Math.min(indentation, lineIndentation);
+            if (this.getItem(r, 0) === this.BuiltIns.WHILE
+            || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
+            || this.getItem(r, 0) === this.BuiltIns.FOR) {
+              ++loopStructureCount;
+            }
+          }
+        }
+
+        for (let layer = 2; layer <= loopStructureCount; ++layer) {
+          const item = new LoopLabel(layer);
+          const [text, style] = item.getDisplay();
+          options.push({text, style,
+            action: replace, args: [col, item]
+          });
+        }
       }
 
       if (prevItem.preceedsExpression
@@ -415,7 +437,7 @@ class Script {
 
       for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
         const lineIndentation = this.getIndentation(r);
-        if (lineIndentation < indentation && this.getItemCount(r) > 1) {
+        if (lineIndentation < indentation && this.getItemCount(r) >= 1) {
           indentation = Math.min(indentation, lineIndentation);
           if (this.getItem(r, 0) === this.BuiltIns.WHILE
           || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
@@ -426,6 +448,7 @@ class Script {
                 return {rowUpdated: true};
               }},
             );
+            break;
           }
         }
       }
@@ -732,11 +755,11 @@ class Script {
   getVisibleVariables(row, requiresMutable, action, ...args) {
     const options = [];
 
-    let indentation = (row < this.getRowCount()) ? this.getIndentation(row) : 0;
+    let indentation = (row < this.getRowCount()) ? this.getIndentation(row) : 0;    
 
-    for (let r = row - 1; r >= 0; --r) {
+    for (let r = Math.min(this.getRowCount(), row) - 1; r >= 0; --r) {
       const lineIndentation = this.getIndentation(r);
-      if (lineIndentation + this.isStartingScope(r) <= indentation && this.getItemCount(r) > 1) {
+      if (lineIndentation < indentation && this.getItemCount(r) >= 1) {
         indentation = Math.min(indentation, lineIndentation);
         if (!requiresMutable || this.getItem(r, 0) === this.ITEMS.VAR) {
           for (const item of this.lines[r].items.filter(item => item.constructor === VarDef)) {
