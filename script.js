@@ -417,11 +417,14 @@ class Script {
 
       for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
         if (this.getIndentation(r) < indentation && this.getItemCount(r) > 1) {
-          if (this.getItem(r, 1) === this.BuiltIns.WHILE
-          || this.getItem(r, 1) === this.BuiltIns.DO_WHILE
-          || this.getItem(r, 1) === this.BuiltIns.FOR) {
+          if (this.getItem(r, 0) === this.BuiltIns.WHILE
+          || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
+          || this.getItem(r, 0) === this.BuiltIns.FOR) {
             options.push(
-              {text: "break", style: "keyword", payload: this.BuiltIns.BREAK},
+              {text: "break", style: "keyword", action: () => {
+                this.pushItems(row, this.BuiltIns.BREAK);
+                return {rowUpdated: true};
+              }},
             );
           }
         }
@@ -432,7 +435,7 @@ class Script {
       return options;
     }
     
-    const defineVar = (item, type) => {
+    const defineVar = (type) => {
       const newVar = new VarDef("$" + (this.getItemCount(row) - 2), type, this.BuiltIns.VOID);
       this.pushItems(row, newVar);
       return {rowUpdated: true};
@@ -448,14 +451,14 @@ class Script {
         return [
           {text: "=", action: this.pushItems, args: [row, this.BuiltIns.ASSIGN, this.BuiltIns.PLACEHOLDER]},
           ditto,
-          ...this.getSizedTypes(defineVar, null)
+          ...this.getSizedTypes(defineVar)
         ];
       }
 
       if (this.getItem(row, itemCount - 1).constructor === VarDef) {
         return [
           ditto,
-          ...this.getSizedTypes(defineVar, null)
+          ...this.getSizedTypes(defineVar)
         ];
       }
     }
@@ -716,11 +719,11 @@ class Script {
     return lowKey.slice();
   }
   
-  getSizedTypes(action, arg) {
+  getSizedTypes(action, ...args) {
     const options = [];
 
     for (const type of this.BuiltIns.TYPES.filter(t => t.size > 0)) {
-      options.push({text: type.text, style: "keyword", action, args: [arg, type]});
+      options.push({text: type.text, style: "keyword", action, args: [type, ...args]});
     }
 
     return options;
