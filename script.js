@@ -201,9 +201,7 @@ class Script {
       const prevItem = this.getItem(row, col - 1);
       
       if (prevItem === this.BuiltIns.CONTINUE || prevItem === this.BuiltIns.BREAK) {
-        options.push({text: "", style: "text-input", action: () => {
-          //TODO list the valid scope levels
-        }});
+        //TODO count the number of nested loops this statement is inside
       }
 
       if (prevItem.preceedsExpression
@@ -306,7 +304,7 @@ class Script {
     const itemCount = (row < rowCount) ? this.getItemCount(row) : 0;
 
     if (itemCount === 0) {
-      const indentation = (row < rowCount) ? this.getIndentation(row) : 0;
+      let indentation = (row < rowCount) ? this.getIndentation(row) : 0;
 
       const options = [
         {text: "f(x)", style: "funcdef", action: this.getFunctionList, args: [false]},
@@ -416,7 +414,9 @@ class Script {
       );
 
       for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
-        if (this.getIndentation(r) < indentation && this.getItemCount(r) > 1) {
+        const lineIndentation = this.getIndentation(r);
+        if (lineIndentation < indentation && this.getItemCount(r) > 1) {
+          indentation = Math.min(indentation, lineIndentation);
           if (this.getItem(r, 0) === this.BuiltIns.WHILE
           || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
           || this.getItem(r, 0) === this.BuiltIns.FOR) {
