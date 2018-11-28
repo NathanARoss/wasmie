@@ -64,12 +64,16 @@ class Script {
     const replace = (col, item) => {
       this.setItem(row, col, item);
       return {rowUpdated: true};
-    }
+    };
 
     const insert = (col, ...items) => {
       this.spliceRow(row, col, 0, ...items);
       return {rowUpdated: true, selectedCol: col + 1};
-    }
+    };
+
+    const setVarRef = (varDef) => {
+      return replace(col, new VarRef(varDef, this.BuiltIns.VOID));
+    };
 
     let options = [];
 
@@ -107,9 +111,9 @@ class Script {
 
     if (col === 0) {
       if (item.constructor === VarRef) {
-        ///options.push(...this.getVisibleVariables(row, true));
+        options.push(...this.getVisibleVars(row, true, setVarRef));
       } else if (item.constructor === FuncRef) {
-        ///options.push(...this.getFunctionList(false));
+        //options.push(...this.getFunctionList(false));
       } else if (item === this.BuiltIns.IF) {
         const indentation = this.getIndentation(row);
         for (let r = row - 1; r >= 0; --r) {
@@ -207,8 +211,8 @@ class Script {
         let indentation = this.getIndentation(row);
         for (let r = row - 1; r >= 0; --r) {
           const lineIndentation = this.getIndentation(r);
-          if (lineIndentation < indentation && this.getItemCount(r) >= 1) {
-            indentation = Math.min(indentation, lineIndentation);
+          if (lineIndentation < indentation) {
+            indentation = lineIndentation;
             if (this.getItem(r, 0) === this.BuiltIns.WHILE
             || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
             || this.getItem(r, 0) === this.BuiltIns.FOR) {
@@ -281,9 +285,7 @@ class Script {
           }
         }
 
-        options.push(...this.getVisibleVariables(row, false, (varDef) => {
-          return replace(col, new VarRef(varDef, this.BuiltIns.VOID));
-        }));
+        options.push(...this.getVisibleVars(row, false, setVarRef));
       }
       
       if (item.constructor === VarRef
@@ -437,8 +439,8 @@ class Script {
 
       for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
         const lineIndentation = this.getIndentation(r);
-        if (lineIndentation < indentation && this.getItemCount(r) >= 1) {
-          indentation = Math.min(indentation, lineIndentation);
+        if (lineIndentation < indentation) {
+          indentation = lineIndentation;
           if (this.getItem(r, 0) === this.BuiltIns.WHILE
           || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
           || this.getItem(r, 0) === this.BuiltIns.FOR) {
@@ -453,7 +455,14 @@ class Script {
         }
       }
 
-      //options.push(...this.getVisibleVariables(Math.min(this.getRowCount(), row), true));
+      options.push(...this.getVisibleVars(row, true, (varDef) => {
+        this.appendRowsUpTo(row);
+        this.pushItems(row,
+          new VarRef(varDef, this.BuiltIns.VOID),
+          this.BuiltIns.ASSIGN
+        );
+        return {rowUpdated: true};
+      }));
 
       return options;
     }
@@ -752,16 +761,16 @@ class Script {
     return options;
   }
   
-  getVisibleVariables(row, requiresMutable, action, ...args) {
+  getVisibleVars(row, requiresMutable, action, ...args) {
     const options = [];
 
     let indentation = (row < this.getRowCount()) ? this.getIndentation(row) : 0;    
 
     for (let r = Math.min(this.getRowCount(), row) - 1; r >= 0; --r) {
       const lineIndentation = this.getIndentation(r);
-      if (lineIndentation < indentation && this.getItemCount(r) >= 1) {
-        indentation = Math.min(indentation, lineIndentation);
-        if (!requiresMutable || this.getItem(r, 0) === this.ITEMS.VAR) {
+      if (lineIndentation + this.isStartingScope(r) <= indentation) {
+        indentation = lineIndentation;
+        if (!requiresMutable || this.getItem(r, 0) === this.BuiltIns.VAR) {
           for (const item of this.lines[r].items.filter(item => item.constructor === VarDef)) {
             options.push({text: item.name, style: "vardef", action, args: [...args, item]});
           }
