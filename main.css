@@ -1,10 +1,3 @@
-:root {
-  --line-height: 40px;
-  --hover-color: #2D3333;
-  --primary-color: #3B3B3B;
-  --secondary-color: DarkSlateGray;
-}
-
 /* Chrome, Safari, Edge, Opera */
 ::-webkit-scrollbar {
     display: none;
@@ -27,20 +20,20 @@ body {
 .outer-row {
   position: absolute;
   width: 100%;
-  transform: translateY(calc(var(--line-number) * var(--line-height)));
-  height: var(--line-height);
+  transform: translateY(calc(var(--line-number) * 40px));
+  height: 40px;
   overflow: hidden;
   white-space: nowrap;
 }
 
 .outer-row:hover {
-  background-color: var(--hover-color)
+  background-color: #2D3333
 }
 
 .inner-row {
   display: inline-flex;
   position: relative;
-  height: var(--line-height);
+  height: 40px;
   width: 100%;
   overflow-y: hidden;
   vertical-align: top;
@@ -51,7 +44,7 @@ body {
 /* .inner-row is 30px taller than .outer-row so that the horizontal scrollbar is hidden */
 @-moz-document url-prefix() {
   .inner-row {
-    height: calc(30px + var(--line-height));
+    height: 70px;
   }
 }
 
@@ -61,7 +54,7 @@ button {
   border: 0;
   padding: 0;
   margin: 0;
-  height: var(--line-height);
+  height: 40px;
 }
 
 /* The append button has a minimum size, but grows to fill remaining space. */
@@ -69,11 +62,11 @@ button {
 .append {
   order: 1;
   flex-grow: 1;
-  min-width: var(--line-height);
+  min-width: 40px;
   text-align: right;
   padding: 0 0.5em;
   box-sizing: border-box;
-  line-height: var(--line-height);
+  line-height: 40px;
   color: #808080;
   font-family: monospace;
 }
@@ -81,15 +74,18 @@ button {
 .indentation {
   position: relative;
   z-index: -1;
-  height: var(--line-height);
+  height: 40px;
   width: calc(12px * var(--indentation));
-  background: repeating-linear-gradient(to right, #2B2B2B, #2B2B2B 8px, var(--primary-color) 8px, var(--primary-color) 12px);
+  background: repeating-linear-gradient(to right, #2B2B2B, #2B2B2B 8px,
+              #3B3B3B 8px, #3B3B3B 12px);
   flex-shrink: 0;
 }
 
 .starting-scope > .indentation {
   width: calc(12px * var(--indentation) + 12px);
-  clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%, calc(12px * var(--indentation)) 70%, calc(12px * var(--indentation)) 0);
+  clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
+             calc(12px * var(--indentation)) 70%,
+             calc(12px * var(--indentation)) 0);
 }
 
 .starting-scope > .item:nth-child(3) {
@@ -103,7 +99,7 @@ button {
 }
 
 .item.selected, .append.selected {
-  outline: var(--secondary-color) medium solid;
+  outline: DarkSlateGray medium solid;
   outline-offset: -2px;
 }
 
@@ -146,7 +142,7 @@ button {
   width: 50px;
   height: 50px;
   border-radius: 50%;
-  background-color: var(--secondary-color);
+  background-color: DarkSlateGray;
   background-repeat: no-repeat;
   background-position: center;
 }
@@ -154,7 +150,7 @@ button {
 .FAB-small {
   width: 40px;
   height: 40px;
-  background-color: var(--primary-color);
+  background-color: #3B3B3B;
   margin: 5px;
 }
 
@@ -213,7 +209,7 @@ button {
 }
 
 .project-list-entry:hover {
-  background-color: var(--hover-color);
+  background-color: #2D3333;
 }
 
 .project-list-entry p {
@@ -238,13 +234,13 @@ button {
 }
 
 .delete-project-button {
-  width: var(--line-height);
+  width: 40px;
   float: right;
 }
 
 #menu {
   position: fixed;
-  background-color: var(--primary-color);
+  background-color: #3B3B3B;
 }
 
 .menu-item {
@@ -272,8 +268,8 @@ button {
   #menu {
     left: 0;
     right: 0;
-    bottom: calc(var(--line-height) * -2);
-    height: calc(var(--line-height));
+    bottom: -80px;
+    height: 40px;
     transition: bottom 0.25s;
     overflow-x: auto;
     overflow-y: hidden;
@@ -292,7 +288,7 @@ button {
 
   .menu-input {
     width: 6em;
-    height: var(--line-height);
+    height: 40px;
   }
 
   .menu-input:focus {
@@ -300,7 +296,7 @@ button {
   }
 
   .selected #FAB-menu {
-    bottom: calc(var(--line-height) + 20px);
+    bottom: 60px;
   }
 }
 
@@ -321,12 +317,12 @@ button {
 
   .menu-item {
     width: 100%;
-    min-height: var(--line-height);
+    min-height: 40px;
   }
 
   .menu-input {
     width: 100%;
-    height: var(--line-height);
+    height: 40px;
   }
 
   .selected #FAB-menu {

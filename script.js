@@ -75,7 +75,7 @@ class Script {
       return replace(col, new VarRef(varDef, this.BuiltIns.VOID));
     };
 
-    let options = [];
+    const options = [{style: "delete", action: this.deleteItem, args: [row, col]}];
 
     if (item.suggestion) {
       const isAssignment = this.getItem(row, 2) && this.getItem(row, 2).isAssignment;
@@ -97,6 +97,7 @@ class Script {
         const [text, style] = op.getDisplay();
         options.push({text, style, action: replace, args: [col, op]});
       }
+      return options;
     }
     
     if (item.constructor === FuncSig || item.constructor === VarDef) {
@@ -279,13 +280,20 @@ class Script {
         }
 
         if (!prevItem.isUnary) {
-          const action = (item.constructor === Symbol) ? replace : insert;
+          const action = (item.constructor === Symbol && item !== this.BuiltIns.PLACEHOLDER) ? replace : insert;
           for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.isUnary)) {
             options.push({text: op.text + " ___", action, args: [col, op]});
           }
         }
 
         options.push(...this.getVisibleVars(row, false, setVarRef));
+      }
+
+      let binOps = this.BuiltIns.SYMBOLS.filter(sym => sym.isBinary);
+      if (this.getItem(row, 0) === this.BuiltIns.IF || this.getItem(row, 1) === this.BuiltIns.IF) {
+        //move the boolean operations before the arithmetic operations when writing if statements
+        //TODO generalize this to when a boolean return type, argument, or variable type is expected
+        binOps = [...binOps.filter(op => op.isBool), ...binOps.filter(op => !op.isBool)];
       }
       
       if (item.constructor === VarRef
@@ -294,20 +302,22 @@ class Script {
       || item === this.BuiltIns.END_ARGS) {
         options.push(wrapInParens);
         const isAppending = (col === this.getItemCount(row) - 1);
-        for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.arithmetic || sym.comparrison)) {
+
+        for (const op of binOps) {
           const args = [col + 1, op];
           if (!isAppending) {
             args.push(this.BuiltIns.PLACEHOLDER);
           }
+
           options.push({text: op.text, action: insert, args});
-        }
+        };
       }
       
       if (prevItem.constructor === VarRef
       || prevItem.constructor === NumericLiteral
       || prevItem === this.BuiltIns.END_EXPRESSION
       || prevItem === this.BuiltIns.END_ARGS) {
-        for (const op of this.BuiltIns.SYMBOLS.filter(sym => sym.arithmetic || sym.comparrison)) {
+        for (const op of binOps) {
           options.push({text: op.text, action: replace, args: [col, op]});
         }
       }
@@ -658,18 +668,18 @@ class Script {
     let count = r - row;
 
     //manage orphaned else and else if structures
-    if (this.getItem(row, 1) === this.BuiltIns.IF
-    || this.getItem(row, 2) === this.BuiltIns.IF) {
+    if (this.getItem(row, 0) === this.BuiltIns.IF
+    || this.getItem(row, 1) === this.BuiltIns.IF) {
       while (r < this.getRowCount() && !this.isStartingScope(r)) {
         ++r;
       }
       if (r < this.getRowCount()) {
-        if (this.getItem(row, 1) === this.BuiltIns.IF) {
-          if (this.getItem(r, 2) === this.BuiltIns.IF) {
-            this.spliceRow(r, 1, 1);
+        if (this.getItem(row, 0) === this.BuiltIns.IF) {
+          if (this.getItem(r, 1) === this.BuiltIns.IF) {
+            this.spliceRow(r, 0, 1);
           }
-          else if (this.getItem(r, 1) === this.BuiltIns.ELSE) {
-            this.spliceRow(r, 1, 1, this.BuiltIns.IF, this.BuiltIns.TRUE);
+          else if (this.getItem(r, 0) === this.BuiltIns.ELSE) {
+            this.spliceRow(r, 0, 1, this.BuiltIns.IF, this.BuiltIns.TRUE);
           }
         }
       }
@@ -688,6 +698,7 @@ class Script {
     //of the script, clear the line but don't delete it.  Otherwise, one too many lines would be deleted
     if ((indentation > 0 || startRow + count !== this.getRowCount()) && keepIfNotLastRow) {
       this.setIsStartingScope(startRow, false);
+      this.spliceRow(startRow, 0, this.getItemCount(startRow));
       ++startRow;
       --count;
     }
@@ -700,6 +711,124 @@ class Script {
     }
 
     return startRow;
+  }
+
+  deleteItem(row, col) {
+    if (this.getItemCount(row) === 0) {
+      return {rowDeleted: true};
+    }
+
+    let selCol = col;
+    if (col === -1) {
+      if (row < this.getRowCount()) {
+        selCol = this.getItemCount(row);
+        col = selCol - 1;
+      } else {
+        col = selCol = 0;
+      }
+    }
+    const item = this.getItem(row, col) || {};
+
+    if ((col === 0 && item !== this.BuiltIns.ELSE)
+    || (col > 0 && item.constructor === Keyword && item !== this.BuiltIns.IF && item !== this.BuiltIns.STEP)
+    || item.constructor === FuncSig
+    || item.isAssignment
+    || (item === VarDef && this.getItem(row, col + 1).isAssignment)) {
+      const oldRowCount = this.getRowCount();
+      this.deleteRow(row, true);
+
+      return this.getRowCount() === oldRowCount ? {rowUpdated: true, selectedCol: 0x7FFFFF} : {scriptChanged: true};
+    }
+
+    if (item.isUnary
+    || (col === this.getItemCount(row) - 1 && item === this.BuiltIns.PLACEHOLDER)
+    || item.constructor === VarDef) {
+      this.spliceRow(row, col, 1);
+      return {rowUpdated: true, selectedCol: selCol - 1};
+    }
+    else if (item.isBinary) {
+      const nextItem = this.getItem(row, col + 1) || {};
+      const delCount = 2 + (nextItem.isUnary|0);
+      this.spliceRow(row, col, delCount);
+      return {rowUpdated: true, selectedCol: selCol - 1};
+    }
+    else if (item === this.BuiltIns.PLACEHOLDER) {
+      const prevItem = this.getItem(row, col - 1);
+      if (prevItem.isBinary) {
+        this.spliceRow(row, col - 1, 2);
+        return {rowUpdated: true, selectedCol: selCol - 2};
+      } else if (prevItem.isUnary) {
+        this.spliceRow(row, col - 1, 1);
+        return {rowUpdated: true, selectedCol: selCol - 1};
+      } else if (prevItem === this.BuiltIns.COMMA) {
+        this.spliceRow(row, col - 1, 2);
+        return {rowUpdated: true, selectedCol: selCol - 1};
+      }
+      console.trace();
+      throw "unhandled placeholder delection";
+    }
+    else if (item === this.BuiltIns.IF) {
+      this.spliceRow(row, col, this.getItemCount(row) - col);
+      return {rowUpdated: true, selectedCol: 0};
+    }
+    else {
+      const [start, end] = this.getExpressionBounds(row, col);
+
+      //assumes any selection that reaches the first item spans the whole line
+      if (start === 0) {
+        if (this.getIndentation(row) === 0 && row + 1 === this.getRowCount()) {
+          return {rowDeleted: true};
+        } else {
+          this.spliceRow(row, start, end - start + 1);
+        }
+      } else {
+        let paramIndex = 0;
+        let func;
+
+        const nextItem = this.getItem(row, end + 1);
+        const prevItem = this.getItem(row, start - 1);
+        if ((nextItem === this.BuiltIns.COMMA || nextItem === this.BuiltIns.END_ARGS)
+        && (prevItem === this.BuiltIns.COMMA || prevItem === this.BuiltIns.BEGIN_ARGS)) {
+          for (let c = start - 1; c > 0; --c) {
+            const item = this.getItem(row, c);
+            if (item.constructor === FuncRef) {
+              func = item;
+              break;
+            }
+
+            if (this.getItem(row, c) === this.BuiltIns.COMMA) {
+              ++paramIndex;
+            }
+          }
+        }
+
+        if (func) {
+          if (func === this.BuiltIns.PRINT) {
+            //when removing an argument to print, just delete the argument since it's just an Any[] paramater
+            if (paramIndex > 0) {
+              this.spliceRow(row, col - 1, 2);
+              return {rowUpdated: true, selectedCol: selCol - 2};
+            }
+            if (paramIndex === 0 && this.getItem(row, col + 1) === this.BuiltIns.COMMA) {
+              this.spliceRow(row, col, 2);
+              return {rowUpdated: true};
+            }
+          }
+          this.spliceRow(row, start, end - start + 1, new ArgHint(func.signature, paramIndex));
+        } else {
+          if (end + 1 === this.getItemCount(row)) {
+            this.spliceRow(row, start, end - start + 1);
+            return {rowUpdated: true, selectedCol: 0x7FFFFFFF};
+          } else {
+            this.spliceRow(row, start, end - start + 1, this.BuiltIns.PLACEHOLDER);
+          }
+        }
+      }
+      return {rowUpdated: true, selectedCol: start};
+    }
+
+    console.trace();
+    throw "Reached bottom of DELETE_ITEM without hitting a case";
   }
 
   saveRows(lines) {

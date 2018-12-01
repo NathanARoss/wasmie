@@ -502,20 +502,20 @@ function getRowCount() {
 
 
 function createRow() {
-  let append = document.createElement("button");
+  const append = document.createElement("button");
   append.className = "append";
   append.position = -1;
 
-  let indentation = document.createElement("div");
+  const indentation = document.createElement("div");
   indentation.classList.add("indentation");
   
-  let innerDiv = document.createElement("div");
+  const innerDiv = document.createElement("div");
   innerDiv.className = "inner-row";
   innerDiv.addEventListener("click", rowClickHandler, {passive: true});
   innerDiv.appendChild(indentation);
   innerDiv.appendChild(append);
   
-  let outerDiv = document.createElement("div");
+  const outerDiv = document.createElement("div");
   outerDiv.className = "outer-row";
   outerDiv.appendChild(innerDiv);
   
@@ -688,7 +688,7 @@ document.addEventListener("keydown", function(event) {
 
     if (event.key === "Backspace") {
       if (menu.row < script.getRowCount()) {
-        menuItemClicked(script.PAYLOADS.DELETE_ITEM);
+        handleMenuItemResponse(script.deleteItem(menu.row, menu.col));
       } else {
         selectPreviousLine();
       }
@@ -723,7 +723,7 @@ menu.addEventListener("click", function (event) {
     }
 
     const [args = []] = [menuItem.args];
-    const response = menuItem.action(...args);
+    const response = menuItem.action.apply(script, args);
 
     if (Array.isArray(response) && response.length > 0) {
       configureMenu(response);
