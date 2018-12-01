@@ -72,6 +72,25 @@ viewCodeButton.addEventListener("click", function(event) {
   window.onpopstate();
 });
 
+function enterKeyPressed() {
+  if (menu.row <= script.getRowCount()) {
+    if (menu.col === 0 || menu.row === script.getRowCount() || script.getItemCount(menu.row) === 0) {
+      insertRow(menu.row);
+      itemClicked(menu.row + 1, menu.col);
+    } else {
+      insertRow(menu.row + 1);
+      itemClicked(menu.row + 1, -1);
+    }
+  } else {
+    itemClicked(menu.row + 1, -1);
+  }
+}
+
+document.getElementById("insert-line").action = function() {
+  enterKeyPressed();
+  return {};
+};
+
 
 
 document.body.onresize = function () {
@@ -585,7 +604,8 @@ function loadRow(position, outerDiv) {
   }
 
   if (innerDiv.position !== position) {
-    outerDiv.style.setProperty("--line-number", position);
+    const isShiftedDown = menu.row !== -1 && position > menu.row;
+    outerDiv.style.setProperty("--line-number", position + isShiftedDown|0);
     innerDiv.childNodes[1].textContent = position;
     innerDiv.position = position;
 
@@ -618,7 +638,7 @@ function getItem(text, className, position) {
 
 
 function configureMenu(options) {
-  while (menu.hasChildNodes()) {
+  while (menu.childNodes.length > 1) {
     menu.lastChild.action = undefined;
     menu.lastChild.args = undefined;
     if (menu.tagName === "BUTTON") {
@@ -652,10 +672,28 @@ function configureMenu(options) {
     
     menu.appendChild(menuItem);
   }
+
+  menu.style.setProperty("--line-number", menu.row + 1);
+  menu.classList.add("revealed");
+  
+  //make room for the menu to slot below the selected row
+  for (const outerDiv of list.childNodes) {
+    let position = outerDiv.firstChild.position;
+    if (position > menu.row) {
+      ++position;
+    }
+    outerDiv.style.setProperty("--line-number", position);
+  }
 }
 
 function closeMenu() {
   menu.row = -1;
+  menu.classList.remove("revealed");
+  for (const outerDiv of list.childNodes) {
+    let position = outerDiv.firstChild.position;
+    outerDiv.style.setProperty("--line-number", position);
+  }
+
   document.body.classList.remove("selected");
   selectedItem && selectedItem.classList.remove("selected");
   selectedItem = undefined;
@@ -697,18 +735,7 @@ document.addEventListener("keydown", function(event) {
     }
 
     if (event.key === "Enter") {
-      if (menu.row <= script.getRowCount()) {
-        if (menu.col === 0 || menu.row === script.getRowCount() || script.getItemCount(menu.row) === 0) {
-          insertRow(menu.row);
-          itemClicked(menu.row + 1, menu.col);
-        } else {
-          insertRow(menu.row + 1);
-          itemClicked(menu.row + 1, -1);
-        }
-      } else {
-        itemClicked(menu.row + 1, -1);
-      }
-      
+      enterKeyPressed();      
       event.preventDefault();
     }
   }
