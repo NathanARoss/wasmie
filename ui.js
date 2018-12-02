@@ -672,11 +672,16 @@ function configureMenu(options, prevRow = selectedRow) {
       menuItem.classList = "menu-input " + option.style;
       menuItem.value = option.text;
       menuItem.placeholder = option.hint;
-      menuItem.onchange = () => {
-        handleMenuItemResponse(option.onchange(menuItem.value, option.args || []));
+      menuItem.onsubmit = () => {
+        handleMenuItemResponse(option.onsubmit(menuItem.value, option.args || []));
       };
       menuItem.oninput = option.oninput;
-      menuItem.onkeydown = event => event.stopPropagation();
+      menuItem.onkeydown = (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") {
+          menuItem.onsubmit();
+        }
+      };
     } else {
       const {text, style = ""} = option;
       menuItem = getItem(text, "menu-item " + style);

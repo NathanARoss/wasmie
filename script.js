@@ -108,7 +108,7 @@ class Script {
     if (item.constructor === FuncSig || item.constructor === VarDef) {
       const style = (item.constructor === FuncSig) ? "funcdef" : "vardef";
       options.push({
-        text: item.name, style, isInput: true, onchange: (text) => {
+        text: item.name, style, isInput: true, onsubmit: (text) => {
           item.name = text;
           return {scriptChanged: true};
         }
@@ -251,7 +251,7 @@ class Script {
             }
           }
           options.unshift(
-            {text, isInput: true, style, hint: "literal", onchange: (text) => {
+            {text, isInput: true, style, hint: "literal", onsubmit: (text) => {
               let newItem;
 
               if (text.toLowerCase() === "true") {
