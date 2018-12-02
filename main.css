@@ -138,6 +138,7 @@ button {
   transition-property: right height;
   transition-duration: 0.25s;
   overflow: hidden;
+  z-index: 100;
 }
 
 #FAB-menu.expanded {
@@ -199,14 +200,6 @@ button {
 }
 .wasm-comment::before {
   content: "; ";
-}
-#list {
-  width: 100%;
-  transition: width 0.25s;
-}
-
-.selected #list {
-  width: calc(100% - 100px);
 }
 
 .project-list-entry {
