@@ -50,16 +50,23 @@ class Script {
   }
 
   itemClicked(row, col) {
+    const deleteOption = {style: "delete", action: this.deleteItem, args: [row, col]};
+
     if (col < 0) {
       const options = this.appendClicked(row);
       if (options) {
+        if (row < this.getRowCount()) {
+          options.unshift(deleteOption);
+        }
         return options;
       }
       col = this.getItemCount(row);
     }
 
-    const [item = {}] = [this.getItem(row, col)];
-    const [nextItem = {}] = [this.getItem(row, col + 1)];
+    const options = [deleteOption];
+
+    const item = this.getItem(row, col) || {};
+    const nextItem = this.getItem(row, col + 1) || {};
 
     const replace = (col, item) => {
       this.setItem(row, col, item);
@@ -74,8 +81,6 @@ class Script {
     const setVarRef = (varDef) => {
       return replace(col, new VarRef(varDef, this.BuiltIns.VOID));
     };
-
-    const options = [{style: "delete", action: this.deleteItem, args: [row, col]}];
 
     if (item.suggestion) {
       const isAssignment = this.getItem(row, 2) && this.getItem(row, 2).isAssignment;

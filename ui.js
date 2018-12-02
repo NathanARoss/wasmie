@@ -24,6 +24,9 @@ let selectedItem;
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
 
+menu.row = -1;
+menu.col = -1;
+
 menuButton.addEventListener("click", function(event) {
   event.stopPropagation();
 
@@ -813,7 +816,8 @@ function itemClicked(row, col) {
   if (row !== undefined && col !== undefined) {
     selectedItem && selectedItem.classList.remove("selected");
 
-    selectedItem = list.childNodes[row % loadedCount].firstChild.childNodes[2 + col];
+    const selectedRow = list.childNodes[row % loadedCount];
+    selectedItem = selectedRow && selectedRow.firstChild.childNodes[2 + col];
     if (selectedItem) {
       selectedItem.classList.add("selected");
       selectedItem.focus();
