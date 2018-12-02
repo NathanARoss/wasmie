@@ -8,7 +8,8 @@ let firstLoadedPosition = 0;
 
 const list = document.getElementById("list");
 const editor = document.getElementById("editor");
-const menu = document.getElementById("menu");
+const menu1 = document.getElementById("menu1");
+const menu2 = document.getElementById("menu2");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
 const loadButton = document.getElementById("load-button");
@@ -24,13 +25,15 @@ let selectedItem;
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
 
-menu.row = -1;
-menu.col = -1;
+let selectedRow = -1;
+let selectedCol = -1;
+
+let menu = menu1;
 
 menuButton.addEventListener("click", function(event) {
   event.stopPropagation();
 
-  if (menu.row !== -1) {
+  if (selectedRow !== -1) {
     closeMenu();
   } else {
     if (menuButton.toggled) {
@@ -76,20 +79,20 @@ viewCodeButton.addEventListener("click", function(event) {
 });
 
 function enterKeyPressed() {
-  if (menu.row <= script.getRowCount()) {
-    if (menu.col === 0 || menu.row === script.getRowCount() || script.getItemCount(menu.row) === 0) {
-      insertRow(menu.row);
-      itemClicked(menu.row + 1, menu.col);
+  if (selectedRow <= script.getRowCount()) {
+    if (selectedCol === 0 || selectedRow === script.getRowCount() || script.getItemCount(selectedRow) === 0) {
+      insertRow(selectedRow);
+      itemClicked(selectedRow + 1, selectedCol);
     } else {
-      insertRow(menu.row + 1);
-      itemClicked(menu.row + 1, -1);
+      insertRow(selectedRow + 1);
+      itemClicked(selectedRow + 1, -1);
     }
   } else {
-    itemClicked(menu.row + 1, -1);
+    itemClicked(selectedRow + 1, -1);
   }
 }
 
-document.getElementById("insert-line").action = function() {
+menu1.firstChild.action = menu2.firstChild.action = function() {
   enterKeyPressed();
   return {};
 };
@@ -607,14 +610,15 @@ function loadRow(position, outerDiv) {
   }
 
   if (innerDiv.position !== position) {
-    const isShiftedDown = menu.row !== -1 && position > menu.row;
-    outerDiv.style.setProperty("--line-number", position + isShiftedDown|0);
+    const isShiftedDown = selectedRow !== -1 && position > selectedRow;
+    outerDiv.style.setProperty("--line-number", position);
+    outerDiv.classList.toggle("shifted-down", isShiftedDown);
     innerDiv.childNodes[1].textContent = position;
     innerDiv.position = position;
 
-    let button = innerDiv.childNodes[2 + menu.col];
+    let button = innerDiv.childNodes[2 + selectedCol];
 
-    if (menu.row === position) {
+    if (selectedRow === position) {
       innerDiv.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     }
   }
@@ -640,11 +644,22 @@ function getItem(text, className, position) {
 
 
 
-function configureMenu(options) {
+function configureMenu(options, prevRow = selectedRow) {
+  const prevMenu = menu;
+
+  if (selectedRow !== prevRow) {
+    if (menu === menu1) {
+      menu = menu2;
+    } else {
+      menu = menu1;
+    }
+  }
+
   while (menu.childNodes.length > 1) {
     menu.lastChild.action = undefined;
     menu.lastChild.args = undefined;
     if (menu.tagName === "BUTTON") {
+      menu.lastChild.onclick = undefined;
       itemPool.push(menu.lastChild);
     }
     menu.removeChild(menu.lastChild);
@@ -657,55 +672,72 @@ function configureMenu(options) {
       menuItem.classList = "menu-input " + option.style;
       menuItem.value = option.text;
       menuItem.placeholder = option.hint;
-      const [args = []] = [option.args];
       menuItem.onchange = () => {
-        handleMenuItemResponse(option.onchange(menuItem.value, ...args));
+        handleMenuItemResponse(option.onchange(menuItem.value, option.args || []));
       };
-      if (option.oninput) {
-        menuItem.oninput = event => option.oninput(event.target);
-      }
-      menuItem.onclick = event => event.stopPropagation();
+      menuItem.oninput = option.oninput;
       menuItem.onkeydown = event => event.stopPropagation();
     } else {
       const {text, style = ""} = option;
       menuItem = getItem(text, "menu-item " + style);
-      menuItem.action = option.action;
-      menuItem.args = option.args;
+      menuItem.onclick = function(event) {
+        const response = option.action.apply(script, option.args || []);
+    
+        if (Array.isArray(response) && response.length > 0) {
+          configureMenu(response);
+        } else {
+          handleMenuItemResponse(response);
+        }
+      };
     }
     
     menu.appendChild(menuItem);
   }
 
-  menu.style.setProperty("--line-number", menu.row + 1);
-  menu.classList.add("revealed");
+  if (selectedRow !== prevRow) {
+    menu.style.setProperty("--line-number", selectedRow + 1);
 
-  if (menu.row < script.getRowCount() - 1
-  || (menu.row === script.getRowCount() - 1)
-    && (script.getIndentation(menu.row) > 0
-    || (menu.row > 0 && script.getIndentation(menu.row - 1) > 1))
-    || menu.col === 0
-  ) {
-    menu.classList.add("show-insert-button");
-  } else {
-    menu.classList.remove("show-insert-button");
+    menu.style.transition = "none";
+    prevMenu.classList.remove("revealed");
+    menu.classList.remove("revealed");
+
+    if (prevRow === -1 || selectedRow < prevRow) {
+      prevMenu.classList.add("hide-from-top");
+      prevMenu.classList.remove("hide-from-bottom");
+      menu.classList.add("hide-from-bottom");
+      menu.classList.remove("hide-from-top");
+    } else {
+      prevMenu.classList.add("hide-from-bottom");
+      prevMenu.classList.add("hide-from-top");
+      menu.classList.add("hide-from-top");
+      menu.classList.remove("hide-from-bottom");
+    }
+
+    menu.offsetHeight; //flush CSS
+    menu.style.transition = "";
+    menu.classList.add("revealed");
   }
+
+  const isInsertButtonShown = (selectedRow < script.getRowCount() - 1
+  || (selectedRow === script.getRowCount() - 1)
+    && (script.getIndentation(selectedRow) > 0
+    || (selectedRow > 0 && script.getIndentation(selectedRow - 1) > 1))
+    || selectedCol === 0
+  );
+  menu.classList.toggle("insert-button-shown", isInsertButtonShown);
   
   //make room for the menu to slot below the selected row
   for (const outerDiv of list.childNodes) {
     let position = outerDiv.firstChild.position;
-    if (position > menu.row) {
-      ++position;
-    }
-    outerDiv.style.setProperty("--line-number", position);
+    outerDiv.classList.toggle("shift-down", position > selectedRow);
   }
 }
 
 function closeMenu() {
-  menu.row = -1;
+  selectedRow = -1;
   menu.classList.remove("revealed");
   for (const outerDiv of list.childNodes) {
-    let position = outerDiv.firstChild.position;
-    outerDiv.style.setProperty("--line-number", position);
+    outerDiv.classList.remove("shift-down");
   }
 
   document.body.classList.remove("selected");
@@ -728,19 +760,19 @@ document.addEventListener("keydown", function(event) {
     closeMenu();
   }
 
-  if (menu.row !== -1) {
+  if (selectedRow !== -1) {
     if (event.key === "Delete") {
-      if (menu.row < script.getRowCount()) {
-        deleteRow(menu.row);
-        itemClicked(menu.row, -1);
+      if (selectedRow < script.getRowCount()) {
+        deleteRow(selectedRow);
+        itemClicked(selectedRow, -1);
       }
 
       event.preventDefault();
     }
 
     if (event.key === "Backspace") {
-      if (menu.row < script.getRowCount()) {
-        handleMenuItemResponse(script.deleteItem(menu.row, menu.col));
+      if (selectedRow < script.getRowCount()) {
+        handleMenuItemResponse(script.deleteItem(selectedRow, selectedCol));
       } else {
         selectPreviousLine();
       }
@@ -755,31 +787,12 @@ document.addEventListener("keydown", function(event) {
   }
 });
 
-menu.addEventListener("click", function (event) {
-  if (event.target != this) {
-    const menuItem = event.target;
-
-    if (menuItem.tagName === "INPUT") {
-      return;
-    }
-
-    const [args = []] = [menuItem.args];
-    const response = menuItem.action.apply(script, args);
-
-    if (Array.isArray(response) && response.length > 0) {
-      configureMenu(response);
-    } else {
-      handleMenuItemResponse(response);
-    }
-  }
-});
-
 function handleMenuItemResponse(response) {
   if ("rowUpdated" in response) {
-    if (menu.row >= firstLoadedPosition && menu.row < firstLoadedPosition + loadedCount) {
-      const outerDiv = list.childNodes[menu.row % loadedCount];
-      loadRow(menu.row, outerDiv);
-      if (menu.col === -1) {
+    if (selectedRow >= firstLoadedPosition && selectedRow < firstLoadedPosition + loadedCount) {
+      const outerDiv = list.childNodes[selectedRow % loadedCount];
+      loadRow(selectedRow, outerDiv);
+      if (selectedCol === -1) {
         outerDiv.firstChild.scrollLeft = 1e10;
       }
       list.style.height = getRowCount() * rowHeight + "px";
@@ -787,30 +800,30 @@ function handleMenuItemResponse(response) {
   }
 
   if ("rowsInserted" in response) {
-    insertRow(menu.row + 1, response.rowsInserted);
+    insertRow(selectedRow + 1, response.rowsInserted);
   }
 
   if ("selectedCol" in response) {
-    if (response.selectedCol >= script.getItemCount(menu.row)) {
+    if (response.selectedCol >= script.getItemCount(selectedRow)) {
       response.selectedCol = -1;
     }
-    itemClicked(menu.row, response.selectedCol);
+    selectedCol = response.selectedCol;
   }
 
   if ("rowDeleted" in response) {
-    deleteRow(menu.row);
-    menu.col = -1;
-    if (menu.row > 0) {
-      menu.row = menu.row - 1;
+    deleteRow(selectedRow);
+    selectedCol = -1;
+    if (selectedRow > 0) {
+      selectedRow = selectedRow - 1;
     }
   }
 
   if ("scriptChanged" in response) {
     reloadAllRows();
-    menu.col = -1;
+    selectedCol = -1;
   }
   
-  itemClicked(menu.row, menu.col);
+  itemClicked(selectedRow, selectedCol);
 }
 
 function rowClickHandler(event) {
@@ -827,23 +840,23 @@ function itemClicked(row, col) {
   if (row !== undefined && col !== undefined) {
     selectedItem && selectedItem.classList.remove("selected");
 
-    const selectedRow = list.childNodes[row % loadedCount];
-    selectedItem = selectedRow && selectedRow.firstChild.childNodes[2 + col];
+    selectedItem = list.childNodes[row % loadedCount].firstChild.childNodes[2 + col];
     if (selectedItem) {
       selectedItem.classList.add("selected");
       selectedItem.focus();
     }
     
-    menu.row = row;
-    menu.col = col;
+    const prevRow = selectedRow;
+    selectedRow = row;
+    selectedCol = col;
     
     const options = script.itemClicked(row, col);
-    configureMenu(options);
+    configureMenu(options, prevRow);
   }
 }
 
 function selectPreviousLine() {
-  itemClicked(Math.max(0, menu.row - 1), -1);
+  itemClicked(Math.max(0, selectedRow - 1), -1);
 }
 
 function print(value) {

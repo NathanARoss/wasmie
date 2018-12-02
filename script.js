@@ -272,7 +272,8 @@ class Script {
 
               this.setItem(row, col, newItem);
               return {rowUpdated: true, selectedCol: col + 1};
-            }, oninput: (inputNode) => {
+            }, oninput: (event) => {
+              const inputNode = event.target;
               if (["true", "false"].includes(inputNode.value.toLowerCase())) {
                 inputNode.classList = "menu-input keyword literal";
               } else if (!isNaN(inputNode.value)) {

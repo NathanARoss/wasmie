@@ -21,9 +21,15 @@ body {
   position: absolute;
   width: 100%;
   transform: translateY(calc(var(--line-number) * 40px));
+  margin-top: 0;
+  transition: margin-top 0.25s;
   height: 40px;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.outer-row.shift-down {
+  margin-top: 40px;
 }
 
 .outer-row:hover {
@@ -122,7 +128,7 @@ button {
 .insert-line {
   display: none;
 }
-#menu.show-insert-button > .insert-line {
+.insert-button-shown > .insert-line {
   display: initial;
   background: url(ic_subdirectory_arrow_left_white_24px.svg) no-repeat right;
   background-origin: content-box;
@@ -241,12 +247,13 @@ button {
   float: right;
 }
 
-#menu {
+#menu1, #menu2 {
   position: absolute;
-  display: none;
+  display: flex;
   width: 100%;
   transform: translateY(calc(var(--line-number) * 40px));
   height: 40px;
+  transition: clip-path 0.25s;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -255,8 +262,16 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
-#menu.revealed {
-  display: flex;
+.hide-from-top {
+  clip-path: inset(40px 0 0 0);
+}
+
+.hide-from-bottom {
+  clip-path: inset(0 0 40px 0);
+}
+
+.revealed {
+  clip-path: inset(0 0 0 0);
 }
 
 .menu-item {
@@ -277,6 +292,7 @@ button {
   color: white;
   width: 6em;
   height: 100%;
+  flex-shrink: 0;
 }
 
 .menu-input:focus {
