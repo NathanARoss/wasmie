@@ -678,6 +678,17 @@ function configureMenu(options) {
 
   menu.style.setProperty("--line-number", menu.row + 1);
   menu.classList.add("revealed");
+
+  if (menu.row < script.getRowCount() - 1
+  || (menu.row === script.getRowCount() - 1)
+    && (script.getIndentation(menu.row) > 0
+    || script.getIndentation(menu.row - 1) > 1)
+    || menu.col === 0
+  ) {
+    menu.classList.add("show-insert-button");
+  } else {
+    menu.classList.remove("show-insert-button");
+  }
   
   //make room for the menu to slot below the selected row
   for (const outerDiv of list.childNodes) {
