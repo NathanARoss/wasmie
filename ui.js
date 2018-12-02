@@ -682,7 +682,7 @@ function configureMenu(options) {
   if (menu.row < script.getRowCount() - 1
   || (menu.row === script.getRowCount() - 1)
     && (script.getIndentation(menu.row) > 0
-    || script.getIndentation(menu.row - 1) > 1)
+    || (menu.row > 0 && script.getIndentation(menu.row - 1) > 1))
     || menu.col === 0
   ) {
     menu.classList.add("show-insert-button");
