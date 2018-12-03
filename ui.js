@@ -92,7 +92,7 @@ function enterKeyPressed() {
   }
 }
 
-menu1.firstChild.action = menu2.firstChild.action = function() {
+menu1.firstChild.onclick = menu2.firstChild.onclick = function() {
   enterKeyPressed();
   return {};
 };
