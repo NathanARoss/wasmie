@@ -80,7 +80,9 @@ viewCodeButton.addEventListener("click", function(event) {
 
 function enterKeyPressed() {
   if (selectedRow <= script.getRowCount()) {
-    if (selectedCol === 0 || selectedRow === script.getRowCount() || script.getItemCount(selectedRow) === 0) {
+    if (selectedCol === 0
+    || selectedRow === script.getRowCount()
+    || script.getItemCount(selectedRow) === 0) {
       insertRow(selectedRow);
       itemClicked(selectedRow + 1, selectedCol);
     } else {
@@ -130,19 +132,22 @@ document.body.onresize();
 
 
 
-//detect when items need to be loaded in the direction of scroll, take nodes from the back to add to the front
+//detect when items need to be loaded in the direction of scroll
+//take nodes from the back to add to the front
 window.onscroll = function() {
   const firstVisiblePosition = Math.floor(window.scrollY / rowHeight);
   
   //keep a number of rows prepared for both direction
-  while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition) && (firstLoadedPosition + loadedCount < getRowCount())) {
+  while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition)
+  && (firstLoadedPosition + loadedCount < getRowCount())) {
     const position = firstLoadedPosition + loadedCount;
     const outerDiv = list.childNodes[position % loadedCount];
     loadRow(position, outerDiv);
     ++firstLoadedPosition;
   }
   
-  while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition) && (firstLoadedPosition > 0)) {
+  while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition)
+  && (firstLoadedPosition > 0)) {
     const position = firstLoadedPosition - 1;
     const outerDiv = list.childNodes[position % loadedCount];
     loadRow(position, outerDiv);
@@ -217,22 +222,24 @@ window.onpopstate = function(event) {
       offset += count;
 
       const byteNode = document.createElement("span");
-      byteNode.textContent = Array.from(slice).map(num => num.toString(16).padStart(2, "0")).join(" ").padEnd(27);
+      byteNode.textContent = Array.from(slice).map(b => b.toString(16).padStart(2, "0"))
+                                              .join(" ").padEnd(27);
       byteNode.className = "wasm-data";
       consoleOutput.appendChild(byteNode);
 
       const commentNode = document.createElement("span");
       commentNode.textContent = comment + "\n";
-      commentNode.className = "wasm-comment";
+      commentNode.className = "wasm-comment";func
       consoleOutput.appendChild(commentNode);
     }
 
-    //reads and prints a whole string on the first line, remaining bytes spill into later lines
+    //reads and prints a whole string on the first line
+    //remaining bytes spill into later lines
     function printEncodedString(count, beginComment = '"', endComment = '"') {
       const end = offset + count;
       
-      const sanitizedString = escapeControlCodes(Wasm.UTF8toString(wasm.slice(offset, end)));
-      printDisassembly(Math.min(8, count), beginComment + sanitizedString + endComment);
+      const sanitizedStr = escapeControlCodes(Wasm.UTF8toString(wasm.slice(offset, end)));
+      printDisassembly(Math.min(8, count), beginComment + sanitizedStr + endComment);
 
       while (offset < end) {
         const count = Math.min(8, end - begin);
@@ -253,12 +260,12 @@ window.onpopstate = function(event) {
       print("\n");
 
       const sectionCode = wasm[offset];
-      printDisassembly(1, "section " + Wasm.sectionNames[sectionCode] + " (" + sectionCode + ")");
+      printDisassembly(1, "section " + Wasm.sectionNames[sectionCode] + " ("+sectionCode+")");
 
       const payloadLength = readVaruintAndPrint("size: ", " bytes");
       const end = offset + payloadLength;
 
-      let firstItemLabel = sectionCode === Wasm.section.Start ? "entry point func: " : "count: ";
+      let firstItemLabel = sectionCode === Wasm.section.Start ? "entry point: " : "count: ";
       readVaruintAndPrint(firstItemLabel);
 
       while (offset < end) {
@@ -272,7 +279,8 @@ window.onpopstate = function(event) {
               
               while (bytesRead < bytesToRead) {
                 const count = Math.min(8, bytesToRead - bytesRead);
-                comment += Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + count))
+                const begin = offset + bytesRead;
+                comment += Array.from(wasm.slice(begin, begin + count))
                            .map(type => Wasm.typeNames[type & 0x7F]).join(" ");
                 bytesRead += count;
               }
@@ -292,7 +300,7 @@ window.onpopstate = function(event) {
 
             if (exportType === Wasm.externalKind.Memory) {
               const maxPagesSpecifiedFlag = wasm[offset];
-              printDisassembly(1, maxPagesSpecifiedFlag ? "allocation limit specified" : "no allocation limit");
+              printDisassembly(1, maxPagesSpecified ? "limit" : "no limit");
               readVaruintAndPrint("initial allocation: ", " pages");
 
               if (maxPagesSpecifiedFlag) {
@@ -311,7 +319,8 @@ window.onpopstate = function(event) {
             printDisassembly(1, Wasm.typeNames[wasm[offset]]);
             printDisassembly(1, wasm[offset] ? "mutable" : "immutable");
 
-            //the initial value is assumed to be an i32.const expression TODO should support other constant types
+            //the initial value is assumed to be an i32.const expression
+            //TODO should support other constant types
             const [val, bytesRead] = Wasm.decodeVarint(wasm, offset + 1);
             printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
             printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
@@ -325,9 +334,11 @@ window.onpopstate = function(event) {
             let localVariableComment = "local vars:";
             
             for (let i = 0; i < localCount; ++i) {
-              const [count] = Wasm.decodeVaruint(wasm, offset + bytesRead); //assumes no more than 127 locals specified at once
+              //assumes no more than 127 locals specified at once
+              const [count] = Wasm.decodeVaruint(wasm, offset + bytesRead);
               ++bytesRead;
-              localVariableComment += (" " + Wasm.typeNames[wasm[offset + bytesRead]]).repeat(count);
+              const type = wasm[offset + bytesRead];
+              localVariableComment += (" " + Wasm.typeNames[type]).repeat(count);
               ++bytesRead;
             }
             
@@ -373,7 +384,7 @@ window.onpopstate = function(event) {
         }
       }
 
-      //if for some reason a section is decoded using too many bytes, this resets the read position
+      //resets the read position to beginning of next section
       offset = end;
     }
 
@@ -396,8 +407,8 @@ window.onpopstate = function(event) {
           const dateCreated = document.createElement("p");
           dateCreated.textContent = "Created: " + getDateString(project.created);
 
-          const dateLastModified = document.createElement("p");
-          dateLastModified.textContent = "Last Modified: " + getDateString(project.lastModified);
+          const lastModified = document.createElement("p");
+          lastModified.textContent = "Last Modified: " + getDateString(project.lastModified);
 
           const deleteButton = document.createElement("button");
           deleteButton.className = "delete delete-project-button";
@@ -409,7 +420,7 @@ window.onpopstate = function(event) {
           entry.appendChild(label);
           entry.appendChild(projectName);
           entry.appendChild(dateCreated);
-          entry.appendChild(dateLastModified);
+          entry.appendChild(lastModified);
           entry.addEventListener("click", selectProject);
 
           if (script.projectID === project.id) {
@@ -515,7 +526,10 @@ function performActionOnProjectListDatabase(mode, action) {
 }
 
 function getDateString(date) {
-  var options = {year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit"};
+  var options = {
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "2-digit"
+  };
   return date.toLocaleDateString("en-US", options);
 }
 
@@ -550,14 +564,12 @@ function createRow() {
 
 
 
-function insertRow(position, count = 1) {
-  let firstEffectedRow = -1 & 0x7FFFFFFF;
-  for (let i = 0; i < count; ++i) {
-    firstEffectedRow = Math.min(firstEffectedRow, script.insertRow(position + i) & 0x7FFFFFFF);
-  }
+function insertRow(position) {
+  const pos = script.insertRow(position);
   
-  if (firstEffectedRow !== -1 & 0x7FFFFFFF)
-    refreshRows(firstEffectedRow, script.getRowCount());
+  if (pos !== -1) {
+    refreshRows(pos, script.getRowCount());
+  }
 }
 
 function deleteRow(position) {
@@ -647,7 +659,8 @@ function getItem(text, className, position) {
 function configureMenu(options, prevRow = selectedRow) {
   const prevMenu = menu;
 
-  if (selectedRow !== prevRow) {
+  //if (selectedRow !== prevRow)
+  {
     if (menu === menu1) {
       menu = menu2;
     } else {
@@ -699,28 +712,37 @@ function configureMenu(options, prevRow = selectedRow) {
     menu.appendChild(menuItem);
   }
 
-  if (selectedRow !== prevRow) {
+  //if (selectedRow !== prevRow)
+  {
     menu.style.setProperty("--line-number", selectedRow + 1);
 
     menu.style.transition = "none";
     prevMenu.classList.remove("revealed");
     menu.classList.remove("revealed");
 
-    if (prevRow === -1 || selectedRow < prevRow) {
-      prevMenu.classList.add("hide-from-top");
-      prevMenu.classList.remove("hide-from-bottom");
-      menu.classList.add("hide-from-bottom");
-      menu.classList.remove("hide-from-top");
+    prevMenu.classList.add("hide-from-top");
+    prevMenu.classList.remove("hide-from-bottom");
+
+    if (prevRow === -1 || selectedRow <= prevRow) {
+      menu.classList.add("slide-up");
+      menu.classList.remove("slide-down");
+      if (selectedRow === prevRow) {
+        prevMenu.classList.add("hide-from-bottom", "slide-down");
+        prevMenu.classList.remove("hide-from-top");
+      }
     } else {
-      prevMenu.classList.add("hide-from-bottom");
-      prevMenu.classList.add("hide-from-top");
-      menu.classList.add("hide-from-top");
-      menu.classList.remove("hide-from-bottom");
+      menu.classList.remove("slide-down", "slide-up");
+      prevMenu.classList.add("slide-up");
+      prevMenu.classList.remove("slide-down");
     }
+
+    menu.classList.add("hide-from-top");
+    menu.classList.remove("hide-from-bottom");
 
     menu.offsetHeight; //flush CSS
     menu.style.transition = "";
     menu.classList.add("revealed");
+    menu.classList.remove("slide-down", "slide-up");
   }
 
   const isInsertButtonShown = (selectedRow < script.getRowCount() - 1
@@ -734,7 +756,7 @@ function configureMenu(options, prevRow = selectedRow) {
   //make room for the menu to slot below the selected row
   for (const outerDiv of list.childNodes) {
     let position = outerDiv.firstChild.position;
-    outerDiv.classList.toggle("shift-down", position > selectedRow);
+    outerDiv.classList.toggle("slide-down", position > selectedRow);
   }
 }
 
@@ -742,7 +764,7 @@ function closeMenu() {
   selectedRow = -1;
   menu.classList.remove("revealed");
   for (const outerDiv of list.childNodes) {
-    outerDiv.classList.remove("shift-down");
+    outerDiv.classList.remove("slide-down");
   }
 
   document.body.classList.remove("selected");
@@ -793,25 +815,24 @@ document.addEventListener("keydown", function(event) {
 });
 
 function handleMenuItemResponse(response) {
-  if ("rowUpdated" in response) {
-    if (selectedRow >= firstLoadedPosition && selectedRow < firstLoadedPosition + loadedCount) {
-      const outerDiv = list.childNodes[selectedRow % loadedCount];
-      loadRow(selectedRow, outerDiv);
-      if (selectedCol === -1) {
-        outerDiv.firstChild.scrollLeft = 1e10;
-      }
-      list.style.height = getRowCount() * rowHeight + "px";
-    }
+  if (response.selectedCol >= script.getItemCount(selectedRow)) {
+    response.selectedCol = -1;
   }
 
-  if ("rowsInserted" in response) {
-    insertRow(selectedRow + 1, response.rowsInserted);
+  if ("rowUpdated" in response) {
+    const outerDiv = list.childNodes[selectedRow % loadedCount];
+    loadRow(selectedRow, outerDiv);
+    if (selectedCol === -1) {
+      outerDiv.firstChild.scrollLeft = 1e10;
+    }
+    list.style.height = getRowCount() * rowHeight + "px";
+  }
+
+  if ("rowInserted" in response) {
+    insertRow(selectedRow + 1);
   }
 
   if ("selectedCol" in response) {
-    if (response.selectedCol >= script.getItemCount(selectedRow)) {
-      response.selectedCol = -1;
-    }
     selectedCol = response.selectedCol;
   }
 

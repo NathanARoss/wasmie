@@ -28,8 +28,12 @@ body {
   white-space: nowrap;
 }
 
-.outer-row.shift-down {
+.slide-down {
   margin-top: 40px;
+}
+
+.slide-up {
+  margin-top: -40px;
 }
 
 .outer-row:hover {
@@ -145,7 +149,7 @@ button {
   bottom: 20px;
   width: 50px;
   height: 50px;
-  transition-property: right height;
+  transition-property: height;
   transition-duration: 0.25s;
   overflow: hidden;
   z-index: 100;
@@ -253,7 +257,8 @@ button {
   width: 100%;
   transform: translateY(calc(var(--line-number) * 40px));
   height: 40px;
-  transition: clip-path 0.25s;
+  transition-duration: 0.25s;
+  transition-property: clip-path, margin-top;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -284,11 +289,11 @@ button {
 }
 
 .menu-input {
-  padding: 0.5em;
+  padding: 0.25em;
   box-sizing: border-box;
   transition: width 0.5s ease-in-out;
   background: #2B2B2B;
-  border: thin solid #808080;
+  border: thick solid #3B3B3B;
   color: white;
   width: 6em;
   height: 100%;

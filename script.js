@@ -365,7 +365,7 @@ class Script {
           this.appendRowsUpTo(row);
           this.setIsStartingScope(row, true);
           this.pushItems(row, this.BuiltIns.FUNC, func);
-          return {rowUpdated: true, rowsInserted: 1, selectedCol: 1};
+          return {rowUpdated: true, rowInserted: true, selectedCol: 1};
         }},
 
         {text: "var", style: "keyword", action: () => {
@@ -382,7 +382,7 @@ class Script {
           this.appendRowsUpTo(row);
           this.setIsStartingScope(row, true);
           this.pushItems(row, this.BuiltIns.IF);
-          return {rowUpdated: true, rowsInserted: 1};
+          return {rowUpdated: true, rowInserted: true};
         }}
       ];
 
@@ -406,7 +406,7 @@ class Script {
                       this.appendRowsUpTo(row);
                       this.setIsStartingScope(row, true);
                       this.pushItems(row, this.BuiltIns.ELSE, this.BuiltIns.IF);
-                      return {rowUpdated: true, rowsInserted: 1};
+                      return {rowUpdated: true, rowInserted: true};
                     }}
                   ];
                 }
@@ -418,7 +418,7 @@ class Script {
               this.appendRowsUpTo(row);
               this.setIsStartingScope(row, true);
               this.pushItems(row, this.BuiltIns.ELSE);
-              return {rowUpdated: true, rowsInserted: 1};
+              return {rowUpdated: true, rowInserted: true};
             }});
             break;
           }
@@ -436,20 +436,20 @@ class Script {
             new NumericLiteral("0"),
             this.BuiltIns.HALF_OPEN_RANGE
           );
-          return {rowUpdated: true, rowsInserted: 1};
+          return {rowUpdated: true, rowInserted: true};
         }},
 
         {text: "while", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
           this.setIsStartingScope(row, true);
           this.pushItems(row, this.BuiltIns.WHILE);
-          return {rowUpdated: true, rowsInserted: 1};
+          return {rowUpdated: true, rowInserted: true};
         }},
 
         {text: "return", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
           this.pushItems(row, this.BuiltIns.RETURN);
-          return {rowUpdated: true, rowsInserted: 1};
+          return {rowUpdated: true, rowInserted: true};
         }}
       );
 
