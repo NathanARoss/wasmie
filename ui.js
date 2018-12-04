@@ -763,6 +763,7 @@ function configureMenu(options, prevRow = selectedRow) {
 function closeMenu() {
   selectedRow = -1;
   menu.classList.remove("revealed");
+  menu.classList.add("slide-up");
   for (const outerDiv of list.childNodes) {
     outerDiv.classList.remove("slide-down");
   }
