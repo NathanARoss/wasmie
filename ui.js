@@ -86,6 +86,7 @@ function enterKeyPressed() {
       ++selectedRow;
       itemClicked(selectedRow, selectedCol);
     } else {
+      selectedCol = -1;
       insertRow(selectedRow + 1);
       itemClicked(selectedRow + 1, -1);
     }
@@ -599,17 +600,17 @@ function insertRow(position) {
       }
     }
   }
+
+  list.style.height = getRowCount() * rowHeight + "px";
 }
 
 function deleteRow(position) {
   const oldRowCount = script.getRowCount();
   const internalPos = script.deleteRow(position);
   const deletedCount = oldRowCount - script.getRowCount();
-  console.log("deletedCount", deletedCount)
   
   for (let i = 0; i < deletedCount; ++i) {
-    const position = internalPos + i;
-    const selectedIndex = position % loadedCount;
+    const selectedIndex = internalPos % loadedCount;
     const selectedOuterDiv = list.childNodes[selectedIndex];
 
     const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
@@ -617,17 +618,17 @@ function deleteRow(position) {
 
     if (lastRowOuterDiv.nextSibling) {
       list.insertBefore(selectedOuterDiv, lastRowOuterDiv.nextSibling);
-      console.log("inserting")
     } else {
       list.appendChild(selectedOuterDiv);
-      console.log("appending")
     }
 
     if (lastRowIndex < selectedIndex) {
       list.appendChild(list.firstChild);
     }
 
-    loadRow(firstLoadedPosition + loadedCount - deletedCount + i + 1, selectedOuterDiv);
+    const newPosition = firstLoadedPosition + loadedCount - deletedCount + i + 1;
+    loadRow(newPosition, selectedOuterDiv);
+    selectedOuterDiv.firstChild.position = firstLoadedPosition + loadedCount;
 
     //increase the line numbers and positions
     for (let i = position; i < loadedCount + firstLoadedPosition; ++i) {
@@ -641,14 +642,6 @@ function deleteRow(position) {
         outerDiv.firstChild.childNodes[1].textContent = rowPos;
       }
     }
-  }
-}
-
-function refreshRows(pos, oldRowCount) {
-  const start = Math.max(pos, firstLoadedPosition);
-  const end = Math.min(oldRowCount, firstLoadedPosition + loadedCount);
-  for (let position = start; position < end; ++position) {
-    loadRow(position, list.childNodes[position % loadedCount]);
   }
 
   list.style.height = getRowCount() * rowHeight + "px";
