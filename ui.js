@@ -622,8 +622,11 @@ function loadRow(position, outerDiv) {
   }
 
   if (innerDiv.position !== position) {
+    outerDiv.style.transition = "none";
     const isShiftedDown = selectedRow !== -1 && position > selectedRow;
     outerDiv.style.setProperty("--position", position + isShiftedDown|0);
+    outerDiv.offsetHeight;
+    outerDiv.style.transition = "";
     innerDiv.childNodes[1].textContent = position;
     innerDiv.position = position;
 
@@ -655,9 +658,6 @@ function getItem(text, className, position) {
 
 
 function configureMenu(options, prevRow = selectedRow) {
-  console.log("configure menu")
-  console.trace();
-  menu.row = selectedRow;
   const prevMenu = menu;
 
   if (menu === menu1) {
@@ -667,13 +667,14 @@ function configureMenu(options, prevRow = selectedRow) {
   }
 
   while (menu.childNodes.length > 1) {
-    menu.lastChild.action = undefined;
-    menu.lastChild.args = undefined;
-    if (menu.tagName === "BUTTON") {
-      menu.lastChild.onclick = undefined;
-      itemPool.push(menu.lastChild);
+    const child = menu.lastChild;
+    child.action = undefined;
+    child.args = undefined;
+    if (child.tagName === "BUTTON") {
+      child.onclick = undefined;
+      itemPool.push(child);
     }
-    menu.removeChild(menu.lastChild);
+    menu.removeChild(child);
   }
 
   for (const option of options) {
@@ -690,6 +691,7 @@ function configureMenu(options, prevRow = selectedRow) {
       menuItem.onkeydown = (event) => {
         event.stopPropagation();
         if (event.key === "Enter") {
+          event.preventDefault();
           menuItem.onsubmit();
         }
       };
@@ -710,32 +712,29 @@ function configureMenu(options, prevRow = selectedRow) {
     menu.appendChild(menuItem);
   }
 
-  menu.style.transitionDuration = "0s";
+  menu.style.transition = "none";
   prevMenu.classList.remove("revealed");
   menu.classList.remove("revealed");
 
   menu.classList.add("hide-from-top");
   menu.classList.remove("hide-from-bottom");
-  prevMenu.classList.add("hide-from-top");
-  prevMenu.classList.remove("hide-from-bottom");
 
   if (prevRow === -1 || selectedRow <= prevRow) {
     menu.style.setProperty("--position", selectedRow);
-    if (selectedRow === prevRow) {
+    if (selectedRow === prevRow) { //rolling update animation
       prevMenu.classList.add("hide-from-bottom");
       prevMenu.classList.remove("hide-from-top");
-      prevMenu.style.setProperty("--position", selectedRow + 2);
+      prevMenu.style.setProperty("--position", prevRow + 2);
+    } else {
+      prevMenu.style.setProperty("--position", prevRow + 1);
     }
   } else {
     menu.style.setProperty("--position", selectedRow + 1);
-
-    if (prevMenu.row !== -1) {
-      prevMenu.style.setProperty("--position", prevMenu.row - 1);
-    }
+    prevMenu.style.setProperty("--position", prevRow);
   }
 
   menu.offsetHeight;
-  menu.style.transitionDuration = "";
+  menu.style.transition = "";
   menu.classList.add("revealed");
   menu.style.setProperty("--position", selectedRow + 1);
 
@@ -755,11 +754,11 @@ function configureMenu(options, prevRow = selectedRow) {
 }
 
 function closeMenu() {
-  selectedRow = -1;
+  menu.style.setProperty("--position", selectedRow);
   menu.classList.remove("revealed");
-  menu.classList.add("slide-up");
+  selectedRow = -1;
   for (const outerDiv of list.childNodes) {
-    outerDiv.classList.remove("slide-down");
+    outerDiv.style.setProperty("--position", outerDiv.firstChild.position);
   }
 
   document.body.classList.remove("selected");
@@ -810,13 +809,12 @@ document.addEventListener("keydown", function(event) {
 });
 
 function handleMenuItemResponse(response) {
-  if (response.selectedCol >= script.getItemCount(selectedRow)) {
-    response.selectedCol = -1;
-  }
-
   if ("rowUpdated" in response) {
     const outerDiv = list.childNodes[selectedRow % loadedCount];
     loadRow(selectedRow, outerDiv);
+    if (response.selectedCol >= script.getItemCount(selectedRow)) {
+      response.selectedCol = -1;
+    }
     if (selectedCol === -1) {
       outerDiv.firstChild.scrollLeft = 1e10;
     }

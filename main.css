@@ -43,7 +43,7 @@ body {
   height: 40px;
   width: 100%;
   transform: translateY(calc(var(--position) * 40px));
-  transition-duration: 1s;
+  transition-duration: 0.25s;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -256,14 +256,6 @@ button {
   white-space: nowrap;
   background-color: #3B3B3B;
   z-index: 10;
-}
-
-#menu1, #menu2 {
-  width: 50%;
-}
-
-#menu2 {
-  margin-left: 50%;
 }
 
 .hide-from-top {
