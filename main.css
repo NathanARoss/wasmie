@@ -19,21 +19,9 @@ body {
 
 .outer-row {
   position: absolute;
-  width: 100%;
-  transform: translateY(calc(var(--line-number) * 40px));
-  margin-top: 0;
-  transition: margin-top 0.25s;
-  height: 40px;
   overflow: hidden;
   white-space: nowrap;
-}
-
-.slide-down {
-  margin-top: 40px;
-}
-
-.slide-up {
-  margin-top: -40px;
+  transition-property: transform;
 }
 
 .outer-row:hover {
@@ -45,9 +33,18 @@ body {
   position: relative;
   height: 40px;
   width: 100%;
+  overflow-x: auto;
   overflow-y: hidden;
+  white-space: nowrap;
   vertical-align: top;
-  -ms-overflow-style: none;
+}
+
+#menu1, #menu2, .outer-row {
+  height: 40px;
+  width: 100%;
+  transform: translateY(calc(var(--position) * 40px));
+  transition-duration: 1s;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Desktop Firefox, mobile Firefox (not Firefox Focus), Samsung Browser (oddly) */
@@ -254,17 +251,19 @@ button {
 #menu1, #menu2 {
   position: absolute;
   display: flex;
-  width: 100%;
-  transform: translateY(calc(var(--line-number) * 40px));
-  height: 40px;
-  transition-duration: 0.25s;
-  transition-property: clip-path, margin-top;
+  transition-property: clip-path, transform;
   overflow-x: auto;
-  overflow-y: hidden;
   white-space: nowrap;
   background-color: #3B3B3B;
   z-index: 10;
-  -webkit-overflow-scrolling: touch;
+}
+
+#menu1, #menu2 {
+  width: 50%;
+}
+
+#menu2 {
+  margin-left: 50%;
 }
 
 .hide-from-top {

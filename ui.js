@@ -623,14 +623,12 @@ function loadRow(position, outerDiv) {
 
   if (innerDiv.position !== position) {
     const isShiftedDown = selectedRow !== -1 && position > selectedRow;
-    outerDiv.style.setProperty("--line-number", position);
-    outerDiv.classList.toggle("shifted-down", isShiftedDown);
+    outerDiv.style.setProperty("--position", position + isShiftedDown|0);
     innerDiv.childNodes[1].textContent = position;
     innerDiv.position = position;
 
-    let button = innerDiv.childNodes[2 + selectedCol];
-
     if (selectedRow === position) {
+      const button = innerDiv.childNodes[2 + selectedCol];
       innerDiv.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     }
   }
@@ -657,15 +655,15 @@ function getItem(text, className, position) {
 
 
 function configureMenu(options, prevRow = selectedRow) {
+  console.log("configure menu")
+  console.trace();
+  menu.row = selectedRow;
   const prevMenu = menu;
 
-  //if (selectedRow !== prevRow)
-  {
-    if (menu === menu1) {
-      menu = menu2;
-    } else {
-      menu = menu1;
-    }
+  if (menu === menu1) {
+    menu = menu2;
+  } else {
+    menu = menu1;
   }
 
   while (menu.childNodes.length > 1) {
@@ -712,38 +710,34 @@ function configureMenu(options, prevRow = selectedRow) {
     menu.appendChild(menuItem);
   }
 
-  //if (selectedRow !== prevRow)
-  {
-    menu.style.setProperty("--line-number", selectedRow + 1);
+  menu.style.transitionDuration = "0s";
+  prevMenu.classList.remove("revealed");
+  menu.classList.remove("revealed");
 
-    menu.style.transition = "none";
-    prevMenu.classList.remove("revealed");
-    menu.classList.remove("revealed");
+  menu.classList.add("hide-from-top");
+  menu.classList.remove("hide-from-bottom");
+  prevMenu.classList.add("hide-from-top");
+  prevMenu.classList.remove("hide-from-bottom");
 
-    prevMenu.classList.add("hide-from-top");
-    prevMenu.classList.remove("hide-from-bottom");
-
-    if (prevRow === -1 || selectedRow <= prevRow) {
-      menu.classList.add("slide-up");
-      menu.classList.remove("slide-down");
-      if (selectedRow === prevRow) {
-        prevMenu.classList.add("hide-from-bottom", "slide-down");
-        prevMenu.classList.remove("hide-from-top");
-      }
-    } else {
-      menu.classList.remove("slide-down", "slide-up");
-      prevMenu.classList.add("slide-up");
-      prevMenu.classList.remove("slide-down");
+  if (prevRow === -1 || selectedRow <= prevRow) {
+    menu.style.setProperty("--position", selectedRow);
+    if (selectedRow === prevRow) {
+      prevMenu.classList.add("hide-from-bottom");
+      prevMenu.classList.remove("hide-from-top");
+      prevMenu.style.setProperty("--position", selectedRow + 2);
     }
+  } else {
+    menu.style.setProperty("--position", selectedRow + 1);
 
-    menu.classList.add("hide-from-top");
-    menu.classList.remove("hide-from-bottom");
-
-    menu.offsetHeight; //flush CSS
-    menu.style.transition = "";
-    menu.classList.add("revealed");
-    menu.classList.remove("slide-down", "slide-up");
+    if (prevMenu.row !== -1) {
+      prevMenu.style.setProperty("--position", prevMenu.row - 1);
+    }
   }
+
+  menu.offsetHeight;
+  menu.style.transitionDuration = "";
+  menu.classList.add("revealed");
+  menu.style.setProperty("--position", selectedRow + 1);
 
   const isInsertButtonShown = (selectedRow < script.getRowCount() - 1
   || (selectedRow === script.getRowCount() - 1)
@@ -755,8 +749,8 @@ function configureMenu(options, prevRow = selectedRow) {
   
   //make room for the menu to slot below the selected row
   for (const outerDiv of list.childNodes) {
-    let position = outerDiv.firstChild.position;
-    outerDiv.classList.toggle("slide-down", position > selectedRow);
+    const position = outerDiv.firstChild.position;
+    outerDiv.style.setProperty("--position", position + (position > selectedRow)|0);
   }
 }
 
