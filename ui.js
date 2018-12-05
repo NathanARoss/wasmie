@@ -631,10 +631,10 @@ function deleteRow(position) {
     selectedOuterDiv.firstChild.position = firstLoadedPosition + loadedCount;
 
     //increase the line numbers and positions
-    for (let i = position; i < loadedCount + firstLoadedPosition; ++i) {
+    for (let i = internalPos; i < loadedCount + firstLoadedPosition; ++i) {
       const outerDiv = list.childNodes[i % loadedCount];
       let rowPos = outerDiv.firstChild.position;
-      if (rowPos >= position) {
+      if (rowPos >= internalPos) {
         --rowPos;
         outerDiv.firstChild.position = rowPos;
         const isShiftedDown = rowPos > selectedRow;
