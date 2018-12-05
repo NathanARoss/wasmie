@@ -80,11 +80,11 @@ viewCodeButton.addEventListener("click", function(event) {
 
 function enterKeyPressed() {
   if (selectedRow <= script.getRowCount()) {
-    if (selectedCol === 0
-    || selectedRow === script.getRowCount()
-    || script.getItemCount(selectedRow) === 0) {
+    if (selectedCol === 0 && selectedRow < script.getRowCount() && script.getItemCount(selectedRow) !== 0
+    || selectedRow === script.getRowCount()) {
       insertRow(selectedRow);
-      itemClicked(selectedRow + 1, selectedCol);
+      ++selectedRow;
+      itemClicked(selectedRow, selectedCol);
     } else {
       insertRow(selectedRow + 1);
       itemClicked(selectedRow + 1, -1);
@@ -565,17 +565,83 @@ function createRow() {
 
 
 function insertRow(position) {
-  const pos = script.insertRow(position);
+  const internalPos = script.insertRow(position);
   
-  if (pos !== -1) {
-    refreshRows(pos, script.getRowCount());
+  if (internalPos !== -1 && position < firstLoadedPosition + loadedCount) {
+    const selectedIndex = position % loadedCount;
+    const selectedOuterDiv = list.childNodes[selectedIndex];
+
+    const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
+    const lastRowOuterDiv = list.childNodes[lastRowIndex];
+
+    list.insertBefore(lastRowOuterDiv, selectedOuterDiv);
+    ++selectedRow;
+    loadRow(position, lastRowOuterDiv);
+    --selectedRow;
+
+    //if the bottom row must go up past the beginning of the array and back around to the
+    //end to the new position, then a row must wrap around in the opposite direction
+    //to prevent the remaining rows from having an index one too high
+    if (lastRowIndex < selectedIndex) {
+      list.insertBefore(list.lastChild, list.firstChild);
+    }
+
+    //increase the line numbers and positions
+    for (let i = position + 1; i < loadedCount + firstLoadedPosition; ++i) {
+      const outerDiv = list.childNodes[i % loadedCount];
+      let rowPos = outerDiv.firstChild.position;
+      if (rowPos >= position) {
+        ++rowPos;
+        outerDiv.firstChild.position = rowPos;
+        const isShiftedDown = rowPos > selectedRow;
+        outerDiv.style.setProperty("--position", rowPos + isShiftedDown|0);
+        outerDiv.firstChild.childNodes[1].textContent = rowPos;
+      }
+    }
   }
 }
 
 function deleteRow(position) {
   const oldRowCount = script.getRowCount();
-  const pos = script.deleteRow(position);
-  refreshRows(pos, oldRowCount);
+  const internalPos = script.deleteRow(position);
+  const deletedCount = oldRowCount - script.getRowCount();
+  console.log("deletedCount", deletedCount)
+  
+  for (let i = 0; i < deletedCount; ++i) {
+    const position = internalPos + i;
+    const selectedIndex = position % loadedCount;
+    const selectedOuterDiv = list.childNodes[selectedIndex];
+
+    const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
+    const lastRowOuterDiv = list.childNodes[lastRowIndex];
+
+    if (lastRowOuterDiv.nextSibling) {
+      list.insertBefore(selectedOuterDiv, lastRowOuterDiv.nextSibling);
+      console.log("inserting")
+    } else {
+      list.appendChild(selectedOuterDiv);
+      console.log("appending")
+    }
+
+    if (lastRowIndex < selectedIndex) {
+      list.appendChild(list.firstChild);
+    }
+
+    loadRow(firstLoadedPosition + loadedCount - deletedCount + i + 1, selectedOuterDiv);
+
+    //increase the line numbers and positions
+    for (let i = position; i < loadedCount + firstLoadedPosition; ++i) {
+      const outerDiv = list.childNodes[i % loadedCount];
+      let rowPos = outerDiv.firstChild.position;
+      if (rowPos >= position) {
+        --rowPos;
+        outerDiv.firstChild.position = rowPos;
+        const isShiftedDown = rowPos > selectedRow;
+        outerDiv.style.setProperty("--position", rowPos + isShiftedDown|0);
+        outerDiv.firstChild.childNodes[1].textContent = rowPos;
+      }
+    }
+  }
 }
 
 function refreshRows(pos, oldRowCount) {
@@ -795,7 +861,7 @@ document.addEventListener("keydown", function(event) {
       if (selectedRow < script.getRowCount()) {
         handleMenuItemResponse(script.deleteItem(selectedRow, selectedCol));
       } else {
-        selectPreviousLine();
+        clickPreviousLine();
       }
 
       event.preventDefault();
@@ -874,7 +940,7 @@ function itemClicked(row, col) {
   }
 }
 
-function selectPreviousLine() {
+function clickPreviousLine() {
   itemClicked(Math.max(0, selectedRow - 1), -1);
 }
 
