@@ -52,7 +52,7 @@ class Script {
   insertFuncCall(row, col, func) {
     const items = [new FuncRef(func, this.BuiltIns.VOID), this.BuiltIns.BEGIN_ARGS];
     for (let i = 0; i < func.signature.parameters.length; ++i) {
-      items.push(new ArgHint(func.signature, i), this.BuiltIns.ARG_SEPARATOR);
+      items.push(new ArgHint(func, i), this.BuiltIns.ARG_SEPARATOR);
     }
     items.pop();
     items.push(this.BuiltIns.END_ARGS);
@@ -170,10 +170,10 @@ class Script {
           } else if (item === this.BuiltIns.BEGIN_ARGS) {
             --depth;
             if (depth === -1) {
-              const sig = this.getItem(row, i - 1).funcDef.signature;
+              const func = this.getItem(row, i - 1).funcDef;
               //TODO make sure function is actually variadic
               options.push({text: ",", action: insert,
-                args: [col + 1, this.BuiltIns.ARG_SEPARATOR, new ArgHint(sig, 0)]
+                args: [col + 1, this.BuiltIns.ARG_SEPARATOR, new ArgHint(func, 0)]
               });
             }
           }
@@ -371,13 +371,13 @@ class Script {
           args: [row, 0, this.BuiltIns.PRINT]
         },
 
-        {text: "fn", style: "keyword", action: () => {
-          const func = new FuncSig(this.BuiltIns.VOID, "myFunc", this.BuiltIns.VOID);
-          this.appendRowsUpTo(row);
-          this.setIsStartingScope(row, true);
-          this.pushItems(row, this.BuiltIns.FUNC, func);
-          return {rowUpdated: true, rowInserted: true, selectedCol: 1};
-        }},
+        // {text: "fn", style: "keyword", action: () => {
+        //   const func = new FuncSig(this.BuiltIns.VOID, "myFunc", this.BuiltIns.VOID);
+        //   this.appendRowsUpTo(row);
+        //   this.setIsStartingScope(row, true);
+        //   this.pushItems(row, this.BuiltIns.FUNC, func);
+        //   return {rowUpdated: true, rowInserted: true, selectedCol: 1};
+        // }},
 
         {text: "var", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
@@ -844,7 +844,7 @@ class Script {
               return {rowUpdated: true};
             }
           }
-          this.spliceRow(row, start, end - start + 1, new ArgHint(func.signature, paramIndex));
+          this.spliceRow(row, start, end - start + 1, new ArgHint(func, paramIndex));
         } else {
           if (end + 1 === this.getItemCount(row)) {
             this.spliceRow(row, start, end - start + 1);
@@ -1039,7 +1039,7 @@ class Script {
     //   performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
     //     objStore.get(this.projectID).onsuccess = (event) => {
     //       if (event.target.result) {
-    //         //console.log("Updating edit date of project listing " + this.projectID);
+    //         console.log("Updating edit date of project listing " + this.projectID);
     //         const projectListing = event.target.result;
     //         projectListing.lastModified = new Date();
     //         objStore.put(projectListing);
@@ -1051,9 +1051,9 @@ class Script {
     //           const newProject = {id, name: "Project " + id, created: now, lastModified: now};
         
     //           objStore.put(newProject).onsuccess = (event) => {
-    //             console.log("Successfully created new project listing.  ID is", event.target.result);
-    //             this.projectID = event.target.result;
-    //             localStorage.setItem(ACTIVE_PROJECT_KEY, event.target.result);
+    //             console.log("Successfully created new project listing.  ID is", id);
+    //             this.projectID = id;
+    //             localStorage.setItem(ACTIVE_PROJECT_KEY, id);
 
     //             this.queuedTransations.length = 0;
     //             this.saveRows(this.lines);

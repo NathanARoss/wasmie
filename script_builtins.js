@@ -5,12 +5,38 @@ class VarDef {
     this.name = name;
     this.type = type;
     this.scope = scope;
+    this.id = VarDef.nextId++;
   }
 
   getDisplay() {
     return [this.type.text + '\n' + this.name, "keyword vardef"];
   }
+
+  serialized() {
+    const data = [0];
+    data.push(...Wasm.stringToLenPrefixedUTF8(this.name));
+    data.push(...Wasm.varuint(this.type.id));
+    data.push(...Wasm.varuint(this.scope.id));
+    return data;
+  }
+
+  static deSerialize(data, offset) {
+    let [val, bytesRead] = Wasm.decodeVaruint(data, offset);
+    offset += bytesRead;
+    const name = Wasm.UTF8toString(data.slice(offset, offset + val));
+    offset += val;
+
+    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
+    const type = val;
+    offset += bytesRead;
+    
+    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
+    const scope = val;
+
+    return {name, type, scope};
+  }
 }
+VarDef.nextId;
 
 class VarRef {
   constructor(varDef, currentScope) {
@@ -23,6 +49,24 @@ class VarRef {
       return [this.varDef.scope.text + '\n' + this.varDef.name, "keyword"];
     else
       return [this.varDef.name, ""];
+  }
+
+  serialized() {
+    const data = [1];
+    data.push(...Wasm.varuint(this.varDef.id));
+    data.push(...Wasm.varuint(this.currentScope.id));
+    return data;
+  }
+
+  static deSerialize(data, offset) {
+    let [val, bytesRead] = Wasm.decodeVaruint(data, offset);
+    const varDef = val;
+    offset += bytesRead;
+
+    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
+    const currentScope = val;
+
+    return {varDef, currentScope};
   }
 }
 
@@ -102,6 +146,24 @@ class FuncRef {
     else
       return [this.funcDef.signature.name, "call"];
   }
+
+  serialized() {
+    //TODO for now I assume every function reference is to a builtin function
+    const builtinFuncIndex = script.BuiltIns.functions.indexOf(this.funcDef);
+    console.log("builtinFuncIndex", builtinFuncIndex);
+
+    const data = [3];
+    data.push(...Wasm.varuint(builtinFuncIndex));
+    return data;
+  }
+
+  static deSerialize(data, offset) {
+    //TODO for now I assume every function reference is to a builtin function
+    const [builtinFuncIndex, bytesRead] = Wasm.decodeVaruint(data, offset);
+    console.log("builtinFuncIndex", builtinFuncIndex);
+
+    return {builtinFuncIndex};
+  }
 }
 
 class TypeDef {
@@ -109,16 +171,53 @@ class TypeDef {
     this.text = text;
     this.size = size;
   }
+
+  serialized() {
+    const data = [4];
+    data.push(...Wasm.stringToLenPrefixedUTF8(this.text));
+    data.push(...Wasm.varuint(this.size));
+    return data;
+  }
+
+  static deSerialize(data, offset) {
+    let [val, bytesRead] = Wasm.decodeVaruint(data, offset);
+    offset += bytesRead;
+    const text = Wasm.UTF8toString(data.slice(offset, offset + val));
+    offset += val;
+
+    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
+    const size = val;
+
+    return {text, size};
+  }
 }
 
 class ArgHint {
-  constructor(signature, argIndex) {
-    this.signature = signature;
+  constructor(funcDef, argIndex) {
+    this.funcDef = funcDef;
     this.argIndex = argIndex;
   }
 
   getDisplay() {
-    return [this.signature.parameters[this.argIndex].name, "comment"];
+    return [this.funcDef.signature.parameters[this.argIndex].name, "comment"];
+  }
+
+  serialized() {
+    //TODO for now I assume every function reference is to a builtin function
+    const builtinFuncIndex = script.BuiltIns.functions.indexOf(this.funcDef);
+    console.log("builtinFuncIndex", builtinFuncIndex);
+
+    const data = [5];
+    data.push(...Wasm.varuint(builtinFuncIndex));
+    return data;
+  }
+
+  static deSerialize(data, offset) {
+    //TODO for now I assume every function reference is to a builtin function
+    const [builtinFuncIndex, bytesRead] = Wasm.decodeVaruint(data, offset);
+    console.log("builtinFuncIndex", builtinFuncIndex);
+
+    return {builtinFuncIndex};
   }
 }
 
