@@ -509,13 +509,18 @@ class Script {
 
     if (this.getItem(row, 0) === this.BuiltIns.VAR) {
       const ditto = {text: "ditto", style: "comment", action: () => {
-        const cloneVariable = Object.assign({}, this.getItem(row, itemCount - 1));
-        this.pushItems(cloneVariable)
+        const prev = this.getItem(row, itemCount - 1);
+        const copy = new VarDef("$" + (this.getItemCount(row) - 2), prev.type, prev.scope);
+        this.pushItems(row, copy);
+        return {rowUpdated: true};
       }}
 
       if (itemCount === 2) {
         return [
-          {text: "=", action: this.pushItems, args: [row, this.BuiltIns.ASSIGN, this.BuiltIns.PLACEHOLDER]},
+          {text: "=", action: () => {
+            this.pushItems(row, this.BuiltIns.ASSIGN);
+            return {rowUpdated: true};
+          }},
           ditto,
           ...this.getSizedTypes(defineVar)
         ];
@@ -756,10 +761,11 @@ class Script {
     if ((col === 0 && item !== this.BuiltIns.ELSE)
     || (col > 0 && item.constructor === Keyword && item !== this.BuiltIns.IF && item !== this.BuiltIns.STEP)
     || item.constructor === FuncSig
-    || item.isAssignment
-    || (item.constructor === VarDef && this.getItem(row, col + 1).isAssignment)) {
+    || item.isAssignment && this.getItem(row, 0) === this.BuiltIns.LET
+    || (item.constructor === VarDef && (this.getItem(row, col + 1) || {}).isAssignment)) {
       const oldRowCount = this.getRowCount();
       this.deleteRow(row, true);
+      console.log(col, item);
 
       return this.getRowCount() === oldRowCount ? {rowUpdated: true, selectedCol: 0x7FFFFF} : {scriptChanged: true};
     }
