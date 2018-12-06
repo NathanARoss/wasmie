@@ -449,7 +449,7 @@ class Script {
         {text: "return", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
           this.pushItems(row, this.BuiltIns.RETURN);
-          return {rowUpdated: true, rowInserted: true};
+          return {rowUpdated: true};
         }}
       );
 
@@ -716,7 +716,7 @@ class Script {
       this.lines.splice(startRow, count);
     }
 
-    return startRow;
+    return count - (row - startRow);
   }
 
   deleteItem(row, col) {

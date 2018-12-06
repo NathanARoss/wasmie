@@ -82,13 +82,14 @@ function enterKeyPressed() {
   if (selectedRow <= script.getRowCount()) {
     if (selectedCol === 0 && selectedRow < script.getRowCount() && script.getItemCount(selectedRow) !== 0
     || selectedRow === script.getRowCount()) {
-      insertRow(selectedRow);
       ++selectedRow;
+      insertRow(selectedRow - 1);
       itemClicked(selectedRow, selectedCol);
     } else {
       selectedCol = -1;
-      insertRow(selectedRow + 1);
-      itemClicked(selectedRow + 1, -1);
+      ++selectedRow;
+      insertRow(selectedRow);
+      itemClicked(selectedRow, -1);
     }
   } else {
     itemClicked(selectedRow + 1, -1);
@@ -576,9 +577,7 @@ function insertRow(position) {
     const lastRowOuterDiv = list.childNodes[lastRowIndex];
 
     list.insertBefore(lastRowOuterDiv, selectedOuterDiv);
-    ++selectedRow;
     loadRow(position, lastRowOuterDiv);
-    --selectedRow;
 
     //if the bottom row must go up past the beginning of the array and back around to the
     //end to the new position, then a row must wrap around in the opposite direction
@@ -587,17 +586,12 @@ function insertRow(position) {
       list.insertBefore(list.lastChild, list.firstChild);
     }
 
-    //increase the line numbers and positions
+    //shift existing rows downward
     for (let i = position + 1; i < loadedCount + firstLoadedPosition; ++i) {
       const outerDiv = list.childNodes[i % loadedCount];
-      let rowPos = outerDiv.firstChild.position;
-      if (rowPos >= position) {
-        ++rowPos;
-        outerDiv.firstChild.position = rowPos;
-        const isShiftedDown = rowPos > selectedRow;
-        outerDiv.style.setProperty("--position", rowPos + isShiftedDown|0);
-        outerDiv.firstChild.childNodes[1].textContent = rowPos;
-      }
+      outerDiv.firstChild.position = i;
+      outerDiv.style.setProperty("--position", i + 1);
+      outerDiv.firstChild.childNodes[1].textContent = i;
     }
   }
 
@@ -605,15 +599,14 @@ function insertRow(position) {
 }
 
 function deleteRow(position) {
-  const oldRowCount = script.getRowCount();
-  const internalPos = script.deleteRow(position);
-  const deletedCount = oldRowCount - script.getRowCount();
+  let deletedCount = script.deleteRow(position);
+  deletedCount = Math.min(deletedCount, loadedCount - (position - firstLoadedPosition));
+
+  const selectedIndex = position % loadedCount;
+  const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
   
   for (let i = 0; i < deletedCount; ++i) {
-    const selectedIndex = internalPos % loadedCount;
     const selectedOuterDiv = list.childNodes[selectedIndex];
-
-    const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
     const lastRowOuterDiv = list.childNodes[lastRowIndex];
 
     if (lastRowOuterDiv.nextSibling) {
@@ -626,22 +619,16 @@ function deleteRow(position) {
       list.appendChild(list.firstChild);
     }
 
-    const newPosition = firstLoadedPosition + loadedCount - deletedCount + i + 1;
+    const newPosition = firstLoadedPosition + loadedCount - deletedCount + i;
     loadRow(newPosition, selectedOuterDiv);
-    selectedOuterDiv.firstChild.position = firstLoadedPosition + loadedCount;
+  }
 
-    //increase the line numbers and positions
-    for (let i = internalPos; i < loadedCount + firstLoadedPosition; ++i) {
-      const outerDiv = list.childNodes[i % loadedCount];
-      let rowPos = outerDiv.firstChild.position;
-      if (rowPos >= internalPos) {
-        --rowPos;
-        outerDiv.firstChild.position = rowPos;
-        const isShiftedDown = rowPos > selectedRow;
-        outerDiv.style.setProperty("--position", rowPos + isShiftedDown|0);
-        outerDiv.firstChild.childNodes[1].textContent = rowPos;
-      }
-    }
+  //shift the remaining lines down
+  for (let i = position; i < firstLoadedPosition + loadedCount - deletedCount; ++i) {
+    const outerDiv = list.childNodes[i % loadedCount];    
+    outerDiv.firstChild.position = i;
+    outerDiv.style.setProperty("--position", 1);
+    outerDiv.firstChild.childNodes[1].textContent = i;
   }
 
   list.style.height = getRowCount() * rowHeight + "px";
