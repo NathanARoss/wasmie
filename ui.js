@@ -84,15 +84,15 @@ function enterKeyPressed() {
     || selectedRow === script.getRowCount()) {
       ++selectedRow;
       insertRow(selectedRow - 1);
-      itemClicked(selectedRow, selectedCol);
+      itemClicked(selectedRow, selectedCol, false);
     } else {
       selectedCol = -1;
       ++selectedRow;
       insertRow(selectedRow);
-      itemClicked(selectedRow, -1);
+      itemClicked(selectedRow, -1, script.getItemCount(selectedRow - 1) > 0);
     }
   } else {
-    itemClicked(selectedRow + 1, -1);
+    itemClicked(selectedRow + 1, -1, false);
   }
 }
 
@@ -703,13 +703,15 @@ function getItem(text, className, position) {
 
 
 
-function configureMenu(options, prevRow = selectedRow) {
+function configureMenu(options, prevRow = selectedRow, animate = true) {
   const prevMenu = menu;
 
-  if (menu === menu1) {
-    menu = menu2;
-  } else {
-    menu = menu1;
+  if (animate) {
+    if (menu === menu1) {
+      menu = menu2;
+    } else {
+      menu = menu1;
+    }
   }
 
   while (menu.childNodes.length > 1) {
@@ -758,39 +760,42 @@ function configureMenu(options, prevRow = selectedRow) {
     menu.appendChild(menuItem);
   }
 
-  menu.style.transition = "none";
-  prevMenu.classList.remove("revealed");
-  menu.classList.remove("revealed");
-
-  menu.classList.add("hide-from-top");
-  menu.classList.remove("hide-from-bottom");
-
-  if (prevRow === -1 || selectedRow <= prevRow) {
-    menu.style.setProperty("--position", selectedRow);
-    if (selectedRow === prevRow) { //rolling update animation
-      prevMenu.classList.add("hide-from-bottom");
-      prevMenu.classList.remove("hide-from-top");
-      prevMenu.style.setProperty("--position", prevRow + 2);
+  if (animate) {
+    menu.style.transition = "none";
+    prevMenu.classList.remove("revealed");
+    menu.classList.remove("revealed");
+  
+    menu.classList.add("hide-from-top");
+    menu.classList.remove("hide-from-bottom");
+  
+    if (prevRow === -1 || selectedRow <= prevRow) {
+      menu.style.setProperty("--position", selectedRow);
+      if (selectedRow === prevRow) { //rolling update animation
+        prevMenu.classList.add("hide-from-bottom");
+        prevMenu.classList.remove("hide-from-top");
+        prevMenu.style.setProperty("--position", prevRow + 2);
+      } else {
+        prevMenu.style.setProperty("--position", prevRow + 1);
+      }
     } else {
-      prevMenu.style.setProperty("--position", prevRow + 1);
+      menu.style.setProperty("--position", selectedRow + 1);
+      prevMenu.style.setProperty("--position", prevRow);
     }
-  } else {
-    menu.style.setProperty("--position", selectedRow + 1);
-    prevMenu.style.setProperty("--position", prevRow);
+  
+    menu.offsetHeight;
+    menu.style.transition = "";
+    menu.classList.add("revealed");
+  
+    const isInsertButtonShown = (selectedRow < script.getRowCount() - 1
+    || (selectedRow === script.getRowCount() - 1)
+      && (script.getIndentation(selectedRow) > 0
+      || (selectedRow > 0 && script.getIndentation(selectedRow - 1) > 1))
+      || selectedCol === 0
+    );
+    menu.classList.toggle("insert-button-shown", isInsertButtonShown);
   }
 
-  menu.offsetHeight;
-  menu.style.transition = "";
-  menu.classList.add("revealed");
   menu.style.setProperty("--position", selectedRow + 1);
-
-  const isInsertButtonShown = (selectedRow < script.getRowCount() - 1
-  || (selectedRow === script.getRowCount() - 1)
-    && (script.getIndentation(selectedRow) > 0
-    || (selectedRow > 0 && script.getIndentation(selectedRow - 1) > 1))
-    || selectedCol === 0
-  );
-  menu.classList.toggle("insert-button-shown", isInsertButtonShown);
   
   //make room for the menu to slot below the selected row
   for (const outerDiv of list.childNodes) {
@@ -831,7 +836,8 @@ document.addEventListener("keydown", function(event) {
     if (event.key === "Delete") {
       if (selectedRow < script.getRowCount()) {
         deleteRow(selectedRow);
-        itemClicked(selectedRow, -1);
+        const animate = selectedRow < script.getRowCount() && script.getItemCount(selectedRow) > 0;
+        itemClicked(selectedRow, -1, animate);
       }
 
       event.preventDefault();
@@ -877,10 +883,12 @@ function handleMenuItemResponse(response) {
 
   if ("rowDeleted" in response) {
     deleteRow(selectedRow);
-    selectedCol = -1;
     if (selectedRow > 0) {
       selectedRow = selectedRow - 1;
     }
+    const animate = selectedRow < script.getRowCount() && script.getItemCount(selectedRow) > 0;
+    itemClicked(selectedRow, -1, animate);
+    return;
   }
 
   if ("scriptChanged" in response) {
@@ -901,7 +909,7 @@ function rowClickHandler(event) {
   }
 }
 
-function itemClicked(row, col) {
+function itemClicked(row, col, animate = true) {
   if (row !== undefined && col !== undefined) {
     selectedItem && selectedItem.classList.remove("selected");
 
@@ -916,7 +924,7 @@ function itemClicked(row, col) {
     selectedCol = col;
     
     const options = script.itemClicked(row, col);
-    configureMenu(options, prevRow);
+    configureMenu(options, prevRow, animate);
   }
 }
 
