@@ -69,9 +69,9 @@ class ImportedFunc {
 }
 
 class PredefinedFunc {
-  constructor(signature, ...wasmCodeSegments) {
+  constructor(signature, ...wasmCode) {
     this.signature = signature;
-    this.wasmCodeSegments = wasmCodeSegments;
+    this.wasmCode = wasmCode;
   }
 
   getDisplay() {
@@ -79,10 +79,10 @@ class PredefinedFunc {
   }
 }
 
-class MacroFunction {
-  constructor(signature, ...wasmCodeSegments) {
+class MacroFunc {
+  constructor(signature, ...wasmCode) {
     this.signature = signature;
-    this.wasmCodeSegments = wasmCodeSegments;
+    this.wasmCode = wasmCode;
   }
 
   getDisplay() {
@@ -333,80 +333,70 @@ function BuiltIns() {
 
   const PRINT_U64 = new PredefinedFunc(
     new FuncSig(this.SYSTEM, "print", this.VOID, [this.U64, "item"]),
-    [
-      1, 1, Wasm.types.i32,
-      Wasm.get_global, 0, //address = top of stack + 20
-      Wasm.i32_const, 20,
-      Wasm.i32_add,
-      Wasm.set_local, 1,
-  
-      Wasm.loop, Wasm.types.void, //do
-        Wasm.get_local, 1, //address
-  
-        Wasm.get_local, 0,
-        Wasm.i64_const, 10,
-        Wasm.i64_rem_u,
-        Wasm.i32_wrap_from_i64,
-        Wasm.i32_const, '0'.charCodeAt(),
-        Wasm.i32_add, //value = val % 10 + '0'
-  
-        Wasm.i32_store8, 0, 0, //store value at address
-  
-        Wasm.get_local, 1, //address--
-        Wasm.i32_const, 1,
-        Wasm.i32_sub,
-        Wasm.set_local, 1,
-  
-        Wasm.get_local, 0, //val /= 10
-        Wasm.i64_const, 10,
-        Wasm.i64_div_u,
-        Wasm.tee_local, 0,
-        Wasm.i64_const, 0,
-        Wasm.i64_gt_u,
-      Wasm.br_if, 0, //while val > 0
-      Wasm.end,
-  
-      Wasm.get_local, 1, //address of string length
-  
-      Wasm.i32_const, 20, //length = 20 - address + top of stack
-      Wasm.get_local, 1,
+    1, 1, Wasm.types.i32,
+    Wasm.get_global, 0, //address = top of stack + 20
+    Wasm.i32_const, 20,
+    Wasm.i32_add,
+    Wasm.set_local, 1,
+
+    Wasm.loop, Wasm.types.void, //do
+      Wasm.get_local, 1, //address
+
+      Wasm.get_local, 0,
+      Wasm.i64_const, 10,
+      Wasm.i64_rem_u,
+      Wasm.i32_wrap_from_i64,
+      Wasm.i32_const, '0'.charCodeAt(),
+      Wasm.i32_add, //value = val % 10 + '0'
+
+      Wasm.i32_store8, 0, 0, //store value at address
+
+      Wasm.get_local, 1, //address--
+      Wasm.i32_const, 1,
       Wasm.i32_sub,
-      Wasm.get_global, 0,
-      Wasm.i32_add,
-  
-      Wasm.i32_store8, 0, 0, //store length of string at address
-      
-      Wasm.get_local, 1, //print string we just created
-    ],
+      Wasm.set_local, 1,
+
+      Wasm.get_local, 0, //val /= 10
+      Wasm.i64_const, 10,
+      Wasm.i64_div_u,
+      Wasm.tee_local, 0,
+      Wasm.i64_const, 0,
+      Wasm.i64_gt_u,
+    Wasm.br_if, 0, //while val > 0
+    Wasm.end,
+
+    Wasm.get_local, 1, //address of string length
+
+    Wasm.i32_const, 20, //length = 20 - address + top of stack
+    Wasm.get_local, 1,
+    Wasm.i32_sub,
+    Wasm.get_global, 0,
+    Wasm.i32_add,
+
+    Wasm.i32_store8, 0, 0, //store length of string at address
+    
+    Wasm.get_local, 1, //print string we just created
     this.PRINT,
-    [
-      Wasm.end,
-    ]
+    Wasm.end,
   );
 
   const PRINT_I64 = new PredefinedFunc(
     new FuncSig(this.SYSTEM, "print", this.VOID, [this.I64, "item"]),
-    [
-      0,
+    0,
+    Wasm.get_local, 0,
+    Wasm.i64_const, 0,
+    Wasm.i64_lt_s,
+    Wasm.if, Wasm.types.i64,     //if val < 0
+      Wasm.i32_const, 6,         //print('-')   ('-' is located after "false")
+      this.PRINT,
+      Wasm.i64_const, 0,         //val = -val
       Wasm.get_local, 0,
-      Wasm.i64_const, 0,
-      Wasm.i64_lt_s,
-      Wasm.if, Wasm.types.i64,     //if val < 0
-        Wasm.i32_const, 6,         //print('-')   ('-' is located after "false")
-    ],
-    this.PRINT,
-    [
-        Wasm.i64_const, 0,         //val = -val
-        Wasm.get_local, 0,
-        Wasm.i64_sub,
-      Wasm.else,
-        Wasm.get_local, 0,
-      Wasm.end,
-    ],
+      Wasm.i64_sub,
+    Wasm.else,
+      Wasm.get_local, 0,
+    Wasm.end,
     PRINT_U64,
-    [
-      Wasm.end,
-    ]
+    Wasm.end,
   );
 
   this.functions = [
@@ -421,72 +411,114 @@ function BuiltIns() {
     ),
     PRINT_U64,
     PRINT_I64,
-    new MacroFunction(
+    new MacroFunc(
       new FuncSig(this.SYSTEM, "print", this.VOID, [this.U32, "item"]),
-      [Wasm.i64_extend_u_from_i32],
+      Wasm.i64_extend_u_from_i32,
       PRINT_U64,
     ),
-    new MacroFunction(
+    new MacroFunc(
       new FuncSig(this.SYSTEM, "print", this.VOID, [this.I32, "item"]),
-      [Wasm.i64_extend_s_from_i32],
+      Wasm.i64_extend_s_from_i32,
       PRINT_I64,
     ),
-    new MacroFunction(
+    new MacroFunc(
       new FuncSig(this.SYSTEM, "print", this.VOID, [this.BOOL, "item"]),
-      [
-        Wasm.i32_const, 8,
-        Wasm.i32_shl
-      ],
+      Wasm.i32_const, 8,
+      Wasm.i32_shl,
       this.PRINT,
     ),
     new ImportedFunc(
       new FuncSig(this.SYSTEM, "input", this.F64, [this.F64, "default", 0], [this.F64, "min", -Infinity], [this.F64, "max", Infinity]),
       "System", "input"
     ),
-    // parseFunction(this.MATH, "rotateLeft",
-    //   [{afterArguments: [Wasm.i32_rotl]}, this.I32, this.I32, "num", undefined, this.I32, "shiftCount", 0],
-    //   [{afterArguments: [Wasm.i64_rotl]}, this.I64, this.I64, "num", undefined, this.I64, "shiftCount", 0],
-    // ),
-    // parseFunction(this.MATH, "rotateRight",
-    //   [{afterArguments: [Wasm.i32_rotr]}, this.I32, this.I32, "num", undefined, this.I32, "shiftCount", 0],
-    //   [{afterArguments: [Wasm.i64_rotr]}, this.I64, this.I64, "num", undefined, this.I64, "shiftCount", 0],
-    // ),
-    // parseFunction(this.MATH, "abs",
-    //   [{afterArguments: [Wasm.f32_abs]}, this.F32, this.F32, "num"],
-    //   [{afterArguments: [Wasm.f64_abs]}, this.F64, this.F64, "num"],
-    // ),
-    // parseFunction(this.MATH, "ceil",
-    //   [{afterArguments: [Wasm.f32_ceil]}, this.F32, this.F32, "num"],
-    //   [{afterArguments: [Wasm.f64_ceil]}, this.F64, this.F64, "num"],
-    // ),
-    // parseFunction(this.MATH, "floor",
-    //   [{afterArguments: [Wasm.f32_floor]}, this.F32, this.F32, "num"],
-    //   [{afterArguments: [Wasm.f64_floor]}, this.F64, this.F64, "num"],
-    // ),
-    // parseFunction(this.MATH, "trunc",
-    //   [{afterArguments: [Wasm.f32_trunc]}, this.F32, this.F32, "num"],
-    //   [{afterArguments: [Wasm.f64_trunc]}, this.F64, this.F64, "num"],
-    // ),
-    // parseFunction(this.MATH, "nearest",
-    //   [{afterArguments: [Wasm.f32_nearest]}, this.F32, this.F32, "num"],
-    //   [{afterArguments: [Wasm.f64_nearest]}, this.F64, this.F64, "num"],
-    // ),
-    // parseFunction(this.MATH, "sqrt",
-    //   [{afterArguments: [Wasm.f32_sqrt]}, this.F32, this.F32, "num"],
-    //   [{afterArguments: [Wasm.f64_sqrt]}, this.F64, this.F64, "num"],
-    // ),
-    // parseFunction(this.MATH, "min",
-    //   [{afterArguments: [Wasm.f32_min]}, this.F32, this.F32, "num1", undefined, this.F32, "num2", 0],
-    //   [{afterArguments: [Wasm.f64_min]}, this.F64, this.F64, "num1", undefined, this.F64, "num2", 0],
-    // ),
-    // parseFunction(this.MATH, "max",
-    //   [{afterArguments: [Wasm.f32_max]}, this.F32, this.F32, "num1", undefined, this.F32, "num2", 0],
-    //   [{afterArguments: [Wasm.f64_max]}, this.F64, this.F64, "num1", undefined, this.F64, "num2", 0],
-    // ),
-    // parseFunction(this.MATH, "copysign",
-    //   [{afterArguments: [Wasm.f32_copysign]}, this.F32, this.F32, "magNum", 1, this.F32, "signNum", undefined],
-    //   [{afterArguments: [Wasm.f64_copysign]}, this.F64, this.F64, "magNum", 1, this.F64, "signNum", undefined],
-    // ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "rotateLeft", this.I32, [this.I32, "num"], [this.I32, "count"]),
+      Wasm.i32_rotl
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "rotateLeft", this.I64, [this.I64, "num"], [this.I64, "count"]),
+      Wasm.i64_rotl
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "rotateRight", this.I32, [this.I32, "num"], [this.I32, "count"]),
+      Wasm.i32_rotr
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "rotateRight", this.I64, [this.I64, "num"], [this.I64, "count"]),
+      Wasm.i64_rotr
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "abs", this.F32, [this.F32, "num"]),
+      Wasm.f32_abs
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "abs", this.F64, [this.F64, "num"]),
+      Wasm.f64_abs
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "ceil", this.F32, [this.F32, "num"]),
+      Wasm.f32_ceil
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "ceil", this.F64, [this.F64, "num"]),
+      Wasm.f64_ceil
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "floor", this.F32, [this.F32, "num"]),
+      Wasm.f32_floor
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "floor", this.F64, [this.F64, "num"]),
+      Wasm.f64_floor
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "trunc", this.F32, [this.F32, "num"]),
+      Wasm.f32_trunc
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "trunc", this.F64, [this.F64, "num"]),
+      Wasm.f64_trunc
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "nearest", this.F32, [this.F32, "num"]),
+      Wasm.f32_nearest
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "nearest", this.F64, [this.F64, "num"]),
+      Wasm.f64_nearest
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "sqrt", this.F32, [this.F32, "num"]),
+      Wasm.f32_sqrt
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "sqrt", this.F64, [this.F64, "num"]),
+      Wasm.f64_sqrt
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "min", this.F32, [this.F32, "num1"], [this.F32, "num2"]),
+      Wasm.f32_min
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "min", this.F64, [this.F64, "num1"], [this.F64, "num2"]),
+      Wasm.f64_min
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "max", this.F32, [this.F32, "num1"], [this.F32, "num2"]),
+      Wasm.f32_max
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "max", this.F64, [this.F64, "num1"], [this.F64, "num2"]),
+      Wasm.f64_max
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "copysign", this.F32, [this.F32, "magNum", 1], [this.F32, "signNum"]),
+      Wasm.f32_copysign
+    ),
+    new MacroFunc(
+      new FuncSig(this.MATH, "copysign", this.F64, [this.F64, "magNum", 1], [this.F64, "signNum"]),
+      Wasm.f64_copysign
+    ),
   ];
 
   this.SYMBOLS = [
