@@ -104,7 +104,7 @@ class FuncRef {
   }
 }
 
-class TypeDefinition {
+class TypeDef {
   constructor(text, size) {
     this.text = text;
     this.size = size;
@@ -311,19 +311,19 @@ class LoopLabel {
 
 function BuiltIns() {
   this.TYPES = [
-    this.VOID = new TypeDefinition("void", 0),
-    this.ANY = new TypeDefinition("Any", 0),
-    this.BOOL = new TypeDefinition("bool", 4),
-    this.I32 = new TypeDefinition("int", 4),
-    this.U32 = new TypeDefinition("uint", 4),
-    this.I64 = new TypeDefinition("long", 8),
-    this.U64 = new TypeDefinition("ulong", 8),
-    this.F32 = new TypeDefinition("float", 4),
-    this.F64 = new TypeDefinition("double", 8),
-    this.STRING = new TypeDefinition("string", 4),
-    this.SYSTEM = new TypeDefinition("System", 0),
-    this.MATH = new TypeDefinition("Math", 0),
-    this.ITERABLE = new TypeDefinition("iterable", 0),
+    this.VOID = new TypeDef("void", 0),
+    this.ANY = new TypeDef("Any", 0),
+    this.BOOL = new TypeDef("bool", 4),
+    this.I32 = new TypeDef("int", 4),
+    this.U32 = new TypeDef("uint", 4),
+    this.I64 = new TypeDef("long", 8),
+    this.U64 = new TypeDef("ulong", 8),
+    this.F32 = new TypeDef("float", 4),
+    this.F64 = new TypeDef("double", 8),
+    this.STRING = new TypeDef("string", 4),
+    this.SYSTEM = new TypeDef("System", 0),
+    this.MATH = new TypeDef("Math", 0),
+    this.ITERABLE = new TypeDef("iterable", 0),
   ];
 
   this.PRINT = new ImportedFunc(
@@ -412,27 +412,27 @@ function BuiltIns() {
   this.functions = [
     this.PRINT,
     new ImportedFunc(
-      new FuncSig(this.System, "print", this.Void, [this.F32, "item"]),
+      new FuncSig(this.SYSTEM, "print", this.VOID, [this.F32, "item"]),
       "System", "printNum"
     ),
     new ImportedFunc(
-      new FuncSig(this.System, "print", this.Void, [this.F64, "item"]),
+      new FuncSig(this.SYSTEM, "print", this.VOID, [this.F64, "item"]),
       "System", "printNum"
     ),
     PRINT_U64,
     PRINT_I64,
     new MacroFunction(
-      new FuncSig(this.System, "print", this.Void, [this.U32, "item"]),
+      new FuncSig(this.SYSTEM, "print", this.VOID, [this.U32, "item"]),
       [Wasm.i64_extend_u_from_i32],
       PRINT_U64,
     ),
     new MacroFunction(
-      new FuncSig(this.System, "print", this.Void, [this.I32, "item"]),
+      new FuncSig(this.SYSTEM, "print", this.VOID, [this.I32, "item"]),
       [Wasm.i64_extend_s_from_i32],
       PRINT_I64,
     ),
     new MacroFunction(
-      new FuncSig(this.System, "print", this.Void, [this.BOOL, "item"]),
+      new FuncSig(this.SYSTEM, "print", this.VOID, [this.BOOL, "item"]),
       [
         Wasm.i32_const, 8,
         Wasm.i32_shl
@@ -440,7 +440,7 @@ function BuiltIns() {
       this.PRINT,
     ),
     new ImportedFunc(
-      new FuncSig(this.System, "input", this.F64, [this.F64, "default", 0], [this.F64, "min", -Infinity], [this.F64, "max", Infinity]),
+      new FuncSig(this.SYSTEM, "input", this.F64, [this.F64, "default", 0], [this.F64, "min", -Infinity], [this.F64, "max", Infinity]),
       "System", "input"
     ),
     // parseFunction(this.MATH, "rotateLeft",
@@ -488,7 +488,7 @@ function BuiltIns() {
     //   [{afterArguments: [Wasm.f64_copysign]}, this.F64, this.F64, "magNum", 1, this.F64, "signNum", undefined],
     // ),
   ];
-  
+
   this.SYMBOLS = [
     this.ASSIGN     = new Symbol("=", 0, {isAssignment: true}),
     this.ADD_ASSIGN = new Symbol("+=", 0, {isAssignment: true},

@@ -49,6 +49,19 @@ class Script {
     return item.getDisplay();
   }
 
+  insertFuncCall(row, col, func) {
+    const items = [new FuncRef(func, this.BuiltIns.VOID), this.BuiltIns.BEGIN_ARGS];
+    for (let i = 0; i < func.signature.parameters.length; ++i) {
+      items.push(new ArgHint(func.signature, i), this.BuiltIns.ARG_SEPARATOR);
+    }
+    items.pop();
+    items.push(this.BuiltIns.END_ARGS);
+
+    this.appendRowsUpTo(row);
+    this.spliceRow(row, col, 1, ...items);
+    return {rowUpdated: true, selectedCol: col + 2};
+  }
+
   itemClicked(row, col) {
     const deleteOption = {style: "delete", action: this.deleteItem, args: [row, col]};
 
@@ -293,11 +306,17 @@ class Script {
         }
 
         options.push(...this.getVisibleVars(row, false, setVarRef));
+
+        const scopes = new Set(this.BuiltIns.functions.map(func => func.signature.scope));
+        const style = "keyword";
+        const action = this.getVisibleFuncs;
+        for (const scope of scopes) {
+          options.push({text: scope.text, style, action, args: [row, col, scope, true]});
+        }
       }
 
       let binOps = this.BuiltIns.SYMBOLS.filter(sym => sym.isBinary);
       if (this.getItem(row, 0) === this.BuiltIns.IF || this.getItem(row, 1) === this.BuiltIns.IF) {
-        //move the boolean operations before the arithmetic operations when writing if statements
         //TODO generalize this to when a boolean return type, argument, or variable type is expected
         binOps = [...binOps.filter(op => op.isBool), ...binOps.filter(op => !op.isBool)];
       }
@@ -347,18 +366,10 @@ class Script {
       let indentation = (row < rowCount) ? this.getIndentation(row) : 0;
 
       const options = [
-        {text: "f(x)", style: "funcdef", action: this.getFunctionList, args: [false]},
-
-        {text: "print", style: "funcdef", action: () => {
-          this.appendRowsUpTo(row);
-          this.pushItems(row,
-            new FuncRef(this.BuiltIns.PRINT, this.BuiltIns.VOID),
-            this.BuiltIns.BEGIN_ARGS,
-            new ArgHint(this.BuiltIns.PRINT.signature, 0),
-            this.BuiltIns.END_ARGS,
-          );
-          return {rowUpdated: true, selectedCol: 2};
-        }},
+        {
+          text: "print", style: "funcdef", action: this.insertFuncCall,
+          args: [row, 0, this.BuiltIns.PRINT]
+        },
 
         {text: "fn", style: "keyword", action: () => {
           const func = new FuncSig(this.BuiltIns.VOID, "myFunc", this.BuiltIns.VOID);
@@ -479,6 +490,13 @@ class Script {
         );
         return {rowUpdated: true};
       }));
+
+      const scopes = new Set(this.BuiltIns.functions.map(func => func.signature.scope));
+      const style = "keyword";
+      const action = this.getVisibleFuncs;
+      for (const scope of scopes) {
+        options.push({text: scope.text, style, action, args: [row, 0, scope, false]});
+      }
 
       return options;
     }
@@ -739,7 +757,7 @@ class Script {
     || (col > 0 && item.constructor === Keyword && item !== this.BuiltIns.IF && item !== this.BuiltIns.STEP)
     || item.constructor === FuncSig
     || item.isAssignment
-    || (item === VarDef && this.getItem(row, col + 1).isAssignment)) {
+    || (item.constructor === VarDef && this.getItem(row, col + 1).isAssignment)) {
       const oldRowCount = this.getRowCount();
       this.deleteRow(row, true);
 
@@ -914,6 +932,29 @@ class Script {
     }
 
     options.sort((a, b) => a.text.localeCompare(b.text));
+    return options;
+  }
+
+  getVisibleFuncs(row, col, scope, requiresReturn) {
+    //grab only the ones belonging to the scope and that return something
+    let funcs = this.BuiltIns.functions.filter(func => {
+      return func.signature.scope === scope
+      && func.signature.returnType !== this.BuiltIns.VOID || !requiresReturn;
+    });
+    
+    //keep only the first function with a given name
+    funcs = funcs.filter((v, i, a) => {
+      return a.findIndex(func => func.signature.name === v.signature.name) === i;
+    });
+
+    const options = [];
+    for (const func of funcs) {
+      options.push({
+        text: func.signature.name, style: "funcdef",
+        action: this.insertFuncCall, args: [row, col, func]
+      });
+    }
+
     return options;
   }
 
