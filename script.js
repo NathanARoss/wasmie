@@ -665,7 +665,7 @@ class Script {
     return row;
   }
 
-  deleteRow(row, keepIfNotLastRow = false) {
+  deleteRow(row, keepRow = false) {
     const indentation = this.getIndentation(row);
     let r = row;
     do {
@@ -700,9 +700,9 @@ class Script {
       count = r - startRow;
     }
 
-    //if a scope starter is cleared, delete its body.  However, if the line and its body aren't at the end
-    //of the script, clear the line but don't delete it.  Otherwise, one too many lines would be deleted
-    if ((indentation > 0 || startRow + count !== this.getRowCount()) && keepIfNotLastRow) {
+    //Pressing backspace on a scope starter clears the line and its body, but keeps
+    //the line itself.  If it is at the end of the script, it is trimmed as whitespace.
+    if ((indentation > 0 || startRow + count !== this.getRowCount()) && keepRow) {
       this.setIsStartingScope(startRow, false);
       this.spliceRow(startRow, 0, this.getItemCount(startRow));
       ++startRow;

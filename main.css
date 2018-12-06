@@ -131,10 +131,8 @@ button {
 }
 .insert-button-shown > .insert-line {
   display: initial;
-  background: url(ic_subdirectory_arrow_left_white_24px.svg) no-repeat right;
+  background: url(baseline-keyboard_return-24px.svg) no-repeat right;
   background-origin: content-box;
-  order: 1;
-  flex-grow: 1;
 }
 
 
@@ -250,7 +248,6 @@ button {
 
 #menu1, #menu2 {
   position: absolute;
-  display: flex;
   transition-property: clip-path, transform;
   overflow-x: auto;
   white-space: nowrap;
