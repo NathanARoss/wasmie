@@ -194,7 +194,7 @@ class Script {
       }
       
       if (item.constructor === FuncSig) {
-        const setReturnType = (item, type) => {
+        const setReturnType = (type, item) => {
           item.returnType = type;
           return {rowUpdated: true};
         };
@@ -207,7 +207,7 @@ class Script {
       }
 
       if (item.constructor === VarDef) {
-        const setType = (item, type) => {
+        const setType = (type, item) => {
           item.type = type;
           return {rowUpdated: true};
         }
