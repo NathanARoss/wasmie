@@ -39,7 +39,7 @@ body {
   vertical-align: top;
 }
 
-#menu1, #menu2, .outer-row {
+.menu, .outer-row {
   height: 40px;
   width: 100%;
   transform: translateY(calc(var(--position) * 40px));
@@ -83,9 +83,17 @@ button {
   z-index: -1;
   height: 40px;
   width: calc(12px * var(--indentation));
-  background: repeating-linear-gradient(to right, #2B2B2B, #2B2B2B 8px,
-              #3B3B3B 8px, #3B3B3B 12px);
+  background: repeating-linear-gradient(to right, transparent, transparent 8px,
+  DarkSlateGray 8px, DarkSlateGray 12px);
   flex-shrink: 0;
+  vertical-align: bottom;
+}
+
+.menu > .indentation {
+  width: 0;
+  padding-right: calc(12px * var(--indentation));
+  margin-right: calc(-12px * var(--indentation));
+  opacity: 0.5;
 }
 
 .starting-scope > .indentation {
@@ -144,7 +152,7 @@ button {
   bottom: 20px;
   width: 50px;
   height: 50px;
-  transition-property: height;
+  transition-property: height bottom;
   transition-duration: 0.25s;
   overflow: hidden;
   z-index: 100;
@@ -152,6 +160,10 @@ button {
 
 #FAB-menu.expanded {
   height: 255px;
+}
+
+.selected #FAB-menu {
+  bottom: -50px;
 }
 
 .FAB {
@@ -176,9 +188,6 @@ button {
 }
 #FAB-menu.expanded > #menu-button {
   background-image: url(baseline-play_arrow-24px.svg);
-}
-.selected #menu-button {
-  background-image: url(baseline-close-24px.svg);
 }
 #view-code-button {
   background-image: url(baseline-code-24px.svg);
@@ -246,7 +255,7 @@ button {
   float: right;
 }
 
-#menu1, #menu2 {
+.menu {
   position: absolute;
   transition-property: clip-path, transform;
   overflow-x: auto;

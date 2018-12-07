@@ -263,7 +263,7 @@ class Script {
               text = '"' + text + '"';
             }
           }
-          options.unshift(
+          options.push(
             {text, isInput: true, style, hint: "literal", onsubmit: (text) => {
               let newItem;
 
@@ -625,15 +625,20 @@ class Script {
     }
   }
 
-  insertRow(row) {
+  getPotentialIndentation(row) {
     let indentation = 0;
-    if (row > 0) {
+    if (row > 0 && row <= this.getRowCount()) {
       indentation = this.getIndentation(row - 1) + this.isStartingScope(row - 1);
       if (this.getItemCount(row - 1) === 0) {
         const currentIndentation = row < this.getRowCount() ? this.getIndentation(row) : 0;
         indentation = Math.max(indentation - 1, currentIndentation);
       }
     }
+    return indentation;
+  }
+
+  insertRow(row) {
+    const indentation = this.getPotentialIndentation(row);
     let key;
 
     //find the best place to insert a line to minimize key size
@@ -762,10 +767,12 @@ class Script {
     || (col > 0 && item.constructor === Keyword && item !== this.BuiltIns.IF && item !== this.BuiltIns.STEP)
     || item.constructor === FuncSig
     || item.isAssignment && this.getItem(row, 0) === this.BuiltIns.LET
-    || (item.constructor === VarDef && (this.getItem(row, col + 1) || {}).isAssignment)) {
+    || (item.constructor === VarDef
+      && (this.getItem(row, col + 1) || {}).isAssignment )
+      || this.getItemCount(row) === 2)
+    {
       const oldRowCount = this.getRowCount();
       this.deleteRow(row, true);
-      console.log(col, item);
 
       return this.getRowCount() === oldRowCount ? {rowUpdated: true, selectedCol: 0x7FFFFF} : {scriptChanged: true};
     }

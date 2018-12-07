@@ -96,7 +96,7 @@ function enterKeyPressed() {
   }
 }
 
-menu1.firstChild.onclick = menu2.firstChild.onclick = function() {
+menu1.childNodes[1].onclick = menu2.childNodes[1].onclick = function() {
   enterKeyPressed();
   return {};
 };
@@ -714,7 +714,7 @@ function configureMenu(options, prevRow = selectedRow, animate = true) {
     }
   }
 
-  while (menu.childNodes.length > 1) {
+  while (menu.childNodes.length > 2) {
     const child = menu.lastChild;
     child.action = undefined;
     child.args = undefined;
@@ -796,6 +796,8 @@ function configureMenu(options, prevRow = selectedRow, animate = true) {
   }
 
   menu.style.setProperty("--position", selectedRow + 1);
+  const indentation = script.getPotentialIndentation(selectedRow + 1);
+  menu.style.setProperty("--indentation", indentation);
   
   //make room for the menu to slot below the selected row
   for (const outerDiv of list.childNodes) {
@@ -904,8 +906,14 @@ function rowClickHandler(event) {
     menuButton.toggled = false;
     fabMenu.classList.remove("expanded");
   } else if (event.target.nodeName === "BUTTON") {
-    itemClicked(this.position|0, event.target.position|0);
-    document.body.classList.add("selected");
+    const row = this.position|0;
+    const col = event.target.position|0;
+    if (row === selectedRow && col === selectedCol) {
+      closeMenu();
+    } else {
+      itemClicked(row, col);
+      document.body.classList.add("selected");
+    }
   }
 }
 
