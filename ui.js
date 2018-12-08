@@ -75,29 +75,20 @@ viewCodeButton.addEventListener("click", function(event) {
   window.onpopstate();
 });
 
-function enterKeyPressed() {
-  if (selectedRow <= script.getRowCount()) {
-    if (selectedCol === 0 && selectedRow < script.getRowCount() && script.getItemCount(selectedRow) !== 0
-    || selectedRow === script.getRowCount()) {
-      ++selectedRow;
-      insertRow(selectedRow - 1);
-    } else {
-      selectedCol = -1;
-      ++selectedRow;
-      insertRow(selectedRow);
-    }
-    itemClicked(selectedRow, selectedCol, false);
-  } else {
-    itemClicked(selectedRow + 1, -1, false);
-  }
-}
-
 menu.childNodes[1].onclick = function() {
-  enterKeyPressed();
-  return {};
+  document.onkeydown({key: "Enter", preventDefault: () => {}});
 };
 
+menu.childNodes[2].onclick = function() {
+  document.onkeydown({key: "Backspace", preventDefault: () => {}});
+};
 
+menu.childNodes[2].oncontextmenu = function(event) {
+  document.onkeydown({key: "Delete", preventDefault: () => {}});
+
+  event.preventDefault();
+  event.stopPropagation();
+};
 
 document.body.onresize = function () {
   let newLoadedCount = Math.ceil(window.innerHeight / rowHeight) + bufferCount;
@@ -692,7 +683,7 @@ function getItem(text, className, position) {
 
 
 function configureMenu(options, prevRow = selectedRow, teleport = false) {
-  while (menu.childNodes.length > 2) {
+  while (menu.childNodes.length > 3) {
     const child = menu.lastChild;
     child.action = undefined;
     child.args = undefined;
@@ -749,6 +740,7 @@ function configureMenu(options, prevRow = selectedRow, teleport = false) {
     menu.style.transition = "";
   }
 
+  menu.classList.toggle("delete-button-shown", selectedRow < script.getRowCount());
   menu.classList.toggle("insert-button-shown", script.canInsert(selectedRow, selectedCol));
   menu.style.setProperty("--position", selectedRow + 1);
   menu.style.setProperty("--indentation", script.getInsertIndentation(selectedRow + 1));
@@ -778,7 +770,7 @@ function closeMenu() {
 
 
 
-document.addEventListener("keydown", function(event) {
+document.onkeydown = function(event) {
   if (history.state) {
     //ignore keyboard commands unless the editor is open
     return;
@@ -793,7 +785,7 @@ document.addEventListener("keydown", function(event) {
       if (selectedRow < script.getRowCount()) {
         deleteRow(selectedRow);
         const teleport = selectedRow < script.getRowCount()
-                        && script.getItemCount(selectedRow) > 0;
+                      && script.getItemCount(selectedRow) > 0;
         itemClicked(selectedRow, -1, teleport);
       }
 
@@ -811,11 +803,24 @@ document.addEventListener("keydown", function(event) {
     }
 
     if (event.key === "Enter") {
-      enterKeyPressed();      
+      if (selectedRow <= script.getRowCount()) {
+        if (selectedCol === 0 && selectedRow < script.getRowCount() && script.getItemCount(selectedRow) !== 0
+        || selectedRow === script.getRowCount()) {
+          ++selectedRow;
+          insertRow(selectedRow - 1);
+        } else {
+          selectedCol = -1;
+          ++selectedRow;
+          insertRow(selectedRow);
+        }
+        itemClicked(selectedRow, selectedCol, false);
+      } else {
+        itemClicked(selectedRow + 1, -1, false);
+      }
       event.preventDefault();
     }
   }
-});
+};
 
 function handleMenuItemResponse(response) {
   if ("rowUpdated" in response) {

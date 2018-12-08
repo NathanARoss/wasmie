@@ -17,8 +17,13 @@ body {
   color: white;
 }
 
+#list {
+  background-color: #3B3B3B;
+}
+
 .outer-row {
   position: absolute;
+  /* higher lines appear above lower lines */
   z-index: calc(10000000 - var(--position));
   overflow: hidden;
   white-space: nowrap;
@@ -133,13 +138,17 @@ button {
   background-origin: content-box;
 }
 .insert-line {
-  display: none;
-}
-.insert-button-shown > .insert-line {
-  display: initial;
   background: url(baseline-keyboard_return-24px.svg) no-repeat right;
   background-origin: content-box;
 }
+.insert-line, .delete {
+  display: none;
+}
+.insert-button-shown > .insert-line,
+.delete-button-shown > .delete {
+  display: initial;
+}
+
 
 
 #FAB-menu {

@@ -58,20 +58,15 @@ class Script {
   }
 
   itemClicked(row, col) {
-    const deleteOption = {style: "delete", action: this.deleteItem, args: [row, col]};
-
     if (col < 0) {
       const options = this.appendClicked(row);
       if (options) {
-        if (row < this.getRowCount()) {
-          options.unshift(deleteOption);
-        }
         return options;
       }
       col = this.getItemCount(row);
     }
 
-    const options = [deleteOption];
+    const options = [];
 
     const item = this.getItem(row, col) || {};
     const nextItem = this.getItem(row, col + 1) || {};
