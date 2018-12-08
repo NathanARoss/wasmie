@@ -41,12 +41,7 @@ class Script {
   }
 
   getItemDisplay(row, col) {
-    const item = this.lines[row].items[col];
-    if (item === undefined) {
-      console.log("no item found at row ", row, " col ", col, this.lines[row]);
-      console.trace();
-    }
-    return item.getDisplay();
+    return this.lines[row].items[col].getDisplay();
   }
 
   insertFuncCall(row, col, func) {
@@ -287,12 +282,13 @@ class Script {
               return {rowUpdated: true, selectedCol: col + 1};
             }, oninput: (event) => {
               const inputNode = event.target;
+              inputNode.classList.remove("keyword", "number", "string");
               if (["true", "false"].includes(inputNode.value.toLowerCase())) {
-                inputNode.classList = "menu-input keyword literal";
+                inputNode.classList.add("keyword");
               } else if (!isNaN(inputNode.value)) {
-                inputNode.classList = "menu-input number literal";
+                inputNode.classList.add("number");
               } else {
-                inputNode.classList = "menu-input string literal";
+                inputNode.classList.add("string");
               }
             }},
           );
@@ -625,7 +621,7 @@ class Script {
     }
   }
 
-  getPotentialIndentation(row) {
+  getInsertIndentation(row) {
     let indentation = 0;
     if (row > 0 && row <= this.getRowCount()) {
       indentation = this.getIndentation(row - 1) + this.isStartingScope(row - 1);
@@ -637,8 +633,17 @@ class Script {
     return indentation;
   }
 
+  canInsert(row, col) {
+    return (row < this.getRowCount() - 1
+    || (row === this.getRowCount() - 1)
+      && (this.getIndentation(row) > 0
+      || (row > 0 && this.getIndentation(row - 1) > 1))
+      || col === 0
+    );
+  }
+
   insertRow(row) {
-    const indentation = this.getPotentialIndentation(row);
+    const indentation = this.getInsertIndentation(row);
     let key;
 
     //find the best place to insert a line to minimize key size

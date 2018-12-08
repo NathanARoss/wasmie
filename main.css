@@ -19,13 +19,10 @@ body {
 
 .outer-row {
   position: absolute;
+  z-index: calc(10000000 - var(--position));
   overflow: hidden;
   white-space: nowrap;
-  transition-property: transform;
-}
-
-.outer-row:hover {
-  background-color: #2D3333
+  background-color: #2B2B2B;
 }
 
 .inner-row {
@@ -39,11 +36,11 @@ body {
   vertical-align: top;
 }
 
-.menu, .outer-row {
+#menu, .outer-row {
   height: 40px;
   width: 100%;
-  transform: translateY(calc(var(--position) * 40px));
-  transition-duration: 0.25s;
+  transform: translateY(calc(var(--position, -1) * 40px));
+  transition: 0.25s transform;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -84,12 +81,12 @@ button {
   height: 40px;
   width: calc(12px * var(--indentation));
   background: repeating-linear-gradient(to right, transparent, transparent 8px,
-  DarkSlateGray 8px, DarkSlateGray 12px);
+                                    DarkSlateGray 8px, DarkSlateGray 12px);
   flex-shrink: 0;
   vertical-align: bottom;
 }
 
-.menu > .indentation {
+#menu > .indentation {
   width: 0;
   padding-right: calc(12px * var(--indentation));
   margin-right: calc(-12px * var(--indentation));
@@ -99,8 +96,9 @@ button {
 .starting-scope > .indentation {
   width: calc(12px * var(--indentation) + 12px);
   clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
-             calc(12px * var(--indentation)) 70%,
-             calc(12px * var(--indentation)) 0);
+             calc(12px * var(--indentation)) 70%, calc(12px * var(--indentation)) 0);
+  -webkit-clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
+             calc(12px * var(--indentation)) 70%, calc(12px * var(--indentation)) 0);
 }
 
 .starting-scope > .item:nth-child(3) {
@@ -255,28 +253,12 @@ button {
   float: right;
 }
 
-.menu {
+#menu {
   position: absolute;
-  transition-property: clip-path, -webkit-clip-path, transform;
   overflow-x: auto;
   white-space: nowrap;
   background-color: #3B3B3B;
-  z-index: 10;
-}
-
-.hide-from-top {
-  clip-path: inset(40px 0 0 0);
-  -webkit-clip-path: inset(40px 0 0 0);
-}
-
-.hide-from-bottom {
-  clip-path: inset(0 0 40px 0);
-  -webkit-clip-path: inset(0 0 40px 0);
-}
-
-.revealed {
-  clip-path: inset(0 0 0 0);
-  -webkit-clip-path: inset(0 0 0 0);
+  /* z-index: 10; */
 }
 
 .menu-item {
