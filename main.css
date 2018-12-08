@@ -257,7 +257,7 @@ button {
 
 .menu {
   position: absolute;
-  transition-property: clip-path, transform;
+  transition-property: clip-path, -webkit-clip-path, transform;
   overflow-x: auto;
   white-space: nowrap;
   background-color: #3B3B3B;
@@ -266,14 +266,17 @@ button {
 
 .hide-from-top {
   clip-path: inset(40px 0 0 0);
+  -webkit-clip-path: inset(40px 0 0 0);
 }
 
 .hide-from-bottom {
   clip-path: inset(0 0 40px 0);
+  -webkit-clip-path: inset(0 0 40px 0);
 }
 
 .revealed {
   clip-path: inset(0 0 0 0);
+  -webkit-clip-path: inset(0 0 0 0);
 }
 
 .menu-item {
