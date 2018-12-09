@@ -550,9 +550,9 @@ function createRow() {
 
 
 function insertRow(position) {
-  const internalPos = script.insertRow(position);
+  script.insertRow(position);
   
-  if (internalPos !== -1 && position < firstLoadedPosition + loadedCount) {
+  if (position < firstLoadedPosition + loadedCount) {
     const selectedIndex = position % loadedCount;
     const selectedOuterDiv = list.childNodes[selectedIndex];
 
@@ -778,41 +778,29 @@ document.onkeydown = function(event) {
 
   if (selectedRow !== -1) {
     if (event.key === "Delete") {
-      if (selectedRow < script.getRowCount()) {
-        deleteRow(selectedRow);
-        const teleport = selectedRow < script.getRowCount()
-                      && script.getItemCount(selectedRow) > 0;
-        itemClicked(selectedRow, -1, teleport);
-      }
+      deleteRow(selectedRow);
+      const teleport = script.getItemCount(selectedRow) > 0;
+      itemClicked(selectedRow, -1, teleport);
 
       event.preventDefault();
     }
 
     if (event.key === "Backspace") {
-      if (selectedRow < script.getRowCount()) {
-        handleMenuItemResponse(script.deleteItem(selectedRow, selectedCol));
-      } else {
-        clickPreviousLine();
-      }
-
+      handleMenuItemResponse(script.deleteItem(selectedRow, selectedCol));
       event.preventDefault();
     }
 
     if (event.key === "Enter") {
-      if (selectedRow <= script.getRowCount()) {
-        if (selectedCol === 0 && selectedRow < script.getRowCount() && script.getItemCount(selectedRow) !== 0
-        || selectedRow === script.getRowCount()) {
-          ++selectedRow;
-          insertRow(selectedRow - 1);
-        } else {
-          selectedCol = -1;
-          ++selectedRow;
-          insertRow(selectedRow);
-        }
-        itemClicked(selectedRow, selectedCol, false);
+      if (selectedCol === 0 && script.getItemCount(selectedRow) > 0
+      || selectedRow === script.getRowCount()) {
+        ++selectedRow;
+        insertRow(selectedRow - 1);
       } else {
-        itemClicked(selectedRow + 1, -1, false);
+        selectedCol = -1;
+        ++selectedRow;
+        insertRow(selectedRow);
       }
+      itemClicked(selectedRow, selectedCol, false);
       event.preventDefault();
     }
   }
@@ -844,8 +832,7 @@ function handleMenuItemResponse(response) {
     if (selectedRow > 0) {
       selectedRow = selectedRow - 1;
     }
-    const teleport = selectedRow < script.getRowCount()
-                  && script.getItemCount(selectedRow) > 0;
+    const teleport = script.getItemCount(selectedRow) > 0;
     itemClicked(selectedRow, -1, teleport);
     return;
   }

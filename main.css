@@ -145,8 +145,8 @@ button {
 #menu > .insert-line, #menu > .delete {
   display: none;
 }
-.insert-button-shown > .insert-line,
-.delete-button-shown > .delete {
+#menu.insert-button-shown > .insert-line,
+#menu.delete-button-shown > .delete {
   display: initial;
 }
 

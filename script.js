@@ -645,8 +645,7 @@ class Script {
     if (row > 0 && row <= this.getRowCount()) {
       indentation = this.getIndentation(row - 1) + this.isStartingScope(row - 1);
       if (this.getItemCount(row - 1) === 0) {
-        const currentIndentation = row < this.getRowCount() ? this.getIndentation(row) : 0;
-        indentation = Math.max(indentation - 1, currentIndentation);
+        indentation = Math.max(indentation - 1, this.getIndentation(row));
       }
     }
     return indentation;
@@ -662,6 +661,10 @@ class Script {
   }
 
   insertRow(row) {
+    if (!this.canInsert(row)) {
+      return -1;
+    }
+
     const indentation = this.getInsertIndentation(row);
     let key;
 
@@ -718,6 +721,10 @@ class Script {
   }
 
   deleteRow(row, keepRow = false) {
+    if (row >= this.getRowCount()) {
+      return 1;
+    }
+
     const indentation = this.getIndentation(row);
     let r = row;
     do {
@@ -959,7 +966,7 @@ class Script {
   getVisibleVars(row, requiresMutable, action, ...args) {
     const options = [];
 
-    let indentation = (row < this.getRowCount()) ? this.getIndentation(row) : 0;    
+    let indentation = this.getIndentation(row);
 
     for (let r = Math.min(this.getRowCount(), row) - 1; r >= 0; --r) {
       const lineIndentation = this.getIndentation(r);
@@ -1005,11 +1012,11 @@ class Script {
   }
 
   getItemCount(row) {
-    return this.lines[row].items.length;
+    return row < this.lines.length ? this.lines[row].items.length : 0;
   }
 
   getItem(row, col) {
-    return this.lines[row].items[col];
+    return row < this.lines.length ? this.lines[row].items[col] : {};
   }
 
   setItem(row, col, val) {
@@ -1028,7 +1035,7 @@ class Script {
   }
 
   getIndentation(row) {
-    return this.lines[row].indentation;
+    return row < this.lines.length ? this.lines[row].indentation : 0;
   }
 
   isStartingScope(row) {
