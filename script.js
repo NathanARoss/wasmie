@@ -52,8 +52,7 @@ class Script {
 
           script.lines.push({
             key: lineData.key,
-            indentation: lineData.indentation|0,
-            isStartingScope: lineData.isStartingScope|0,
+            indentation: lineData.indent|0,
             items,
           });
         }
@@ -396,7 +395,6 @@ class Script {
         // {text: "fn", style: "keyword", action: () => {
         //   const func = new FuncSig(this.BuiltIns.VOID, "myFunc", this.BuiltIns.VOID);
         //   this.appendRowsUpTo(row);
-        //   this.setIsStartingScope(row, true);
         //   this.pushItems(row, this.BuiltIns.FUNC, func);
         //   return {rowUpdated: true, rowInserted: true, selectedCol: 1};
         // }},
@@ -413,7 +411,6 @@ class Script {
 
         {text: "if", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
-          this.setIsStartingScope(row, true);
           this.pushItems(row, this.BuiltIns.IF);
           return {rowUpdated: true, rowInserted: true};
         }}
@@ -437,7 +434,6 @@ class Script {
                   return [
                     {text: "else if", style: "keyword", action: () => {
                       this.appendRowsUpTo(row);
-                      this.setIsStartingScope(row, true);
                       this.pushItems(row, this.BuiltIns.ELSE, this.BuiltIns.IF);
                       return {rowUpdated: true, rowInserted: true};
                     }}
@@ -449,7 +445,6 @@ class Script {
             //if no succeeding else block is found, allow the user to create one
             options.push({text: "else", style: "keyword", action: () => {
               this.appendRowsUpTo(row);
-              this.setIsStartingScope(row, true);
               this.pushItems(row, this.BuiltIns.ELSE);
               return {rowUpdated: true, rowInserted: true};
             }});
@@ -461,7 +456,6 @@ class Script {
       options.push(
         {text: "for", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
-          this.setIsStartingScope(row, true);
           this.pushItems(row,
             this.BuiltIns.FOR,
             new VarDef("index", this.BuiltIns.I32, this.BuiltIns.VOID),
@@ -474,7 +468,6 @@ class Script {
 
         {text: "while", style: "keyword", action: () => {
           this.appendRowsUpTo(row);
-          this.setIsStartingScope(row, true);
           this.pushItems(row, this.BuiltIns.WHILE);
           return {rowUpdated: true, rowInserted: true};
         }},
@@ -762,7 +755,6 @@ class Script {
     //Pressing backspace on a scope starter clears the line and its body, but keeps
     //the line itself.  If it is at the end of the script, it is trimmed as whitespace.
     if ((indentation > 0 || startRow + count !== this.getRowCount()) && keepRow) {
-      this.setIsStartingScope(startRow, false);
       this.spliceRow(startRow, 0, this.getItemCount(startRow));
       ++startRow;
       --count;
@@ -907,10 +899,7 @@ class Script {
           serialized.items = line.items.map(item => item.serialize());
         }
         if (line.indentation) {
-          serialized.indentation = line.indentation;
-        }
-        if (line.isStartingScope) {
-          serialized.isStartingScope = true;
+          serialized.indent = line.indentation;
         }
         this.put(serialized);
       }
@@ -1043,11 +1032,10 @@ class Script {
   }
 
   isStartingScope(row) {
-    return this.lines[row].isStartingScope|0;
-  }
-  
-  setIsStartingScope(row, isStartingScope) {
-    this.lines[row].isStartingScope = isStartingScope|0;
+    return [
+      this.BuiltIns.IF, this.BuiltIns.ELSE, this.BuiltIns.WHILE,
+      this.BuiltIns.DO_WHILE, this.BuiltIns.FOR, this.BuiltIns.FUNC
+    ].includes(this.lines[row].items[0]);
   }
 
   performTransactions(mode, actions) {
