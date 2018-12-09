@@ -13,8 +13,11 @@ button {
 body {
   margin: 0px;
   font-size: 16px;
-  background-color: #2B2B2B;
   color: white;
+}
+
+#runtime {
+  background-color: #2B2B2B;
 }
 
 #list {
@@ -23,7 +26,7 @@ body {
 
 .outer-row {
   position: absolute;
-  /* higher lines appear above lower lines */
+  /* higher lines occlude lower lines */
   z-index: calc(10000000 - var(--position));
   overflow: hidden;
   white-space: nowrap;
@@ -116,9 +119,10 @@ button {
   color: white;
 }
 
-.item.selected, .append.selected {
-  outline: DarkSlateGray medium solid;
-  outline-offset: -2px;
+.item.selected, .append.selected, .item:focus, .append:focus {
+  background-color: #2D3333;
+  border: none;
+  outline: none;
 }
 
 .text-input {

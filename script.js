@@ -40,10 +40,6 @@ class Script {
     setTimeout(scriptLoaded, 1); //TODO load script
   }
 
-  getItemDisplay(row, col) {
-    return this.lines[row].items[col].getDisplay();
-  }
-
   insertFuncCall(row, col, func) {
     const items = [new FuncRef(func, this.BuiltIns.VOID), this.BuiltIns.BEGIN_ARGS];
     for (let i = 0; i < func.signature.parameters.length; ++i) {

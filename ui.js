@@ -623,7 +623,7 @@ function deleteRow(position) {
 
 
 
-function loadRow(position, outerDiv, positionShift = 0) {
+function loadRow(position, outerDiv, visualShift = 0) {
   const innerDiv = outerDiv.firstChild;
   
   while (innerDiv.childNodes.length > 2) {
@@ -637,7 +637,7 @@ function loadRow(position, outerDiv, positionShift = 0) {
     const itemCount = script.getItemCount(position);
 
     for (let col = 0; col < itemCount; ++col) {
-      const [text, style] = script.getItemDisplay(position, col);
+      const [text, style] = script.getItem(position, col).getDisplay();
       const node = getItem(text, "item " + style, col);
       innerDiv.appendChild(node);
     }
@@ -649,7 +649,7 @@ function loadRow(position, outerDiv, positionShift = 0) {
   if (innerDiv.position !== position) {
     outerDiv.style.transition = "none";
     const isShiftedDown = selectedRow !== -1 && position > selectedRow;
-    outerDiv.style.setProperty("--position", position + positionShift + isShiftedDown|0);
+    outerDiv.style.setProperty("--position", position + visualShift + isShiftedDown|0);
     outerDiv.offsetHeight;
     outerDiv.style.transition = "";
     innerDiv.childNodes[1].textContent = position;
