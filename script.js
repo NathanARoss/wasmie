@@ -1,43 +1,78 @@
 class Script {
   constructor() {
-    this.projectID = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+    this.projectID = localStorage.getItem(ACTIVE_PROJECT_KEY)|0;
     this.queuedTransations = [];
 
     this.BuiltIns = new BuiltIns();
 
     this.lines = [];
 
-    // performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
-    //   objStore.get(this.projectID).onsuccess = (event) => {
-    //     if (!event.target.result) {
-    //       console.log("The previously opened project no longer exists");
-    //       localStorage.removeItem(ACTIVE_PROJECT_KEY);
-    //     } else {
-    //       let actions = [];
+    function decodeData(script) {
+      this.getAll().onsuccess = function(event) {
+        const scriptData = event.target.result;
+        const varDefs = new Map();
+        
+        for (const lineData of scriptData) {
+          const items = [];
 
-    //       actions = [{
-    //         arguments: [this],
-    //         function: function(script) {
-    //           this.openCursor().onsuccess = function(event) {
-    //             const cursor = event.target.result;
-    //             if (cursor) {
-    //               const lineData = cursor.value;
-    //               const line = {
-    //                 items: [],
-    //                 key: cursor.key,
-    //               };
-    //               line.key = cursor.key;
-    //               //script.lines.push(line);
-    //             }
-    //           }
-    //         }
-    //       }];
+          for (const data of lineData.items || []) {
+            if ("type" in data) {
+              const type = script.BuiltIns.TYPES.find(type => type.id === data.type);
+              const scope = script.BuiltIns.VOID;
+              const varDef = new VarDef(data.name, type, scope, data.id);
+              items.push(varDef);
+              varDefs.set(data.id, varDef);
+            } else if ("varDef" in data) {
+              const varDef = varDefs.get(data.varDef);
+              const currentscope = script.BuiltIns.VOID;
+              items.push(new VarRef(varDef, currentscope));
+            } else if ("argIndex" in data) {
+              const funcDef = script.BuiltIns.FUNCTIONS[-1 - data.funcDef];
+              items.push(new ArgHint(funcDef, data.argIndex));
+            } else if ("funcDef" in data) {
+              const funcDef = script.BuiltIns.FUNCTIONS[-1 - data.funcDef];
+              const currentscope = script.BuiltIns.VOID;
+              items.push(new FuncRef(funcDef, currentscope));
+            } else if ("symbol" in data) {
+              items.push(script.BuiltIns.SYMBOLS[data.symbol]);
+            } else if ("keyword" in data) {
+              items.push(script.BuiltIns.KEYWORDS[data.keyword]);
+            } else if ("numLit" in data) {
+              items.push(new NumericLiteral(data.numLit));
+            } else if ("boolLit" in data) {
+              items.push(data.boolLit ? script.BuiltIns.TRUE : script.BuiltIns.FALSE);
+            } else if ("strLit" in data) {
+              items.push(new StringLiteral(data.strLit));
+            } else if ("loopLayers" in data) {
+              items.push(new LoopLabel(data.loopLayers));
+            } else {
+              console.log(data, "not recognized during loading")
+            }
+          }
 
-    //       this.performTransaction("readonly", actions);
-    //     }
-    //   }
-    // });
-    setTimeout(scriptLoaded, 1); //TODO load script
+          script.lines.push({
+            key: lineData.key,
+            indentation: lineData.indentation|0,
+            isStartingScope: lineData.isStartingScope|0,
+            items,
+          });
+        }
+
+        scriptLoaded();
+      }
+    }
+
+    performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
+      objStore.get(this.projectID).onsuccess = (event) => {
+        if (!event.target.result) {
+          console.log("The previously opened project no longer exists");
+          localStorage.removeItem(ACTIVE_PROJECT_KEY);
+          scriptLoaded();
+        } else {
+          this.performTransactions("readonly", [{func: decodeData, args: [this]}]);
+        }
+      }
+    });
   }
 
   insertFuncCall(row, col, func) {
@@ -274,7 +309,7 @@ class Script {
             }, oninput: (event) => {
               const inputNode = event.target;
               inputNode.classList.remove("keyword", "number", "string");
-              if (["true", "false"].includes(inputNode.value.toLowerCase())) {
+              if (/^(true|false)$/i.test(inputNode.value)) {
                 inputNode.classList.add("keyword");
               } else if (!isNaN(inputNode.value)) {
                 inputNode.classList.add("number");
@@ -294,7 +329,7 @@ class Script {
 
         options.push(...this.getVisibleVars(row, false, setVarRef));
 
-        const scopes = new Set(this.BuiltIns.functions.map(func => func.signature.scope));
+        const scopes = new Set(this.BuiltIns.FUNCTIONS.map(func => func.signature.scope));
         const style = "keyword";
         const action = this.getVisibleFuncs;
         for (const scope of scopes) {
@@ -478,7 +513,7 @@ class Script {
         return {rowUpdated: true};
       }));
 
-      const scopes = new Set(this.BuiltIns.functions.map(func => func.signature.scope));
+      const scopes = new Set(this.BuiltIns.FUNCTIONS.map(func => func.signature.scope));
       const style = "keyword";
       const action = this.getVisibleFuncs;
       for (const scope of scopes) {
@@ -867,8 +902,17 @@ class Script {
   saveRows(lines) {
     this.queueTransation(function(lines) {
       for (const line of lines) {
-        //TODO encode lines
-        //this.put(line.items, line.key);
+        const serialized = {key: line.key};
+        if (line.items.length > 0) {
+          serialized.items = line.items.map(item => item.serialize());
+        }
+        if (line.indentation) {
+          serialized.indentation = line.indentation;
+        }
+        if (line.isStartingScope) {
+          serialized.isStartingScope = true;
+        }
+        this.put(serialized);
       }
     }, lines);
   }
@@ -946,7 +990,7 @@ class Script {
 
   getVisibleFuncs(row, col, scope, requiresReturn) {
     //grab only the ones belonging to the scope and that return something
-    let funcs = this.BuiltIns.functions.filter(func => {
+    let funcs = this.BuiltIns.FUNCTIONS.filter(func => {
       return func.signature.scope === scope
       && func.signature.returnType !== this.BuiltIns.VOID || !requiresReturn;
     });
@@ -1003,7 +1047,7 @@ class Script {
   }
   
   setIsStartingScope(row, isStartingScope) {
-    this.lines[row].isStartingScope = isStartingScope;
+    this.lines[row].isStartingScope = isStartingScope|0;
   }
 
   performTransactions(mode, actions) {
@@ -1011,9 +1055,9 @@ class Script {
   
     openRequest.onerror = (event) => alert("Open request error: " + event.errorCode);
     openRequest.onupgradeneeded = function(event) {
-      console.log("upgrading data database");
+      console.log("upgrading database");
       const db = event.target.result;
-      db.createObjectStore("lines");
+      db.createObjectStore("lines", {keyPath: "key"});
       db.createObjectStore("save-data");
     };
     openRequest.onsuccess = function(event) {
@@ -1024,7 +1068,7 @@ class Script {
       const linesStore = transaction.objectStore("lines");
       
       for (const action of actions) {
-        action.function.apply(linesStore, action.arguments);
+        action.func.apply(linesStore, action.args);
       }
       actions.length = 0;
     };
@@ -1032,41 +1076,45 @@ class Script {
 
   /**
    * Opens a transaction and performs the action on it.  If the project did not already exist, creates it.
-   * @param {Function} action func that expects object store bound to this and additional arguments
+   * @param {Function} func func that expects object store bound to this and additional arguments
    * @param {*[]} args remainder of arguments that are sent to the action function
    */
-  queueTransation(action, ...args) {
-    // this.queuedTransations.push({arguments: args, function: action});
+  queueTransation(func, ...args) {
+    this.queuedTransations.push({func, args});
 
-    // if (this.queuedTransations.length === 1) {
-    //   performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
-    //     objStore.get(this.projectID).onsuccess = (event) => {
-    //       if (event.target.result) {
-    //         console.log("Updating edit date of project listing " + this.projectID);
-    //         const projectListing = event.target.result;
-    //         projectListing.lastModified = new Date();
-    //         objStore.put(projectListing);
-    //         this.performTransactions("readwrite", this.queuedTransations);
-    //       } else {
-    //         objStore.getAllKeys().onsuccess = (event) => {
-    //           const id = event.target.result.findIndex((el, i) => el !== i);
-    //           const now = new Date();
-    //           const newProject = {id, name: "Project " + id, created: now, lastModified: now};
+    if (this.queuedTransations.length === 1) {
+      performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
+        objStore.get(this.projectID).onsuccess = (event) => {
+          if (event.target.result) {
+            //console.log("Updating edit date of project " + this.projectID);
+            const projectListing = event.target.result;
+            projectListing.lastModified = new Date();
+            objStore.put(projectListing);
+            this.performTransactions("readwrite", this.queuedTransations);
+          } else {
+            objStore.getAllKeys().onsuccess = (event) => {
+              let id = event.target.result.findIndex((el, i) => el !== i+1);
+              if (id === -1) {
+                id = event.target.result.length + 1
+              }
+
+              const now = new Date();
+              const newProject = {id, name: "Project " + id, created: now, lastModified: now};
         
-    //           objStore.put(newProject).onsuccess = (event) => {
-    //             console.log("Successfully created new project listing.  ID is", id);
-    //             this.projectID = id;
-    //             localStorage.setItem(ACTIVE_PROJECT_KEY, id);
+              objStore.put(newProject).onsuccess = (event) => {
+                this.projectID = event.target.result;
+                localStorage.setItem(ACTIVE_PROJECT_KEY, this.projectID);
+                console.log("Successfully created new project.  ID is", this.projectID);
 
-    //             this.queuedTransations.length = 0;
-    //             this.saveRows(this.lines);
-    //             this.performTransactions("readwrite", this.queuedTransations);
-    //           }
-    //         }
-    //       }
-    //     }
-    //   });
-    // }
+                this.queuedTransations.length = 0;
+                this.saveRows(this.lines);
+                this.performTransactions("readwrite", this.queuedTransations);
+              }
+            }
+          }
+        }
+      });
+    }
   }
 
   /*

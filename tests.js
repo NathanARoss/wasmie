@@ -34,14 +34,3 @@ function testKeyFuncs() {
   testGetAvgKey([2, 255, 255], [4]);
   testGetAvgKey([2, 255, 255], [2, 255, 255]);
 }
-
-function testNamesArrayEntries() {
-  const testArr = [
-    this.one = 1,
-    this.two = 2,
-    this.three = 3,
-    this.four = 4,
-  ];
-
-  console.log(this.one, this.two, this.three, this.four, testArr);
-}

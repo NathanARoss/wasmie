@@ -1,42 +1,26 @@
 "use strict";
 
 class VarDef {
-  constructor(name, type, scope) {
+  constructor(name, type, scope, id = VarDef.nextId++) {
     this.name = name;
     this.type = type;
     this.scope = scope;
-    this.id = VarDef.nextId++;
+    this.id = id;
   }
 
   getDisplay() {
     return [this.type.text + '\n' + this.name, "keyword vardef"];
   }
 
-  serialized() {
-    const data = [0];
-    data.push(...Wasm.stringToLenPrefixedUTF8(this.name));
-    data.push(...Wasm.varuint(this.type.id));
-    data.push(...Wasm.varuint(this.scope.id));
-    return data;
-  }
-
-  static deSerialize(data, offset) {
-    let [val, bytesRead] = Wasm.decodeVaruint(data, offset);
-    offset += bytesRead;
-    const name = Wasm.UTF8toString(data.slice(offset, offset + val));
-    offset += val;
-
-    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
-    const type = val;
-    offset += bytesRead;
-    
-    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
-    const scope = val;
-
-    return {name, type, scope};
+  serialize() {
+    return {
+      name: this.name,
+      type: this.type.id,
+      id: this.id,
+    };
   }
 }
-VarDef.nextId;
+VarDef.nextId = 0;
 
 class VarRef {
   constructor(varDef, currentScope) {
@@ -51,22 +35,10 @@ class VarRef {
       return [this.varDef.name, ""];
   }
 
-  serialized() {
-    const data = [1];
-    data.push(...Wasm.varuint(this.varDef.id));
-    data.push(...Wasm.varuint(this.currentScope.id));
-    return data;
-  }
-
-  static deSerialize(data, offset) {
-    let [val, bytesRead] = Wasm.decodeVaruint(data, offset);
-    const varDef = val;
-    offset += bytesRead;
-
-    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
-    const currentScope = val;
-
-    return {varDef, currentScope};
+  serialize() {
+    return {
+      varDef: this.varDef.id
+    };
   }
 }
 
@@ -147,50 +119,32 @@ class FuncRef {
       return [this.funcDef.signature.name, "call"];
   }
 
-  serialized() {
+  serialize() {
     //TODO for now I assume every function reference is to a builtin function
-    const builtinFuncIndex = script.BuiltIns.functions.indexOf(this.funcDef);
-    console.log("builtinFuncIndex", builtinFuncIndex);
+    const funcDef = -1 - script.BuiltIns.FUNCTIONS.indexOf(this.funcDef);
 
-    const data = [3];
-    data.push(...Wasm.varuint(builtinFuncIndex));
-    return data;
-  }
-
-  static deSerialize(data, offset) {
-    //TODO for now I assume every function reference is to a builtin function
-    const [builtinFuncIndex, bytesRead] = Wasm.decodeVaruint(data, offset);
-    console.log("builtinFuncIndex", builtinFuncIndex);
-
-    return {builtinFuncIndex};
+    return {
+      funcDef
+    }
   }
 }
 
 class TypeDef {
-  constructor(text, size) {
+  constructor(text, size, id = TypeDef.nextId++) {
     this.text = text;
     this.size = size;
+    this.id = id;
   }
 
-  serialized() {
-    const data = [4];
-    data.push(...Wasm.stringToLenPrefixedUTF8(this.text));
-    data.push(...Wasm.varuint(this.size));
-    return data;
-  }
-
-  static deSerialize(data, offset) {
-    let [val, bytesRead] = Wasm.decodeVaruint(data, offset);
-    offset += bytesRead;
-    const text = Wasm.UTF8toString(data.slice(offset, offset + val));
-    offset += val;
-
-    [val, bytesRead] = Wasm.decodeVaruint(data, offset);
-    const size = val;
-
-    return {text, size};
-  }
+  // serialize() {
+  //   return {
+  //     text: this.text,
+  //     size: this.size,
+  //     id: this.id,
+  //   }
+  // }
 }
+TypeDef.nextId = 0;
 
 class ArgHint {
   constructor(funcDef, argIndex) {
@@ -202,22 +156,14 @@ class ArgHint {
     return [this.funcDef.signature.parameters[this.argIndex].name, "comment"];
   }
 
-  serialized() {
+  serialize() {
     //TODO for now I assume every function reference is to a builtin function
-    const builtinFuncIndex = script.BuiltIns.functions.indexOf(this.funcDef);
-    console.log("builtinFuncIndex", builtinFuncIndex);
+    const funcDef = -1 - script.BuiltIns.FUNCTIONS.indexOf(this.funcDef);
 
-    const data = [5];
-    data.push(...Wasm.varuint(builtinFuncIndex));
-    return data;
-  }
-
-  static deSerialize(data, offset) {
-    //TODO for now I assume every function reference is to a builtin function
-    const [builtinFuncIndex, bytesRead] = Wasm.decodeVaruint(data, offset);
-    console.log("builtinFuncIndex", builtinFuncIndex);
-
-    return {builtinFuncIndex};
+    return {
+      funcDef,
+      argIndex: this.argIndex,
+    }
   }
 }
 
@@ -241,6 +187,10 @@ class Symbol {
   getDisplay() {
     return [this.text, ""];
   }
+
+  serialize() {
+    return {symbol: script.BuiltIns.SYMBOLS.indexOf(this)}
+  }
 }
 
 class Keyword {
@@ -252,114 +202,49 @@ class Keyword {
   getDisplay() {
     return [this.text, "keyword"];
   }
+
+  serialize() {
+    return {keyword: script.BuiltIns.KEYWORDS.indexOf(this)}
+  }
 }
 
 class NumericLiteral {
   constructor(text) {
     this.text = String(text);
-    this.value = +text;
-    this.hasDecimalPoint = this.text.includes(".") || this.text.toLowerCase().includes("e");
   }
 
   getDisplay() {
     return [this.text, "number literal"];
   }
 
-  performUnaryOp(unaryOp) {
-    switch (unaryOp) {
-    case "!":
-      this.value = ~this.value;
-      break;
-    case "-":
-      this.value = -this.value;
-      break;
-    default:
-      throw "unrecognized unary operator " + unaryOp;
-    }
-  }
-
-  performBinaryOp(binOp, operand) {
-    switch (binOp) {
-      case "+":
-        this.value += operand.value;
-        break;
-      case "-":
-        this.value -= operand.value;
-        break;
-      case "*":
-        this.value *= operand.value;
-        break;
-      case "/":
-        this.value /= operand.value;
-        break;
-      case "%":
-        this.value %= operand.value;
-        break;
-      case "|":
-        this.value |= operand.value;
-        break;
-      case "^":
-        this.value ^= operand.value;
-        break;
-      case "&":
-        this.value &= operand.value;
-        break;
-      case "<<":
-        this.value <<= operand.value;
-        break;
-      case ">>":
-        this.value >>= operand.value;
-        break;
-      default:
-        throw "unrecognized binary operator: " + binOp;
-    }
-    
-    this.hasDecimalPoint = this.hasDecimalPoint || operand.hasDecimalPoint;
-    if (!this.hasDecimalPoint) {
-      this.value = Math.trunc(this.value);
-    }
-  }
-
-  getType(expectedType = parent.types.builtins.Any) {
-    if (expectedType !== parent.types.builtins.Any) {
+  getType(expectedType = script.BuiltIns.ANY) {
+    if (expectedType !== script.BuiltIns.ANY) {
       return expectedType;
     }
 
-    if (this.hasDecimalPoint) {
-      return parent.types.builtins.f32;
+    if (/[\.e]/i.test(this.text)) {
+      return script.BuiltIns.F32;
     } else {
-      return parent.types.builtins.i32;
+      return script.BuiltIns.I32;
     }
   }
 
-  getWasmCode(outputType) {
-    switch (outputType) {
-      case parent.types.builtins.i32:
-      case parent.types.builtins.u32:
-      case parent.this.BOOL:
-        return [Wasm.i32_const, ...Wasm.varint(this.value)];
-      case parent.types.builtins.i64:
-      case parent.types.builtins.u64:
-        return [Wasm.i64_const, ...Wasm.varint(this.value)];
-      case parent.types.builtins.f32:
-        return [Wasm.f32_const, ...Wasm.f32ToBytes(this.value)];
-      case parent.types.builtins.f64:
-        return [Wasm.f64_const, ...Wasm.f64ToBytes(this.value)];
-      default:
-        console.trace();
-        throw "unrecognized type for numeric literal: " + outputType.name;
-    }
+  serialize() {
+    return {numLit: this.text};
   }
 }
 
 class BooleanLiteral {
   constructor(value) {
-    this.text = String(value);
-    this.value = value|0;
+    this.value = value;
   }
 
   getDisplay() {
-    return [this.text, "keyword literal"];
+    return [String(this.value), "keyword literal"];
+  }
+
+  serialize() {
+    return {boolLit: this.value}
   }
 }
 
@@ -373,25 +258,23 @@ class StringLiteral {
   }
 
   getType() {
-    return parent.types.builtins.string;
+    return script.BuiltIns.STRING;
   }
 
-  getWasmCode() {
-    console.trace();
-    throw "Not implemented";
-    return [Wasm.i32_const, ...Wasm.varint(this.address)];
+  serialize() {
+    return {strLit: this.text};
   }
 }
 
 class LoopLabel {
   constructor(layersOutward) {
-    this.layersOutward = layersOutward;
+    this.loopLayers = layersOutward;
   }
 
   getDisplay() {
     let text = "outer";
-    if (this.layersOutward > 2) {
-      const num = this.layersOutward;
+    if (this.loopLayers > 2) {
+      const num = this.loopLayers;
       const lastDigit = num % 10;
 
       if (lastDigit === 1 && num !== 11) {
@@ -406,23 +289,27 @@ class LoopLabel {
     }
     return [text, "call"];
   }
+
+  serialize() {
+    return {loopLayers: this.loopLayers};
+  }
 }
 
 function BuiltIns() {
   this.TYPES = [
-    this.VOID = new TypeDef("void", 0),
-    this.ANY = new TypeDef("Any", 0),
-    this.BOOL = new TypeDef("bool", 4),
-    this.I32 = new TypeDef("int", 4),
-    this.U32 = new TypeDef("uint", 4),
-    this.I64 = new TypeDef("long", 8),
-    this.U64 = new TypeDef("ulong", 8),
-    this.F32 = new TypeDef("float", 4),
-    this.F64 = new TypeDef("double", 8),
-    this.STRING = new TypeDef("string", 4),
-    this.SYSTEM = new TypeDef("System", 0),
-    this.MATH = new TypeDef("Math", 0),
-    this.ITERABLE = new TypeDef("iterable", 0),
+    this.VOID = new TypeDef("void", 0, -1),
+    this.ANY = new TypeDef("Any", 0, -2),
+    this.BOOL = new TypeDef("bool", 4, -3),
+    this.I64 = new TypeDef("long", 8, -10),
+    this.U64 = new TypeDef("ulong", 8, -11),
+    this.I32 = new TypeDef("int", 4, -12),
+    this.U32 = new TypeDef("uint", 4, -13),
+    this.F64 = new TypeDef("double", 8, -20),
+    this.F32 = new TypeDef("float", 4, -21),
+    this.STRING = new TypeDef("string", 4, -30),
+    this.ITERABLE = new TypeDef("iterable", 0, -31),
+    this.SYSTEM = new TypeDef("System", 0, -40),
+    this.MATH = new TypeDef("Math", 0, -41),
   ];
 
   this.PRINT = new ImportedFunc(
@@ -498,7 +385,7 @@ function BuiltIns() {
     Wasm.end,
   );
 
-  this.functions = [
+  this.FUNCTIONS = [
     this.PRINT,
     new ImportedFunc(
       new FuncSig(this.SYSTEM, "print", this.VOID, [this.F32, "item"]),
@@ -866,19 +753,21 @@ function BuiltIns() {
   this.BEGIN_EXPRESSION.matching = this.END_EXPRESSION;
   this.BEGIN_ARGS.matching = this.END_ARGS;
   
-  this.LET = new Keyword("let");
-  this.VAR = new Keyword("var");
-  this.IF = new Keyword("if", true);
-  this.ELSE = new Keyword("else");
-  this.FOR = new Keyword("for");
-  this.IN = new Keyword("in", true);
-  this.WHILE = new Keyword("while", true);
-  this.DO_WHILE = new Keyword("post while", true);
-  this.BREAK = new Keyword("break");
-  this.CONTINUE = new Keyword("continue");
-  this.RETURN = new Keyword("return");
-  this.STEP = new Keyword("step", true);
-  this.FUNC = new Keyword("fn");
+  this.KEYWORDS = [
+    this.LET = new Keyword("let"),
+    this.VAR = new Keyword("var"),
+    this.IF = new Keyword("if", true),
+    this.ELSE = new Keyword("else"),
+    this.FOR = new Keyword("for"),
+    this.IN = new Keyword("in", true),
+    this.WHILE = new Keyword("while", true),
+    this.DO_WHILE = new Keyword("post while", true),
+    this.BREAK = new Keyword("break"),
+    this.CONTINUE = new Keyword("continue"),
+    this.RETURN = new Keyword("return"),
+    this.STEP = new Keyword("step", true),
+    this.FUNC = new Keyword("fn"),
+  ]
 
   this.VAR.suggestion = this.LET;
   this.LET.suggestion = this.VAR;

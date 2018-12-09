@@ -30,17 +30,13 @@ let selectedCol = -1;
 menuButton.addEventListener("click", function(event) {
   event.stopPropagation();
 
-  if (selectedRow !== -1) {
-    closeMenu();
-  } else {
-    if (menuButton.toggled) {
-      history.pushState({action: "run"}, "TouchScript Runtime");
-      window.onpopstate();
-    }
-  
-    fabMenu.classList.toggle("expanded");
-    menuButton.toggled = !menuButton.toggled;
+  if (menuButton.toggled) {
+    history.pushState({action: "run"}, "TouchScript Runtime");
+    window.onpopstate();
   }
+
+  fabMenu.classList.toggle("expanded");
+  menuButton.toggled = !menuButton.toggled;
 });
 
 createButton.addEventListener("click", function(event) {
@@ -435,7 +431,7 @@ function scriptLoaded() {
 function selectProject(event) {
   if (event.target.nodeName !== "BUTTON" && event.target.nodeName !== "INPUT") {
     const projectID = event.currentTarget.projectId;
-    const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+    const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY)|0;
     if (projectID !== oldActiveProject) {
       localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
       script = new Script();

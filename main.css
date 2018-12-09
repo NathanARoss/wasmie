@@ -14,9 +14,6 @@ body {
   margin: 0px;
   font-size: 16px;
   color: white;
-}
-
-#runtime {
   background-color: #2B2B2B;
 }
 
@@ -145,7 +142,7 @@ button {
   background: url(baseline-keyboard_return-24px.svg) no-repeat right;
   background-origin: content-box;
 }
-.insert-line, .delete {
+#menu > .insert-line, #menu > .delete {
   display: none;
 }
 .insert-button-shown > .insert-line,
@@ -166,15 +163,11 @@ button {
   transition-property: height bottom;
   transition-duration: 0.25s;
   overflow: hidden;
-  z-index: 100;
+  z-index: 10000000000000;
 }
 
 #FAB-menu.expanded {
   height: 255px;
-}
-
-.selected #FAB-menu {
-  bottom: -50px;
 }
 
 .FAB {
