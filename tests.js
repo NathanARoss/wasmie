@@ -34,3 +34,44 @@ function testKeyFuncs() {
   testGetAvgKey([2, 255, 255], [4]);
   testGetAvgKey([2, 255, 255], [2, 255, 255]);
 }
+
+(async function testAwait() {
+  const input = document.getElementById("console-input");
+  input.onkeydown = function(event) {
+    if (event.key === "Enter") {
+      if (event.target.onsubmit) {
+        event.target.onsubmit(event);
+      }
+    }
+  }
+
+  function getInt() {
+    return new Promise((resolve) => {
+      input.onsubmit = function(event) {
+        print(event.target.value + "\n")
+        const int = event.target.value|0;
+        event.target.value = "";
+        resolve(int);
+      }
+    });
+  }
+
+  function sleep(milliseconds) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, milliseconds);
+    });
+  }
+
+  print("Enter four numbers:\n");
+  const num1 = await getInt();
+  const num2 = await getInt();
+  const num3 = await getInt();
+  const num4 = await getInt();
+  const sum = num1 + num2 + num3 + num4;
+  print("The sum is " + sum + "\n");
+
+  while (true) {
+    print("You are awesome!\n");
+    await sleep(1000);
+  }
+})();
