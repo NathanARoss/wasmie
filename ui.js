@@ -24,8 +24,8 @@ let selectedItem;
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
 
-let selectedRow = -1;
-let selectedCol = -1;
+let selRow = -1;
+let selCol = -1;
 
 menuButton.addEventListener("click", function(event) {
   event.stopPropagation();
@@ -520,7 +520,7 @@ function getDateString(date) {
 
 
 function getRowCount() {
-  return script.getRowCount() + loadedCount - bufferCount - 2;
+  return script.rowCount + loadedCount - bufferCount - 2;
 }
 
 
@@ -626,7 +626,7 @@ function loadRow(position, outerDiv, visualShift = 0) {
     itemPool.push(innerDiv.removeChild(innerDiv.lastChild));
   }
 
-  if (position >= script.getRowCount()) {
+  if (position >= script.rowCount) {
     innerDiv.style.setProperty("--indentation", 0);
     innerDiv.classList.remove("starting-scope");
   } else {
@@ -638,21 +638,21 @@ function loadRow(position, outerDiv, visualShift = 0) {
       innerDiv.appendChild(node);
     }
     
-    innerDiv.style.setProperty("--indentation", script.getIndentation(position));
+    innerDiv.style.setProperty("--indentation", script.getIndent(position));
     innerDiv.classList.toggle("starting-scope", script.isStartingScope(position));
   }
 
   if (innerDiv.position !== position) {
     outerDiv.style.transition = "none";
-    const isShiftedDown = selectedRow !== -1 && position > selectedRow;
+    const isShiftedDown = selRow !== -1 && position > selRow;
     outerDiv.style.setProperty("--position", position + visualShift + isShiftedDown|0);
     outerDiv.offsetHeight;
     outerDiv.style.transition = "";
     innerDiv.childNodes[1].textContent = position;
     innerDiv.position = position;
 
-    if (selectedRow === position) {
-      const button = innerDiv.childNodes[2 + selectedCol];
+    if (selRow === position) {
+      const button = innerDiv.childNodes[2 + selCol];
       innerDiv.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     }
   }
@@ -678,7 +678,7 @@ function getItem(text, className, position) {
 
 
 
-function configureMenu(options, prevRow = selectedRow, teleport = false) {
+function configureMenu(options, prevRow = selRow, teleport = false) {
   while (menu.childNodes.length > 3) {
     const child = menu.lastChild;
     child.action = undefined;
@@ -729,29 +729,31 @@ function configureMenu(options, prevRow = selectedRow, teleport = false) {
   if (teleport) {
     menu.style.transition = "none";
 
-    const isShiftedUp = prevRow === -1 || selectedRow < prevRow;
-    menu.style.setProperty("--position", selectedRow + 1 - isShiftedUp|0);
+    const isShiftedUp = prevRow === -1 || selRow < prevRow;
+    menu.style.setProperty("--position", selRow + 1 - isShiftedUp|0);
   
     menu.offsetHeight;
     menu.style.transition = "";
   }
 
-  menu.classList.toggle("delete-button-shown", selectedRow < script.getRowCount());
-  menu.classList.toggle("insert-button-shown", script.canInsert(selectedRow, selectedCol));
-  menu.style.setProperty("--position", selectedRow + 1);
-  menu.style.setProperty("--indentation", script.getInsertIndentation(selectedRow + 1));
+  const insertPosition = selRow + (selCol !== 0 && selRow !== script.rowCount)|0;
+
+  menu.classList.toggle("delete-button-shown", selRow < script.rowCount);
+  menu.classList.toggle("insert-button-shown", script.canInsert(insertPosition));
+  menu.style.setProperty("--position", selRow + 1);
+  menu.style.setProperty("--indentation", script.getInsertIndent(selRow + 1));
   
   //make room for the menu to slot below the selected row
   for (const outerDiv of list.childNodes) {
     const position = outerDiv.firstChild.position;
-    outerDiv.style.setProperty("--position", position + (position > selectedRow)|0);
+    outerDiv.style.setProperty("--position", position + (position > selRow)|0);
   }
 }
 
 function closeMenu() {
-  menu.style.setProperty("--position", selectedRow);
+  menu.style.setProperty("--position", selRow);
   menu.classList.remove("revealed");
-  selectedRow = -1;
+  selRow = -1;
   for (const outerDiv of list.childNodes) {
     outerDiv.style.setProperty("--position", outerDiv.firstChild.position);
   }
@@ -776,31 +778,30 @@ document.onkeydown = function(event) {
     closeMenu();
   }
 
-  if (selectedRow !== -1) {
+  if (selRow !== -1) {
     if (event.key === "Delete") {
-      deleteRow(selectedRow);
-      const teleport = script.getItemCount(selectedRow) > 0;
-      itemClicked(selectedRow, -1, teleport);
+      deleteRow(selRow);
+      const teleport = script.getItemCount(selRow) > 0;
+      itemClicked(selRow, -1, teleport);
 
       event.preventDefault();
     }
 
     if (event.key === "Backspace") {
-      handleMenuItemResponse(script.deleteItem(selectedRow, selectedCol));
+      handleMenuItemResponse(script.deleteItem(selRow, selCol));
       event.preventDefault();
     }
 
     if (event.key === "Enter") {
-      if (selectedCol === 0 && script.getItemCount(selectedRow) > 0
-      || selectedRow === script.getRowCount()) {
-        ++selectedRow;
-        insertRow(selectedRow - 1);
+      if (selCol === 0 || selRow === script.rowCount) {
+        ++selRow;
+        insertRow(selRow - 1);
       } else {
-        selectedCol = -1;
-        ++selectedRow;
-        insertRow(selectedRow);
+        selCol = -1;
+        ++selRow;
+        insertRow(selRow);
       }
-      itemClicked(selectedRow, selectedCol, false);
+      itemClicked(selRow, selCol, false);
       event.preventDefault();
     }
   }
@@ -808,41 +809,41 @@ document.onkeydown = function(event) {
 
 function handleMenuItemResponse(response) {
   if ("rowUpdated" in response) {
-    const outerDiv = list.childNodes[selectedRow % loadedCount];
-    loadRow(selectedRow, outerDiv);
-    if (response.selectedCol >= script.getItemCount(selectedRow)) {
+    const outerDiv = list.childNodes[selRow % loadedCount];
+    loadRow(selRow, outerDiv);
+    if (response.selectedCol >= script.getItemCount(selRow)) {
       response.selectedCol = -1;
     }
-    if (selectedCol === -1) {
+    if (selCol === -1) {
       outerDiv.firstChild.scrollLeft = 1e10;
     }
     list.style.height = getRowCount() * rowHeight + "px";
   }
 
   if ("rowInserted" in response) {
-    insertRow(selectedRow + 1);
+    insertRow(selRow + 1);
   }
 
   if ("selectedCol" in response) {
-    selectedCol = response.selectedCol;
+    selCol = response.selectedCol;
   }
 
   if ("rowDeleted" in response) {
-    deleteRow(selectedRow);
-    if (selectedRow > 0) {
-      selectedRow = selectedRow - 1;
+    deleteRow(selRow);
+    if (selRow > 0) {
+      selRow = selRow - 1;
     }
-    const teleport = script.getItemCount(selectedRow) > 0;
-    itemClicked(selectedRow, -1, teleport);
+    const teleport = script.getItemCount(selRow) > 0;
+    itemClicked(selRow, -1, teleport);
     return;
   }
 
   if ("scriptChanged" in response) {
     reloadAllRows();
-    selectedCol = -1;
+    selCol = -1;
   }
   
-  itemClicked(selectedRow, selectedCol);
+  itemClicked(selRow, selCol);
 }
 
 function rowClickHandler(event) {
@@ -852,7 +853,7 @@ function rowClickHandler(event) {
   } else if (event.target.nodeName === "BUTTON") {
     const row = this.position|0;
     const col = event.target.position|0;
-    if (row === selectedRow && col === selectedCol) {
+    if (row === selRow && col === selCol) {
       closeMenu();
     } else {
       itemClicked(row, col);
@@ -871,9 +872,9 @@ function itemClicked(row, col, teleport = true) {
       selectedItem.focus();
     }
     
-    const prevRow = selectedRow;
-    selectedRow = row;
-    selectedCol = col;
+    const prevRow = selRow;
+    selRow = row;
+    selCol = col;
     
     const options = script.itemClicked(row, col);
     configureMenu(options, prevRow, teleport);
@@ -881,7 +882,7 @@ function itemClicked(row, col, teleport = true) {
 }
 
 function clickPreviousLine() {
-  itemClicked(Math.max(0, selectedRow - 1), -1);
+  itemClicked(Math.max(0, selRow - 1), -1);
 }
 
 function print(value) {

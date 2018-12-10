@@ -52,7 +52,7 @@ class Script {
 
           script.lines.push({
             key: lineData.key,
-            indentation: lineData.indent|0,
+            indent: lineData.indent|0,
             items,
           });
         }
@@ -154,9 +154,9 @@ class Script {
       } else if (item.constructor === FuncRef) {
         //options.push(...this.getFunctionList(false));
       } else if (item === this.BuiltIns.IF) {
-        const indentation = this.getIndentation(row);
+        const indent = this.getIndent(row);
         for (let r = row - 1; r >= 0; --r) {
-          if (this.getIndentation(r) < indentation)
+          if (this.getIndent(r) < indent)
             break;
 
           if (this.getItem(r, 0) === this.BuiltIns.IF
@@ -247,11 +247,11 @@ class Script {
         //count the number of nested loops this statement is inside
         let loopStructureCount = 0;
 
-        let indentation = this.getIndentation(row);
+        let indent = this.getIndent(row);
         for (let r = row - 1; r >= 0; --r) {
-          const lineIndentation = this.getIndentation(r);
-          if (lineIndentation < indentation) {
-            indentation = lineIndentation;
+          const lineIndent = this.getIndent(r);
+          if (lineIndent < indent) {
+            indent = lineIndent;
             if (this.getItem(r, 0) === this.BuiltIns.WHILE
             || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
             || this.getItem(r, 0) === this.BuiltIns.FOR) {
@@ -380,11 +380,11 @@ class Script {
   }
 
   appendClicked(row) {
-    const rowCount = this.getRowCount();
+    const rowCount = this.rowCount;
     const itemCount = (row < rowCount) ? this.getItemCount(row) : 0;
 
     if (itemCount === 0) {
-      let indentation = (row < rowCount) ? this.getIndentation(row) : 0;
+      let indent = (row < rowCount) ? this.getIndent(row) : 0;
 
       const options = [
         {
@@ -416,20 +416,20 @@ class Script {
         }}
       ];
 
-      //scan backward looking for an if block at the same indentation level
+      //scan backward looking for an if block at the same indent level
       for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
-        if (this.getIndentation(r) < indentation)
+        if (this.getIndent(r) < indent)
           break;
 
-        if (this.getIndentation(r) === indentation) {
+        if (this.getIndent(r) === indent) {
           if (this.getItem(r, 0) === this.BuiltIns.IF
           || this.getItem(r, 1) === this.BuiltIns.IF) {
-            //scan forward for an else block at the same indentation
+            //scan forward for an else block at the same indent
             for (let r = row + 1; r < rowCount; ++r) {
-              if (this.getIndentation(r) < indentation)
+              if (this.getIndent(r) < indent)
                 break;
 
-              if (this.getIndentation(r) === indentation) {
+              if (this.getIndent(r) === indent) {
                 if (this.getItem(r, 0) === this.BuiltIns.ELSE) {
                   return [
                     {text: "else if", style: "keyword", action: () => {
@@ -480,9 +480,9 @@ class Script {
       );
 
       for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
-        const lineIndentation = this.getIndentation(r);
-        if (lineIndentation < indentation) {
-          indentation = lineIndentation;
+        const lineIndent = this.getIndent(r);
+        if (lineIndent < indent) {
+          indent = lineIndent;
           if (this.getItem(r, 0) === this.BuiltIns.WHILE
           || this.getItem(r, 0) === this.BuiltIns.DO_WHILE
           || this.getItem(r, 0) === this.BuiltIns.FOR) {
@@ -623,41 +623,36 @@ class Script {
   }
 
   appendRowsUpTo(row) {
-    let oldLength = this.getRowCount();
+    let oldLength = this.rowCount;
 
     let key = new Uint8Array((oldLength > 0) ? this.lines[oldLength - 1].key : 1);
-    while (row >= this.getRowCount()) {
+    while (row >= this.rowCount) {
       key = Script.getNextKey(key);
       this.lines.push({
         items: [],
         key: key.buffer,
-        indentation: 0
+        indent: 0
       });
     }
 
-    if (oldLength !== this.getRowCount()) {
+    if (oldLength !== this.rowCount) {
       this.saveRows(this.lines.slice(oldLength));
     }
   }
 
-  getInsertIndentation(row) {
-    let indentation = 0;
-    if (row > 0 && row <= this.getRowCount()) {
-      indentation = this.getIndentation(row - 1) + this.isStartingScope(row - 1);
+  getInsertIndent(row) {
+    let indent = 0;
+    if (row > 0 && row <= this.rowCount) {
+      indent = this.getIndent(row - 1) + this.isStartingScope(row - 1);
       if (this.getItemCount(row - 1) === 0) {
-        indentation = Math.max(indentation - 1, this.getIndentation(row));
+        indent = Math.max(indent - 1, this.getIndent(row));
       }
     }
-    return indentation;
+    return indent;
   }
 
-  canInsert(row, col) {
-    return (row < this.getRowCount() - 1
-    || (row === this.getRowCount() - 1)
-      && (this.getIndentation(row) > 0
-      || (row > 0 && this.getIndentation(row - 1) > 1))
-      || col === 0
-    );
+  canInsert(row) {
+    return row < this.rowCount || this.getInsertIndent(row) > 0;
   }
 
   insertRow(row) {
@@ -665,15 +660,15 @@ class Script {
       return -1;
     }
 
-    const indentation = this.getInsertIndentation(row);
+    const indent = this.getInsertIndent(row);
     let key;
 
     //find the best place to insert a line to minimize key size
     //moving the insertion within equally indented blank lines is unnoticable
     for (let end = row ;; ++end) {
-      if (end >= this.getRowCount()) {
+      if (end >= this.rowCount) {
         //end of script found, append a line instead
-        if (indentation === 0) {
+        if (indent === 0) {
           //don't allow trailing whitespace
           return -1;
         }
@@ -684,10 +679,10 @@ class Script {
         break;
       }
       
-      if (this.getIndentation(end) !== indentation || this.getItemCount(end) !== 0) {
+      if (this.getIndent(end) !== indent || this.getItemCount(end) !== 0) {
         let begin = row;
         while (begin > 0
-          && this.getIndentation(begin - 1) === indentation
+          && this.getIndent(begin - 1) === indent
           && this.getItemCount(begin - 1) === 0) {
           --begin;
         }
@@ -713,7 +708,7 @@ class Script {
     const line = {
       items: [],
       key: key.buffer,
-      indentation
+      indent
     };
     this.lines.splice(row, 0, line);
     this.saveRows([line]);
@@ -721,24 +716,24 @@ class Script {
   }
 
   deleteRow(row, keepRow = false) {
-    if (row >= this.getRowCount()) {
+    if (row >= this.rowCount) {
       return 1;
     }
 
-    const indentation = this.getIndentation(row);
+    const indent = this.getIndent(row);
     let r = row;
     do {
       ++r;
-    } while (r < this.getRowCount() && this.getIndentation(r) > indentation);
+    } while (r < this.rowCount && this.getIndent(r) > indent);
     let count = r - row;
 
     //manage orphaned else and else if structures
     if (this.getItem(row, 0) === this.BuiltIns.IF
     || this.getItem(row, 1) === this.BuiltIns.IF) {
-      while (r < this.getRowCount() && !this.isStartingScope(r)) {
+      while (r < this.rowCount && !this.isStartingScope(r)) {
         ++r;
       }
-      if (r < this.getRowCount()) {
+      if (r < this.rowCount) {
         if (this.getItem(row, 0) === this.BuiltIns.IF) {
           if (this.getItem(r, 1) === this.BuiltIns.IF) {
             this.spliceRow(r, 0, 1);
@@ -752,8 +747,8 @@ class Script {
 
     //trim whitespace off the bottom of the script
     let startRow = row;
-    if (row + count === this.getRowCount()) {
-      while (startRow > 0 && this.getIndentation(startRow - 1) === 0 && this.getItemCount(startRow - 1) === 0) {
+    if (row + count === this.rowCount) {
+      while (startRow > 0 && this.getIndent(startRow - 1) === 0 && this.getItemCount(startRow - 1) === 0) {
         --startRow;
       }
       count = r - startRow;
@@ -761,7 +756,7 @@ class Script {
 
     //Pressing backspace on a scope starter clears the line and its body, but keeps
     //the line itself.  If it is at the end of the script, it is trimmed as whitespace.
-    if ((indentation > 0 || startRow + count !== this.getRowCount()) && keepRow) {
+    if ((indent > 0 || startRow + count !== this.rowCount) && keepRow) {
       this.spliceRow(startRow, 0, this.getItemCount(startRow));
       ++startRow;
       --count;
@@ -784,7 +779,7 @@ class Script {
 
     let selCol = col;
     if (col === -1) {
-      if (row < this.getRowCount()) {
+      if (row < this.rowCount) {
         selCol = this.getItemCount(row);
         col = selCol - 1;
       } else {
@@ -801,10 +796,10 @@ class Script {
       && (this.getItem(row, col + 1) || {}).isAssignment )
       || this.getItemCount(row) === 2)
     {
-      const oldRowCount = this.getRowCount();
+      const oldRowCount = this.rowCount;
       this.deleteRow(row, true);
 
-      return this.getRowCount() === oldRowCount ? {rowUpdated: true, selectedCol: 0x7FFFFF} : {scriptChanged: true};
+      return this.rowCount === oldRowCount ? {rowUpdated: true, selectedCol: 0x7FFFFF} : {scriptChanged: true};
     }
 
     if (item.isUnary
@@ -843,7 +838,7 @@ class Script {
 
       //assumes any selection that reaches the first item spans the whole line
       if (start === 0) {
-        if (this.getIndentation(row) === 0 && row + 1 === this.getRowCount()) {
+        if (this.getIndent(row) === 0 && row + 1 === this.rowCount) {
           return {rowDeleted: true};
         } else {
           this.spliceRow(row, start, end - start + 1);
@@ -905,8 +900,8 @@ class Script {
         if (line.items.length > 0) {
           serialized.items = line.items.map(item => item.serialize());
         }
-        if (line.indentation) {
-          serialized.indent = line.indentation;
+        if (line.indent) {
+          serialized.indent = line.indent;
         }
         this.put(serialized);
       }
@@ -966,12 +961,12 @@ class Script {
   getVisibleVars(row, requiresMutable, action, ...args) {
     const options = [];
 
-    let indentation = this.getIndentation(row);
+    let indent = this.getIndent(row);
 
-    for (let r = Math.min(this.getRowCount(), row) - 1; r >= 0; --r) {
-      const lineIndentation = this.getIndentation(r);
-      if (lineIndentation + this.isStartingScope(r) <= indentation) {
-        indentation = lineIndentation;
+    for (let r = Math.min(this.rowCount, row) - 1; r >= 0; --r) {
+      const lineIndent = this.getIndent(r);
+      if (lineIndent + this.isStartingScope(r) <= indent) {
+        indent = lineIndent;
         if (!requiresMutable || this.getItem(r, 0) === this.BuiltIns.VAR) {
           for (const item of this.lines[r].items.filter(item => item.constructor === VarDef)) {
             options.push({text: item.name, style: "vardef", action, args: [...args, item]});
@@ -1007,7 +1002,7 @@ class Script {
     return options;
   }
 
-  getRowCount() {
+  get rowCount() {
     return this.lines.length;
   }
 
@@ -1034,8 +1029,8 @@ class Script {
     this.saveRows([this.lines[row]]);
   }
 
-  getIndentation(row) {
-    return row < this.lines.length ? this.lines[row].indentation : 0;
+  getIndent(row) {
+    return row < this.lines.length ? this.lines[row].indent : 0;
   }
 
   isStartingScope(row) {
@@ -1336,12 +1331,12 @@ class Script {
     initialData.push(...Wasm.stringToLenPrefixedUTF8("-"));     //address 6
     initialData.push(...Wasm.stringToLenPrefixedUTF8("true"));  //address 8
 
-    for (let row = 0, endRow = this.getRowCount(); row < endRow; ++row) {
+    for (let row = 0, endRow = this.rowCount; row < endRow; ++row) {
       lvalueType = this.types.builtins.void;
       lvalueLocalIndex = -1;
       
       if (row > 0) {
-        let scopeDrop = this.getIndentation(row - 1) - this.getIndentation(row);
+        let scopeDrop = this.getIndent(row - 1) - this.getIndent(row);
         if (this.getItem(row, 1) === this.BuiltIns.ELSE) {
           --scopeDrop;
         }
