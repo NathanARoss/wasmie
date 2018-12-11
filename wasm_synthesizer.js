@@ -188,7 +188,7 @@ class OpcodeData {
 Wasm.opcodeData = [
   new OpcodeData("unreachable"),
   new OpcodeData("nop"),
-  new OpcodeData("block", Wasm.decodeVaruint), //unsure about the immediate value for branch instructuibs
+  new OpcodeData("block", Wasm.decodeVaruint), //unsure about the immediate value for branch instructions
   new OpcodeData("loop", Wasm.decodeVaruint),
   new OpcodeData("if", Wasm.decodeVaruint),
   new OpcodeData("else"),

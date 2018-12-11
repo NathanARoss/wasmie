@@ -45,33 +45,46 @@ function testKeyFuncs() {
     }
   }
 
-  function getInt() {
-    return new Promise((resolve) => {
-      input.onsubmit = function(event) {
-        print(event.target.value + "\n")
-        const int = event.target.value|0;
-        event.target.value = "";
-        resolve(int);
-      }
-    });
-  }
+  // function getInt() {
+  //   return new Promise(resolve => {
+  //     input.onsubmit = function(event) {
+  //       print(event.target.value + "\n")
+  //       const int = event.target.value|0;
+  //       event.target.value = "";
+  //       resolve(int);
+  //     }
+  //   });
+  // }
+
+  // print("Enter four numbers:\n");
+  // const num1 = await getInt();
+  // const num2 = await getInt();
+  // const num3 = await getInt();
+  // const num4 = await getInt();
+  // const sum = num1 + num2 + num3 + num4;
+  // print("The sum is " + sum + "\n");
+
+  // while (true) {
+  //   print("You are awesome!\n");
+  //   await sleep(1000);
+  // }
 
   function sleep(milliseconds) {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       setTimeout(resolve, milliseconds);
     });
   }
 
-  print("Enter four numbers:\n");
-  const num1 = await getInt();
-  const num2 = await getInt();
-  const num3 = await getInt();
-  const num4 = await getInt();
-  const sum = num1 + num2 + num3 + num4;
-  print("The sum is " + sum + "\n");
-
-  while (true) {
-    print("You are awesome!\n");
-    await sleep(1000);
+  async function sleepyFibb(n) {
+      await sleep(10);
+  
+      if (n <= 1) {
+        return (1);
+      } else {
+        return (await sleepyFibb(n - 1) + await sleepyFibb(n - 2));
+      }
   }
+
+  const fib = await sleepyFibb(10);
+  print("10th fib number is " + fib + "\n")
 })();
