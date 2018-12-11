@@ -1,0 +1,19 @@
+func main() {
+    var input = 0
+
+    do while input != 0 {
+        input = System.inputInt(0, int.max)
+        let patience = testPatience(input)
+        println("Your patience is", patience)
+    }
+}
+
+func testPatience(x: int) -> int {
+    sleep(x)
+    
+    if (x > 0) {
+        return testPatience(x - 1)
+    }
+
+    return 0
+}

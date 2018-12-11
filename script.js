@@ -1234,6 +1234,114 @@ class Script {
     //   Wasm.externalKind.Function, //export type
     //   ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
     // ];
+
+    class InternalNumericLiteral {
+      constructor(rawString) {
+        this.value = +rawString;
+        this.isFloat = /[\.e]/i.test(rawString);
+      }
+      
+      performUnaryOp(unaryOp) {
+        switch (unaryOp) {
+        case "!":
+          this.value = ~this.value;
+          break;
+        case "-":
+          this.value = -this.value;
+          break;
+        default:
+          throw "unrecognized unary operator " + unaryOp;
+        }
+      }
+      
+      performBinaryOp(binOp, operand) {
+        switch (binOp) {
+          case "+":
+            this.value += operand.value;
+            break;
+          case "-":
+            this.value -= operand.value;
+            break;
+          case "*":
+            this.value *= operand.value;
+            break;
+          case "/":
+            this.value /= operand.value;
+            break;
+          case "%":
+            this.value %= operand.value;
+            break;
+          case "|":
+            this.value |= operand.value;
+            break;
+          case "^":
+            this.value ^= operand.value;
+            break;
+          case "&":
+            this.value &= operand.value;
+            break;
+          case "<<":
+            this.value <<= operand.value;
+            break;
+          case ">>":
+            this.value >>= operand.value;
+            break;
+          default:
+            throw "unrecognized binary operator: " + binOp;
+        }
+        
+        this.isFloat = this.isFloat || operand.hasDecimalPoint;
+        if (!this.isFloat) {
+          this.value = Math.trunc(this.value);
+        }
+      }
+      
+      getWasmCode(expectedType) {
+        const outputType = this.getType(expectedType);
+        switch (outputType) {
+          case script.BuiltIns.I32:
+          case script.BuiltIns.U32:
+          case script.BuiltIns.BOOL:
+            return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
+          case script.BuiltIns.I64:
+          case script.BuiltIns.U64:
+            return [Wasm.opcodes.i64_const, ...Wasm.varint(this.value)];
+          case script.BuiltIns.F32:
+            return [Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(this.value)];
+          case script.BuiltIns.F64:
+            return [Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(this.value)];
+          default:
+            console.trace();
+            throw "unrecognized type for numeric literal: " + parent.types.get(expectedType).name;
+        }
+      }
+
+      getType(expectedType = script.BuiltIns.ANY) {
+        if (expectedType !== script.BuiltIns.ANY) {
+          return expectedType;
+        }
+
+        if (this.isFloat) {
+          return script.BuiltIns.F32;
+        } else {
+          return script.BuiltIns.I32;
+        }
+      }
+    }
+    
+    class InternalStringLiteral {
+      constructor(address) {
+        this.address = address;
+      }
+      
+      getType() {
+        return script.BuiltIns.STRING;
+      }
+      
+      getWasmCode() {
+        return [Wasm.opcodes.i32_const, ...Wasm.varint(this.address)];
+      }
+    }
     
     class LocalVarReference {
       constructor(index, variable) {
@@ -1269,10 +1377,10 @@ class Script {
       const operators = [];
       const operands = [];
 
-      expression.push(new TSSymbol("term", -1000, {isFoldable: false})); //terminate expression
+      expression.push(new Symbol("term", -1000, {isFoldable: false})); //terminate expression
       for (let i = 0; i < expression.length; ++i) {
         const item = expression[i];
-        if (item.constructor === TSSymbol) {
+        if (item.constructor === Symbol) {
           if (!item.direction === 1) {
             //check if the previous operators have a higher precedence than the one that is about to be pushed
             while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
@@ -1332,7 +1440,7 @@ class Script {
     initialData.push(...Wasm.stringToLenPrefixedUTF8("true"));  //address 8
 
     for (let row = 0, endRow = this.rowCount; row < endRow; ++row) {
-      lvalueType = this.types.builtins.void;
+      lvalueType = this.BuiltIns.VOID;
       lvalueLocalIndex = -1;
       
       if (row > 0) {
@@ -1349,15 +1457,14 @@ class Script {
 
       for (let col = 1, endCol = this.getItemCount(row); col < endCol; ++col) {
         const item = this.getItem(row, col);
-        const {format, meta, value} = Script.getItemData(item);
 
-        switch (format) {
-          case Script.VARIABLE_DEFINITION: {
+        switch (item.constructor) {
+          case VarDef: {
             expression.push(new LocalVarReference(localVarMapping.length, this.vars.get(value)));
             localVarMapping.push({id: value, type: meta});
           } break;
           
-          case Script.VARIABLE_REFERENCE: {
+          case VarRef: {
             const localIndex = localVarMapping.findIndex(localVar => localVar.id === value);
             if (localIndex === -1) {
               throw "var" + value + " is referenced before it is declared";
@@ -1366,38 +1473,38 @@ class Script {
             expression.push(new LocalVarReference(localIndex, localVarMapping[localIndex]));
           } break;
           
-          case Script.FUNCTION_REFERENCE:
+          case FuncRef:
             functionsBeingCalled.push(value);
             break;
 
-          case Script.ARGUMENT_HINT: {
+          case ArgHint: {
             const param = this.funcs.get(value).parameters[meta];
             if (param.type === this.types.builtins.string || param.type === this.types.builtins.Any) {
-              expression.push(new StringLiteral(initialData.length));
+              expression.push(new InternalStringLiteral(initialData.length));
               initialData.push(...Wasm.stringToLenPrefixedUTF8(param.default));
             } else {
-              expression.push(new NumericLiteral(param.default));
+              expression.push(new InternalNumericLiteral(param.default));
             }
           } break;
 
-          case Script.SYMBOL: {
+          case Symbol: {
             const funcId = functionsBeingCalled[functionsBeingCalled.length - 1];
             
-            if (this.ASSIGNMENT_OPERATORS.includes(item)) {
+            if (item.isAssignment) {
               const localVar = expression.pop();
               lvalueType = localVar.getType();
               lvalueLocalIndex = localVar.index;
               
               if (item !== this.BuiltIns.ASSIGN) {
                 initFunction.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
-                const {wasmCode, resultType} = this.symbols[value].uses.get(lvalueType);
+                const {wasmCode, resultType} = item.uses.get(lvalueType);
                 endOfLineInstructions.push(...wasmCode);
               }
               
               endOfLineInstructions.push(Wasm.opcodes.set_local, localVar.index);
             }
 
-            let expressionType = this.types.builtins.void;
+            let expressionType = this.BuiltIns.VOID;
             let wasmCode = [];
             if (item === this.BuiltIns.COMMA || item === this.BuiltIns.END_ARGUMENTS) {
               //find argument type
@@ -1447,7 +1554,7 @@ class Script {
               if (overloadedFunc.importedFuncIndex !== undefined) {
                 initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
               }
-              if (overloadedFunc.returnType !== this.types.builtins.void) {
+              if (overloadedFunc.returnType !== this.BuiltIns.VOID) {
                 expression.push(new Placeholder(overloadedFunc.returnType)); //TODO place wasm code of function call as 2nd argument
               }
             } else {
@@ -1458,12 +1565,12 @@ class Script {
               functionsBeingCalled.pop()
             }
             
-            if (![this.BuiltIns.COMMA, this.BuiltIns.START_ARGUMENTS, this.BuiltIns.END_ARGUMENTS].includes(item) && !this.ASSIGNMENT_OPERATORS.includes(item)) {
-              expression.push(this.symbols[value]);
+            if (![this.BuiltIns.COMMA, this.BuiltIns.START_ARGUMENTS, this.BuiltIns.END_ARGUMENTS].includes(item) && !item.isAssignment) {
+              expression.push(item);
             }
           } break;
           
-          case Script.KEYWORD: {
+          case Keyword: {
             switch (item) {
               case this.BuiltIns.IF: {
                 lvalueType = this.types.bool;
@@ -1559,18 +1666,20 @@ class Script {
             }
           } break;
 
-          case Script.LITERAL:
-            if (meta === 0) { //bool
-              expression.push(new Placeholder(this.types.builtins.bool, Wasm.opcodes.i32_const, this.literals.mask - value));
-            } else if (meta === 1) { //string
-              expression.push(new StringLiteral(initialData.length));
+          case BooleanLiteral:
+            expression.push(new Placeholder(this.BuiltIns.BOOL, Wasm.opcodes.i32_const, item.value|0));
+          break;
+          
+          case StringLiteral:
+            expression.push(new InternalStringLiteral(initialData.length));
 
-              const stringLiteral = this.literals.get(value).replace(/\\n/g, "\n");
-              initialData.push(...Wasm.stringToLenPrefixedUTF8(stringLiteral));
-            } else if (meta === 2) { //number
-              const literal = this.literals.get(value);
-              expression.push(new NumericLiteral(literal));
-            } break;
+            const stringLiteral = item.text.replace(/\\n/g, "\n");
+            initialData.push(...Wasm.stringToLenPrefixedUTF8(stringLiteral));
+          break;
+
+          case NumericLiteral:
+            expression.push(new InternalNumericLiteral(item.text));
+          break;
         }
       }
 
@@ -1588,7 +1697,7 @@ class Script {
             insertPrecondition(wasmCode)
 
             //if the step size is not specified, use the numeric literal "1"
-            const constStep = (new NumericLiteral("1")).getWasmCode(lvalueType);
+            const constStep = (new InternalNumericLiteral("1")).getWasmCode(lvalueType);
 
             endOfScopeData.push({wasmCode: [
               Wasm.opcodes.get_local, lvalueLocalIndex,
@@ -1628,19 +1737,19 @@ class Script {
     for (let local of localVarMapping) {
       let type = 0;
       switch (local.type) {
-        case this.types.builtins.i32:
-        case this.types.builtins.u32:
-        case this.types.builtins.bool:
+        case this.BuiltIns.I32:
+        case this.BuiltIns.U32:
+        case this.BuiltIns.BOOL:
           type = Wasm.types.i32;
           break;
-        case this.types.builtins.i64:
-        case this.types.builtins.u64:
+        case this.BuiltIns.I64:
+        case this.BuiltIns.U64:
           type = Wasm.types.i64;
           break;
-        case this.types.builtins.f32:
+        case this.BuiltIns.F32:
           type = Wasm.types.f32;
           break;
-        case this.types.builtins.f64:
+        case this.BuiltIns.F64:
           type = Wasm.types.f64;
           break;
         default:

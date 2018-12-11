@@ -87,4 +87,4 @@ function testKeyFuncs() {
 
   const fib = await sleepyFibb(10);
   print("10th fib number is " + fib + "\n")
-})();
+})

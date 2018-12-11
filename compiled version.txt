@@ -1,0 +1,47 @@
+var state = 0
+var stack = new int[1024]
+var stackPtr = 0
+
+func main() {
+    while true {
+        switch state {
+            case 0:
+                stack[stackPtr] = 0
+
+            case 1:
+                //read user input directly into main memory
+                //I am using a pointer as an argument
+                requestInputInt(& stack[stackPtr], 0, int.max)
+                state = 2
+                return
+            
+            case 2:
+                //stack[stackPtr] now contains the input
+                requestTimeout(stack[stackPtr])
+                stack[stackPtr + 1] = stack[stackPtr]
+                state = 3
+                return
+            
+            case 3:
+                if stack[stackPtr + 1] > 0 {
+                    stack[stackPtr + 1]--
+                    state = 2
+                } else {
+                    stack[stackPtr + 1] = 0
+                    state = 4
+                }
+                break
+            
+            case 4:
+                println("Your patience is", stack[stackPtr + 1])
+
+                if (stack[stackPtr] != 0) {
+                    state = 1
+                    break
+                } else {
+                    state = 0
+                    return
+                }
+        }
+    }
+}
