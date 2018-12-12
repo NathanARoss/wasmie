@@ -95,7 +95,7 @@ class PredefinedFunc {
   }
 }
 
-class MacroFunc {
+class Macro {
   constructor(signature, ...wasmCode) {
     this.signature = signature;
     this.wasmCode = wasmCode;
@@ -313,12 +313,12 @@ function BuiltIns() {
   ];
 
   this.PRINT = new ImportedFunc(
-    new FuncSig(this.SYSTEM, "print", this.VOID, [this.ANY, "item"]),
+    new FuncSig(this.SYSTEM, "print", this.VOID, [this.STRING, "item"]),
     "System", "print"
   );
 
-  const PRINT_U64 = new PredefinedFunc(
-    new FuncSig(this.SYSTEM, "print", this.VOID, [this.U64, "item"]),
+  const U64_TO_STRING = new PredefinedFunc(
+    new FuncSig(this.U64, "toString", this.STRING, [this.U64, "item"]),
     1, 1, Wasm.types.i32,
     Wasm.get_global, 0, //address = top of stack + 20
     Wasm.i32_const, 20,
@@ -361,13 +361,12 @@ function BuiltIns() {
 
     Wasm.i32_store8, 0, 0, //store length of string at address
     
-    Wasm.get_local, 1, //print string we just created
-    this.PRINT,
+    Wasm.get_local, 1, //return the address of the first byte
     Wasm.end,
   );
 
   const PRINT_I64 = new PredefinedFunc(
-    new FuncSig(this.SYSTEM, "print", this.VOID, [this.I64, "item"]),
+    new FuncSig(this.I64, "toString", this.STRING, [this.I64, "item"]),
     0,
     Wasm.get_local, 0,
     Wasm.i64_const, 0,
@@ -381,127 +380,130 @@ function BuiltIns() {
     Wasm.else,
       Wasm.get_local, 0,
     Wasm.end,
-    PRINT_U64,
+    U64_TO_STRING,
     Wasm.end,
   );
 
   this.FUNCTIONS = [
     this.PRINT,
-    new ImportedFunc(
-      new FuncSig(this.SYSTEM, "print", this.VOID, [this.F32, "item"]),
-      "System", "printNum"
-    ),
-    new ImportedFunc(
-      new FuncSig(this.SYSTEM, "print", this.VOID, [this.F64, "item"]),
-      "System", "printNum"
-    ),
-    PRINT_U64,
-    PRINT_I64,
-    new MacroFunc(
-      new FuncSig(this.SYSTEM, "print", this.VOID, [this.U32, "item"]),
-      Wasm.i64_extend_u_from_i32,
-      PRINT_U64,
-    ),
-    new MacroFunc(
-      new FuncSig(this.SYSTEM, "print", this.VOID, [this.I32, "item"]),
-      Wasm.i64_extend_s_from_i32,
-      PRINT_I64,
-    ),
-    new MacroFunc(
-      new FuncSig(this.SYSTEM, "print", this.VOID, [this.BOOL, "item"]),
+    new Macro(
+      new FuncSig(this.BOOL, "toString", this.STRING, [this.BOOL, "item"]),
       Wasm.i32_const, 8,
       Wasm.i32_shl,
-      this.PRINT,
+    ),
+    new PredefinedFunc(
+      new FuncSig(this.I64, "toString", this.STRING, [this.I64, "item"]),
+      //TODO
+    ), 
+    new PredefinedFunc(
+      new FuncSig(this.U64, "toString", this.STRING, [this.U64, "item"]),
+      //TODO
+    ), 
+    new PredefinedFunc(
+      new FuncSig(this.F64, "toString", this.STRING, [this.F64, "item"]),
+      //TODO
+    ), 
+    new ImportedFunc(
+      new FuncSig(this.SYSTEM, "input", this.BOOL),
+      "System", "inputBool" //TODO
+    ),
+    new ImportedFunc(
+      new FuncSig(this.SYSTEM, "input", this.I32),
+      "System", "inputI32" //TODO
+    ),
+    new ImportedFunc(
+      new FuncSig(this.SYSTEM, "input", this.U32),
+      "System", "inputU32" //TODO
     ),
     new ImportedFunc(
       new FuncSig(this.SYSTEM, "input", this.F64, [this.F64, "default", 0], [this.F64, "min", -Infinity], [this.F64, "max", Infinity]),
       "System", "input"
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "rotateLeft", this.I32, [this.I32, "num"], [this.I32, "count"]),
       Wasm.i32_rotl
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "rotateLeft", this.I64, [this.I64, "num"], [this.I64, "count"]),
       Wasm.i64_rotl
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "rotateRight", this.I32, [this.I32, "num"], [this.I32, "count"]),
       Wasm.i32_rotr
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "rotateRight", this.I64, [this.I64, "num"], [this.I64, "count"]),
       Wasm.i64_rotr
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "abs", this.F32, [this.F32, "num"]),
       Wasm.f32_abs
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "abs", this.F64, [this.F64, "num"]),
       Wasm.f64_abs
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "ceil", this.F32, [this.F32, "num"]),
       Wasm.f32_ceil
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "ceil", this.F64, [this.F64, "num"]),
       Wasm.f64_ceil
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "floor", this.F32, [this.F32, "num"]),
       Wasm.f32_floor
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "floor", this.F64, [this.F64, "num"]),
       Wasm.f64_floor
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "trunc", this.F32, [this.F32, "num"]),
       Wasm.f32_trunc
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "trunc", this.F64, [this.F64, "num"]),
       Wasm.f64_trunc
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "nearest", this.F32, [this.F32, "num"]),
       Wasm.f32_nearest
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "nearest", this.F64, [this.F64, "num"]),
       Wasm.f64_nearest
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "sqrt", this.F32, [this.F32, "num"]),
       Wasm.f32_sqrt
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "sqrt", this.F64, [this.F64, "num"]),
       Wasm.f64_sqrt
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "min", this.F32, [this.F32, "num1"], [this.F32, "num2"]),
       Wasm.f32_min
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "min", this.F64, [this.F64, "num1"], [this.F64, "num2"]),
       Wasm.f64_min
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "max", this.F32, [this.F32, "num1"], [this.F32, "num2"]),
       Wasm.f32_max
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "max", this.F64, [this.F64, "num1"], [this.F64, "num2"]),
       Wasm.f64_max
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "copysign", this.F32, [this.F32, "magNum", 1], [this.F32, "signNum"]),
       Wasm.f32_copysign
     ),
-    new MacroFunc(
+    new Macro(
       new FuncSig(this.MATH, "copysign", this.F64, [this.F64, "magNum", 1], [this.F64, "signNum"]),
       Wasm.f64_copysign
     ),

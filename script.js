@@ -822,7 +822,7 @@ class Script {
       } else if (prevItem.isUnary) {
         this.spliceRow(row, col - 1, 1);
         return {rowUpdated: true, selectedCol: selCol - 1};
-      } else if (prevItem === this.BuiltIns.COMMA) {
+      } else if (prevItem === this.BuiltIns.ARG_SEPARATOR) {
         this.spliceRow(row, col - 1, 2);
         return {rowUpdated: true, selectedCol: selCol - 1};
       }
@@ -849,8 +849,8 @@ class Script {
 
         const nextItem = this.getItem(row, end + 1);
         const prevItem = this.getItem(row, start - 1);
-        if ((nextItem === this.BuiltIns.COMMA || nextItem === this.BuiltIns.END_ARGS)
-        && (prevItem === this.BuiltIns.COMMA || prevItem === this.BuiltIns.BEGIN_ARGS)) {
+        if ((nextItem === this.BuiltIns.ARG_SEPARATOR || nextItem === this.BuiltIns.END_ARGS)
+        && (prevItem === this.BuiltIns.ARG_SEPARATOR || prevItem === this.BuiltIns.BEGIN_ARGS)) {
           for (let c = start - 1; c > 0; --c) {
             const item = this.getItem(row, c);
             if (item.constructor === FuncRef) {
@@ -858,7 +858,7 @@ class Script {
               break;
             }
 
-            if (this.getItem(row, c) === this.BuiltIns.COMMA) {
+            if (this.getItem(row, c) === this.BuiltIns.ARG_SEPARATOR) {
               ++paramIndex;
             }
           }
@@ -871,7 +871,7 @@ class Script {
               this.spliceRow(row, col - 1, 2);
               return {rowUpdated: true, selectedCol: selCol - 2};
             }
-            if (paramIndex === 0 && this.getItem(row, col + 1) === this.BuiltIns.COMMA) {
+            if (paramIndex === 0 && this.getItem(row, col + 1) === this.BuiltIns.ARG_SEPARATOR) {
               this.spliceRow(row, col, 2);
               return {rowUpdated: true};
             }
@@ -1115,6 +1115,7 @@ class Script {
       switch (type) {
         case script.BuiltIns.I32:
         case script.BuiltIns.U32:
+        case script.BuiltIns.STRING:
         case script.BuiltIns.BOOL:
           return Wasm.types.i32;
 
@@ -1200,13 +1201,13 @@ class Script {
         const outputType = this.getType(expectedType);
         switch (getWasmType(outputType)) {
           case Wasm.types.i32:
-            return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
+            return [Wasm.i32_const, ...Wasm.varint(this.value)];
           case Wasm.types.i64:
-            return [Wasm.opcodes.i64_const, ...Wasm.varint(this.value)];
+            return [Wasm.i64_const, ...Wasm.varint(this.value)];
           case Wasm.types.f32:
-            return [Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(this.value)];
+            return [Wasm.f32_const, ...Wasm.f32ToBytes(this.value)];
           case Wasm.types.f64:
-            return [Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(this.value)];
+            return [Wasm.f64_const, ...Wasm.f64ToBytes(this.value)];
         }
       }
 
@@ -1233,7 +1234,7 @@ class Script {
       }
       
       getWasmCode() {
-        return [Wasm.opcodes.i32_const, ...Wasm.varint(this.address)];
+        return [Wasm.i32_const, ...Wasm.varint(this.address)];
       }
     }
     
@@ -1248,7 +1249,7 @@ class Script {
       }
       
       getWasmCode() {
-        return [Wasm.opcodes.get_local, ...Wasm.varuint(this.index)];
+        return [Wasm.get_local, ...Wasm.varuint(this.index)];
       }
     }
     
@@ -1320,14 +1321,26 @@ class Script {
     }
 
     //keep track of which functions are used in this program
-    const importedFuncs = new Set();
-    const wasmFunctions = new Set();
+    const importedFuncs = [];
+
+    //scan ahead for imported functions because they are listed first
+    for (const line of this.lines) {
+      for (const item of line.items) {
+        if (item.constructor === FuncRef && item.funcDef.constructor === ImportedFunc) {
+          if (!importedFuncs.includes(item.funcDef)) {
+            importedFuncs.push(item.funcDef);
+          }
+        }
+      }
+    }
+
+    const wasmFuncs = [];
 
     let mainFunc = [];
 
     const callStack = [];
     const expression = [];
-    const localVarMapping = []; //maps local var indexes to TouchScript varIDs
+    const localVarMapping = []; //maps local var indexes to TouchScript vars
     let lvalueType, lvalueLocalIndex;
     const endOfLineInstructions = [];
     const endOfScopeData = [];
@@ -1349,7 +1362,7 @@ class Script {
         for (let i = 0; i < scopeDrop; ++i) {
           const scopeData = endOfScopeData.pop();
           mainFunc.push(...scopeData.wasmCode);
-          mainFunc.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
+          mainFunc.push(...Array(scopeData.blockCount).fill(Wasm.end));
         }
       }
 
@@ -1388,7 +1401,7 @@ class Script {
           } break;
 
           case Symbol: {
-            const funcId = callStack[callStack.length - 1];
+            const func = callStack[callStack.length - 1];
             
             if (item.isAssignment) {
               const localVar = expression.pop();
@@ -1396,37 +1409,36 @@ class Script {
               lvalueLocalIndex = localVar.index;
               
               if (item !== this.BuiltIns.ASSIGN) {
-                mainFunc.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
+                mainFunc.push(Wasm.get_local, ...Wasm.varint(localVar.index));
                 const {wasmCode, resultType} = item.uses.get(lvalueType);
                 endOfLineInstructions.push(...wasmCode);
               }
               
-              endOfLineInstructions.push(Wasm.opcodes.set_local, localVar.index);
+              endOfLineInstructions.push(Wasm.set_local, localVar.index);
             }
 
             let expressionType = this.BuiltIns.VOID;
             let wasmCode = [];
-            if (item === this.BuiltIns.COMMA || item === this.BuiltIns.END_ARGUMENTS) {
+            if (item === this.BuiltIns.ARG_SEPARATOR || item === this.BuiltIns.END_ARGS) {
               //find argument type
               let expectedType = this.BuiltIns.ANY;
               let funcCallDepth = 0;
               let argumentIndex = 0;
               for (let j = col - 1; j > 0; --j) {
                 const item = this.getItem(row, j);
-                if (item === this.BuiltIns.END_ARGUMENTS) {
+                if (item === this.BuiltIns.END_ARGS) {
                   ++funcCallDepth;
                 }
-                if (item === this.BuiltIns.COMMA && funcCallDepth === 0) {
+                if (item === this.BuiltIns.ARG_SEPARATOR && funcCallDepth === 0) {
                   ++argumentIndex;
                 }
                 if (item === this.BuiltIns.START_ARGUMENTS) {
                   if (funcCallDepth === 0) {
-                    const funcId = this.getData(row, j - 1).value;
-                    const func = this.funcs.get(funcId);
-                    if (funcId === this.BuiltIns.PRINT) {
+                    const func = this.getItem(row, j - 1);
+                    if (func === this.BuiltIns.PRINT) {
                       argumentIndex = 0;
                     }
-                    const argumentType = func.parameters[argumentIndex].type;
+                    const argumentType = func.signature.parameters[argumentIndex].type;
                     //console.log(expression, "is argument ", argumentIndex, "to ", func.name, "argument type is", this.types.get(argumentType).name);
                     expectedType = argumentType;
                     break;
@@ -1440,38 +1452,45 @@ class Script {
               expression.length = 0;
             }
 
+            mainFunc.push(...wasmCode);
+
             //print() takes an arbitrary count of Any arguments and overloads for each argument in order
-            if (item === this.BuiltIns.END_ARGUMENTS || item === this.BuiltIns.COMMA && funcId == this.BuiltIns.PRINT) {
+            if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR && func == this.BuiltIns.PRINT) {
               const overload = this.BuiltIns.FUNCTIONS.find(func => {
                 return func.signature.name === "print"
                       && func.signature.scope === this.BuiltIns.SYSTEM
                       && func.signature.parameters[0].type === expressionType;
               })
-              console.log(overload);
               
               if (overload === undefined) {
-                throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
+                throw `implementation of ${func.name}(${expressionType.text}) not found`;
               }
-              const overloadedFunc = this.funcs.get(overload);
-              mainFunc.push(...wasmCode);
-              if (overloadedFunc.afterArguments !== undefined) {
-                mainFunc.push(...overloadedFunc.afterArguments);
-              }
-              if (overloadedFunc.importedFuncIndex !== undefined) {
-                mainFunc.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
-              }
-              if (overloadedFunc.returnType !== this.BuiltIns.VOID) {
-                expression.push(new Placeholder(overloadedFunc.returnType)); //TODO place wasm code of function call as 2nd argument
-              }
-            } else {
-              mainFunc.push(...wasmCode);
-            }
 
-            if (item === this.BuiltIns.END_ARGUMENTS) {
+              if (overload.wasmCode !== undefined) {
+                mainFunc.push(...overload.wasmCode);
+              }
+              if (overload.constructor === PredefinedFunc) {
+                let index = wasmFuncs.indexOf(overload);
+                if (index === -1) {
+                  index = wasmFuncs.length;
+                  wasmFuncs.push(overload);
+                }
+                mainFunc.push(Wasm.call, index);
+              }
+              if (overload.constructor === ImportedFunc) {
+                const index = importedFuncs.indexOf(overload);
+                mainFunc.push(Wasm.call, index);
+              }
+              if (overload.signature.returnType !== this.BuiltIns.VOID) {
+                expression.push(new Placeholder(overload.signature.returnType)); //TODO place wasm code of function call as 2nd argument
+              }
+            } 
+
+            if (item === this.BuiltIns.END_ARGS) {
               callStack.pop()
             }
             
-            if (![this.BuiltIns.COMMA, this.BuiltIns.START_ARGUMENTS, this.BuiltIns.END_ARGUMENTS].includes(item) && !item.isAssignment) {
+            if (![this.BuiltIns.ARG_SEPARATOR, this.BuiltIns.START_ARGUMENTS, this.BuiltIns.END_ARGS].includes(item) && !item.isAssignment) {
               expression.push(item);
             }
           } break;
@@ -1480,20 +1499,20 @@ class Script {
             switch (item) {
               case this.BuiltIns.IF: {
                 lvalueType = this.types.bool;
-                endOfLineInstructions.push(Wasm.opcodes.if, Wasm.types.void);
+                endOfLineInstructions.push(Wasm.if, Wasm.types.void);
                 endOfScopeData.push({wasmCode: []});
               } break;
               case this.BuiltIns.ELSE: {
-                endOfLineInstructions.push(Wasm.opcodes.else);
+                endOfLineInstructions.push(Wasm.else);
               } break;
               case this.BuiltIns.WHILE: {
-                mainFunc.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
-                endOfLineInstructions.push(Wasm.opcodes.i32_eqz, Wasm.opcodes.br_if, 1);
-                endOfScopeData.push({wasmCode: [Wasm.opcodes.br, 0], isBranchable: true, blockCount: 2});
+                mainFunc.push(Wasm.block, Wasm.types.void, Wasm.loop, Wasm.types.void);
+                endOfLineInstructions.push(Wasm.i32_eqz, Wasm.br_if, 1);
+                endOfScopeData.push({wasmCode: [Wasm.br, 0], isBranchable: true, blockCount: 2});
               } break;
               case this.BuiltIns.DO_WHILE: {
-                mainFunc.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
-                endOfScopeData.push({wasmCode: [Wasm.opcodes.br_if, 0], isBranchable: true, blockCount: 2});
+                mainFunc.push(Wasm.block, Wasm.types.void, Wasm.loop, Wasm.types.void);
+                endOfScopeData.push({wasmCode: [Wasm.br_if, 0], isBranchable: true, blockCount: 2});
               } break;
               case this.BuiltIns.BREAK: {
                 let requestedDepth = 1;
@@ -1507,7 +1526,7 @@ class Script {
                 let depthTraveled = 1;
                 for (let i = endOfScopeData.length - 1; i >= 0; --i) {
                   if (endOfScopeData[i].isBranchable && --requestedDepth <= 0) {
-                    mainFunc.push(Wasm.opcodes.br, depthTraveled);
+                    mainFunc.push(Wasm.br, depthTraveled);
                     break;
                   }
 
@@ -1553,18 +1572,18 @@ class Script {
                 expression.length = 0;
                 const incrementOpcode = wasmCode.pop();
 
-                const lvar = this.vars.get(localVarMapping[lvalueLocalIndex]);
+                const lvar = localVarMapping[lvalueLocalIndex];
                 const stepSizeLocalIndex = localVarMapping.length;
                 localVarMapping.push({id: -1, type: lvar.type});
 
-                endOfLineInstructions.push(Wasm.opcodes.set_local, stepSizeLocalIndex);
+                endOfLineInstructions.push(Wasm.set_local, stepSizeLocalIndex);
 
                 endOfScopeData.push({wasmCode: [
-                  Wasm.opcodes.get_local, lvalueLocalIndex,
-                  Wasm.opcodes.get_local, stepSizeLocalIndex,
+                  Wasm.get_local, lvalueLocalIndex,
+                  Wasm.get_local, stepSizeLocalIndex,
                   incrementOpcode,
-                  Wasm.opcodes.set_local, lvalueLocalIndex,
-                  Wasm.opcodes.br, 0,
+                  Wasm.set_local, lvalueLocalIndex,
+                  Wasm.br, 0,
                 ], isBranchable: true, blockCount: 2});
 
                 insertPrecondition(wasmCode);
@@ -1573,7 +1592,7 @@ class Script {
           } break;
 
           case BooleanLiteral:
-            expression.push(new Placeholder(this.BuiltIns.BOOL, Wasm.opcodes.i32_const, item.value|0));
+            expression.push(new Placeholder(this.BuiltIns.BOOL, Wasm.i32_const, item.value|0));
           break;
           
           case StringLiteral:
@@ -1606,11 +1625,11 @@ class Script {
             const constStep = (new InternalNumericLiteral("1")).getWasmCode(lvalueType);
 
             endOfScopeData.push({wasmCode: [
-              Wasm.opcodes.get_local, lvalueLocalIndex,
+              Wasm.get_local, lvalueLocalIndex,
               ...constStep,
               incrementOpcode,
-              Wasm.opcodes.set_local, lvalueLocalIndex,
-              Wasm.opcodes.br, 0,
+              Wasm.set_local, lvalueLocalIndex,
+              Wasm.br, 0,
             ], isBranchable: true, blockCount: 2});
           } else {
             mainFunc.push(...wasmCode);
@@ -1618,7 +1637,7 @@ class Script {
         } else {
           mainFunc.push(...wasmCode);
           if (endOfLineInstructions.length === 0) {
-            mainFunc.push(Wasm.opcodes.drop);
+            mainFunc.push(Wasm.drop);
           }
         }
       }
@@ -1632,7 +1651,7 @@ class Script {
     while (endOfScopeData.length > 0) {
       const scopeData = endOfScopeData.pop();
       mainFunc.push(...scopeData.wasmCode);
-      mainFunc.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
+      mainFunc.push(...Array(scopeData.blockCount).fill(Wasm.end));
     }
 
     const localVarDefinition = [
@@ -1641,37 +1660,80 @@ class Script {
 
     //at the moment, I make no attempt to collapse repeating types into a single type description
     for (let local of localVarMapping) {
-      let type = 0;
-
-
+      const type = getWasmType(local.type);
       localVarDefinition.push(1, type);
     }
 
-    mainFunc = [...localVarDefinition, ...mainFunc, Wasm.opcodes.end];
+    mainFunc = [...localVarDefinition, ...mainFunc, Wasm.end];
 
     //figure out which function signatures we need to define
-    const signatures = [];
+    const signatures = [{
+      returnType: this.BuiltIns.VOID,
+      parameterTypes: [],
+    }];
 
-    for (const func of [...importedFuncs, ...wasmFunctions]) {
-      const signatures = {};
-      if (func.signature.returnType === this.BuiltIns.VOID) {
-        signatures.return = [];
-      } else {
-        signatures.return = [getWasmType(func.signature.returnType)];
+    for (const func of [...importedFuncs, ...wasmFuncs]) {
+      const signature = {
+        returnType: func.signature.returnType,
+        parameterTypes: func.signature.parameters.map(p => p.type),
+      };
+
+      if (!signatures.find(sig => {
+        if (signature.returnType !== sig.returnType) {
+          return false;
+        }
+
+        if (signature.parameterTypes.length !== sig.parameterTypes.length) {
+          return false;
+        }
+
+        for (let i = 0; i < signature.parameterTypes.length; ++i) {
+          if (signature.parameterTypes[i] !== sig.parameterTypes[i]) {
+            return false;
+          }
+        }
+
+        return true;
+      })) {
+        signatures.push(signature);
       }
-      
-      signatures.parameters = func.signature.parameters.map(p => getWasmType(p.type));
     }
-    console.log(signatures);
+
+    const getSignature = (func) => {
+      return signatures.findIndex(sig => {
+        if (func.signature.returnType !== sig.returnType) {
+          return false;
+        }
+
+        if (func.signature.parameters.length !== sig.parameterTypes.length) {
+          return false;
+        }
+
+        for (let i = 0; i < func.signature.parameters.length; ++i) {
+          if (func.signature.parameters[i].type !== sig.parameterTypes[i]) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+    }
 
 
     const typeSection = [
       ...Wasm.varuint(signatures.length), //count of type entries
     ];
     for (const signature of signatures) {
+      const wasmReturnTypes = [];
+      if (signature.returnType !== this.BuiltIns.VOID) {
+        wasmReturnTypes.push(getWasmType(signature.returnType));
+      }
+      
+      const wasmParamaterTypes = signature.parameterTypes.map(type => getWasmType(type));
+
       typeSection.push(Wasm.types.func);
-      typeSection.push(signature.parameters.length, ...signature.parameters);
-      typeSection.push(signature.return.length, ...signature.return);
+      typeSection.push(wasmParamaterTypes.length, ...wasmParamaterTypes);
+      typeSection.push(wasmReturnTypes.length, ...wasmReturnTypes);
     }
    
     let importSection = [
@@ -1689,15 +1751,13 @@ class Script {
         ...Wasm.stringToLenPrefixedUTF8(func.moduleName),
         ...Wasm.stringToLenPrefixedUTF8(func.fieldName),
         Wasm.externalKind.Function,
-        ...Wasm.varuint(signiture),
+        ...Wasm.varuint(getSignature(func)),
       );
     }
 
     let functionSection = [
-      ...Wasm.varuint(3), //count of function bodies defined later
-      ...Wasm.varuint(funcSigs.void), //type indicies (func signitures)
-      ...Wasm.varuint(funcSigs.void_i64),
-      ...Wasm.varuint(funcSigs.void_i64),
+      ...Wasm.varuint(wasmFuncs.length + 1), //count of function bodies defined later
+      ...Wasm.varuint(0), //type indicies (func signitures)
     ];
 
     // let exportSection = [
@@ -1709,20 +1769,16 @@ class Script {
     // ];
 
     let codeSection = [
-      ...Wasm.varuint(3), //count of functions to define
+      ...Wasm.varuint(wasmFuncs.length + 1), //count of functions to define
       ...Wasm.varuint(mainFunc.length),
       ...mainFunc,
-      ...Wasm.varuint(printU64.length),
-      ...printU64,
-      ...Wasm.varuint(printI64.length),
-      ...printI64,
     ];
 
     let dataSection = [
       ...Wasm.varuint(1), //1 data segment
 
       0, //memory index 0
-      Wasm.opcodes.i32_const, Wasm.varint(0), Wasm.opcodes.end, //fill memory starting at address 0
+      Wasm.i32_const, Wasm.varint(0), Wasm.end, //fill memory starting at address 0
       ...Wasm.varuint(initialData.length), //count of bytes to fill in
       ...initialData,
     ];
@@ -1730,8 +1786,8 @@ class Script {
     const globalSection = [
       ...Wasm.varuint(1),
       Wasm.types.i32, 1,
-      Wasm.opcodes.i32_const, ...Wasm.varuint(initialData.length),
-      Wasm.opcodes.end,
+      Wasm.i32_const, ...Wasm.varuint(initialData.length),
+      Wasm.end,
     ];
 
     let wasm = [
@@ -1759,8 +1815,8 @@ class Script {
       // ...exportSection,
 
       Wasm.section.Start,
-      [...Wasm.varuint(importedFuncCount)].length,
-      ...Wasm.varuint(importedFuncCount), //the start function is the first function after the imports
+      [...Wasm.varuint(importedFuncs.length)].length,
+      ...Wasm.varuint(importedFuncs.length), //the start function is the first function after the imports
   
       Wasm.section.Code,
       ...Wasm.varuint(codeSection.length),

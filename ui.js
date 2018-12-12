@@ -214,7 +214,7 @@ window.onpopstate = function(event) {
 
       const commentNode = document.createElement("span");
       commentNode.textContent = comment + "\n";
-      commentNode.className = "wasm-comment";func
+      commentNode.className = "wasm-comment";
       consoleOutput.appendChild(commentNode);
     }
 
@@ -285,7 +285,7 @@ window.onpopstate = function(event) {
 
             if (exportType === Wasm.externalKind.Memory) {
               const maxPagesSpecifiedFlag = wasm[offset];
-              printDisassembly(1, maxPagesSpecified ? "limit" : "no limit");
+              printDisassembly(1, maxPagesSpecifiedFlag ? "limit" : "no limit");
               readVaruintAndPrint("initial allocation: ", " pages");
 
               if (maxPagesSpecifiedFlag) {

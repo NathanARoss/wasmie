@@ -212,6 +212,7 @@ button {
   box-sizing: border-box;
   width: 100%;
   height: 100%;
+  margin-bottom: 30px;
 }
 #console-input {
   position: fixed;
