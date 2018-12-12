@@ -313,7 +313,7 @@ function BuiltIns() {
   ];
 
   this.PRINT = new ImportedFunc(
-    new FuncSig(this.SYSTEM, "print", this.VOID, [this.Any, "item"]),
+    new FuncSig(this.SYSTEM, "print", this.VOID, [this.ANY, "item"]),
     "System", "print"
   );
 

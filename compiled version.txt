@@ -22,8 +22,8 @@ func main() {
                 //stack[stackPtr + 1] contains user input
 
                 //prepare call to testPatience()
-                stack[stackPtr + 2] = 0
-                stack[stackPtr + 3] = stack[stackPtr + 1]
+                stack[stackPtr + 2] = 0 //clear its state
+                stack[stackPtr + 3] = stack[stackPtr + 1] //set its argument
                 stack[stackPtr] = 3
                 break;
 

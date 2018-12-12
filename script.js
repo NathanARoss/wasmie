@@ -1111,129 +1111,29 @@ class Script {
   Generates a Wasm binary from the script contents
   */
   getWasm() {
-    const types = [
-      [[], []],
-      [[], [Wasm.types.i32]],
-      [[], [Wasm.types.i64]],
-      [[], [Wasm.types.f32]],
-      [[], [Wasm.types.f64]],
-      [[Wasm.types.f64], []],
-      [[Wasm.types.f64], [Wasm.types.f64]],
-      [[Wasm.types.f64], [Wasm.types.f64, Wasm.types.f64]],
-      [[Wasm.types.f64], [Wasm.types.f64, Wasm.types.f64, Wasm.types.f64]],
-      [[Wasm.types.f32], [Wasm.types.f32]],
-      [[Wasm.types.f32], [Wasm.types.f32, Wasm.types.f32]],
-      [[Wasm.types.f32], [Wasm.types.f32, Wasm.types.f32, Wasm.types.f32]],
-    ];
-    const funcSigs = {};
+    function getWasmType(type) {
+      switch (type) {
+        case script.BuiltIns.I32:
+        case script.BuiltIns.U32:
+        case script.BuiltIns.BOOL:
+          return Wasm.types.i32;
 
-    let typeSection = [
-      ...Wasm.varuint(types.length), //count of type entries
-    ];
-    for (let i = 0; i < types.length; ++i) {
-      const [results, params] = types[i];
-      typeSection.push(Wasm.types.func);
-      typeSection.push(params.length, ...params);
-      typeSection.push(results.length, ...results);
+        case script.BuiltIns.I64:
+        case script.BuiltIns.U64:
+          return Wasm.types.i64;
 
+        case script.BuiltIns.F32:
+          return Wasm.types.f32;
 
-      let propName;
-      if (results.length === 0) {
-        propName = "void";
-      } else {
-        propName = Wasm.typeNames[results[0]];
+        case script.BuiltIns.F64:
+          return Wasm.types.f64;
+
+        default:
+          console.log(type);
+          console.trace();
+          throw "cannot find Wasm type of " + type;
       }
-
-      for (const type of params) {
-        propName += "_" + Wasm.typeNames[type];
-      }
-
-      funcSigs[propName] = i;
     }
-
-    const importedFuncNames = [
-      "System", "print", funcSigs.void_i32,
-      "System", "printNum", funcSigs.void_f32,
-      "System", "printNum", funcSigs.void_f64,
-      "System", "inputF64", funcSigs.f64_f64_f64_f64,
-      "Math", "cos", funcSigs.f32_f32,
-      "Math", "cos", funcSigs.f64_f64,
-      "Math", "sin", funcSigs.f32_f32,
-      "Math", "sin", funcSigs.f64_f64,
-      "Math", "tan", funcSigs.f32_f32,
-      "Math", "tan", funcSigs.f64_f64,
-      "Math", "acos", funcSigs.f32_f32,
-      "Math", "acos", funcSigs.f64_f64,
-      "Math", "asin", funcSigs.f32_f32,
-      "Math", "asin", funcSigs.f64_f64,
-      "Math", "atan", funcSigs.f32_f32,
-      "Math", "atan", funcSigs.f64_f64,
-      "Math", "atan2", funcSigs.f32_f32_f32,
-      "Math", "atan2", funcSigs.f64_f64_f64,
-      "Math", "cosh", funcSigs.f32_f32,
-      "Math", "cosh", funcSigs.f64_f64,
-      "Math", "sinh", funcSigs.f32_f32,
-      "Math", "sinh", funcSigs.f64_f64,
-      "Math", "tanh", funcSigs.f32_f32,
-      "Math", "tanh", funcSigs.f64_f64,
-      "Math", "acosh", funcSigs.f32_f32,
-      "Math", "acosh", funcSigs.f64_f64,
-      "Math", "asinh", funcSigs.f32_f32,
-      "Math", "asinh", funcSigs.f64_f64,
-      "Math", "atanh", funcSigs.f32_f32,
-      "Math", "atanh", funcSigs.f64_f64,
-      "Math", "cbrt", funcSigs.f32_f32,
-      "Math", "cbrt", funcSigs.f64_f64,
-      "Math", "exp", funcSigs.f32_f32,
-      "Math", "exp", funcSigs.f64_f64,
-      "Math", "log", funcSigs.f32_f32,
-      "Math", "log", funcSigs.f64_f64,
-      "Math", "log10", funcSigs.f32_f32,
-      "Math", "log10", funcSigs.f64_f64,
-      "Math", "log2", funcSigs.f32_f32,
-      "Math", "log2", funcSigs.f64_f64,
-      "Math", "pow", funcSigs.f32_f32_f32,
-      "Math", "pow", funcSigs.f64_f64_f64,
-      "Math", "random", funcSigs.f64,
-      "Math", "sign", funcSigs.f32_f32,
-      "Math", "sign", funcSigs.f64_f64,
-    ];
-    const importedFuncCount = importedFuncNames.length / 3;
-
-    let importSection = [
-      ...Wasm.varuint(importedFuncCount + 1), //count of things to import
-
-      ...Wasm.stringToLenPrefixedUTF8("js"),
-      ...Wasm.stringToLenPrefixedUTF8("memory"),
-      Wasm.externalKind.Memory,
-      0, //flag that max pages is not specified
-      ...Wasm.varuint(1), //initially 1 page allocated
-    ]
-
-    for (let i = 0; i < importedFuncNames.length; i += 3) {
-      const [moduleName, name, signiture] = importedFuncNames.slice(i, i + 3);
-      importSection.push(
-        ...Wasm.stringToLenPrefixedUTF8(moduleName),
-        ...Wasm.stringToLenPrefixedUTF8(name),
-        Wasm.externalKind.Function,
-        ...Wasm.varuint(signiture),
-      );
-    }
-
-    let functionSection = [
-      ...Wasm.varuint(3), //count of function bodies defined later
-      ...Wasm.varuint(funcSigs.void), //type indicies (func signitures)
-      ...Wasm.varuint(funcSigs.void_i64),
-      ...Wasm.varuint(funcSigs.void_i64),
-    ];
-
-    // let exportSection = [
-    //   ...Wasm.varuint(0), //count of exports
-
-    //   ...Wasm.getStringBytesAndData("init"), //length and bytes of function name
-    //   Wasm.externalKind.Function, //export type
-    //   ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
-    // ];
 
     class InternalNumericLiteral {
       constructor(rawString) {
@@ -1298,21 +1198,15 @@ class Script {
       
       getWasmCode(expectedType) {
         const outputType = this.getType(expectedType);
-        switch (outputType) {
-          case script.BuiltIns.I32:
-          case script.BuiltIns.U32:
-          case script.BuiltIns.BOOL:
+        switch (getWasmType(outputType)) {
+          case Wasm.types.i32:
             return [Wasm.opcodes.i32_const, ...Wasm.varint(this.value)];
-          case script.BuiltIns.I64:
-          case script.BuiltIns.U64:
+          case Wasm.types.i64:
             return [Wasm.opcodes.i64_const, ...Wasm.varint(this.value)];
-          case script.BuiltIns.F32:
+          case Wasm.types.f32:
             return [Wasm.opcodes.f32_const, ...Wasm.f32ToBytes(this.value)];
-          case script.BuiltIns.F64:
+          case Wasm.types.f64:
             return [Wasm.opcodes.f64_const, ...Wasm.f64ToBytes(this.value)];
-          default:
-            console.trace();
-            throw "unrecognized type for numeric literal: " + parent.types.get(expectedType).name;
         }
       }
 
@@ -1425,9 +1319,13 @@ class Script {
       return [expressionType, wasmCode];
     }
 
-    let initFunction = [];
+    //keep track of which functions are used in this program
+    const importedFuncs = new Set();
+    const wasmFunctions = new Set();
 
-    const functionsBeingCalled = [];
+    let mainFunc = [];
+
+    const callStack = [];
     const expression = [];
     const localVarMapping = []; //maps local var indexes to TouchScript varIDs
     let lvalueType, lvalueLocalIndex;
@@ -1450,22 +1348,22 @@ class Script {
         }
         for (let i = 0; i < scopeDrop; ++i) {
           const scopeData = endOfScopeData.pop();
-          initFunction.push(...scopeData.wasmCode);
-          initFunction.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
+          mainFunc.push(...scopeData.wasmCode);
+          mainFunc.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
         }
       }
 
-      for (let col = 1, endCol = this.getItemCount(row); col < endCol; ++col) {
+      for (let col = 0, endCol = this.getItemCount(row); col < endCol; ++col) {
         const item = this.getItem(row, col);
 
         switch (item.constructor) {
           case VarDef: {
-            expression.push(new LocalVarReference(localVarMapping.length, this.vars.get(value)));
-            localVarMapping.push({id: value, type: meta});
+            expression.push(new LocalVarReference(localVarMapping.length, item));
+            localVarMapping.push(item);
           } break;
           
           case VarRef: {
-            const localIndex = localVarMapping.findIndex(localVar => localVar.id === value);
+            const localIndex = localVarMapping.findIndex(localVar => localVar === item.varDef);
             if (localIndex === -1) {
               throw "var" + value + " is referenced before it is declared";
             }
@@ -1474,21 +1372,23 @@ class Script {
           } break;
           
           case FuncRef:
-            functionsBeingCalled.push(value);
+            callStack.push(item);
             break;
 
           case ArgHint: {
-            const param = this.funcs.get(value).parameters[meta];
-            if (param.type === this.types.builtins.string || param.type === this.types.builtins.Any) {
-              expression.push(new InternalStringLiteral(initialData.length));
-              initialData.push(...Wasm.stringToLenPrefixedUTF8(param.default));
-            } else {
-              expression.push(new InternalNumericLiteral(param.default));
+            const param = item.funcDef.signature.parameters[item.argIndex];
+            if (param.default) {
+              if (param.type === this.BuiltIns.STRING || param.type === this.BuiltIns.ANY) {
+                expression.push(new InternalStringLiteral(initialData.length));
+                initialData.push(...Wasm.stringToLenPrefixedUTF8(param.default));
+              } else {
+                expression.push(new InternalNumericLiteral(param.default));
+              }
             }
           } break;
 
           case Symbol: {
-            const funcId = functionsBeingCalled[functionsBeingCalled.length - 1];
+            const funcId = callStack[callStack.length - 1];
             
             if (item.isAssignment) {
               const localVar = expression.pop();
@@ -1496,7 +1396,7 @@ class Script {
               lvalueLocalIndex = localVar.index;
               
               if (item !== this.BuiltIns.ASSIGN) {
-                initFunction.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
+                mainFunc.push(Wasm.opcodes.get_local, ...Wasm.varint(localVar.index));
                 const {wasmCode, resultType} = item.uses.get(lvalueType);
                 endOfLineInstructions.push(...wasmCode);
               }
@@ -1508,7 +1408,7 @@ class Script {
             let wasmCode = [];
             if (item === this.BuiltIns.COMMA || item === this.BuiltIns.END_ARGUMENTS) {
               //find argument type
-              let expectedType = this.types.builtins.Any;
+              let expectedType = this.BuiltIns.ANY;
               let funcCallDepth = 0;
               let argumentIndex = 0;
               for (let j = col - 1; j > 0; --j) {
@@ -1542,27 +1442,33 @@ class Script {
 
             //print() takes an arbitrary count of Any arguments and overloads for each argument in order
             if (item === this.BuiltIns.END_ARGUMENTS || item === this.BuiltIns.COMMA && funcId == this.BuiltIns.PRINT) {
-              const overload = this.funcs.findOverloadId(funcId, expressionType);
+              const overload = this.BuiltIns.FUNCTIONS.find(func => {
+                return func.signature.name === "print"
+                      && func.signature.scope === this.BuiltIns.SYSTEM
+                      && func.signature.parameters[0].type === expressionType;
+              })
+              console.log(overload);
+              
               if (overload === undefined) {
                 throw `implementation of ${this.funcs.get(funcId).name}(${this.types.get(expressionType).name}) not found`;
               }
               const overloadedFunc = this.funcs.get(overload);
-              initFunction.push(...wasmCode);
+              mainFunc.push(...wasmCode);
               if (overloadedFunc.afterArguments !== undefined) {
-                initFunction.push(...overloadedFunc.afterArguments);
+                mainFunc.push(...overloadedFunc.afterArguments);
               }
               if (overloadedFunc.importedFuncIndex !== undefined) {
-                initFunction.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
+                mainFunc.push(Wasm.opcodes.call, overloadedFunc.importedFuncIndex);
               }
               if (overloadedFunc.returnType !== this.BuiltIns.VOID) {
                 expression.push(new Placeholder(overloadedFunc.returnType)); //TODO place wasm code of function call as 2nd argument
               }
             } else {
-              initFunction.push(...wasmCode);
+              mainFunc.push(...wasmCode);
             }
 
             if (item === this.BuiltIns.END_ARGUMENTS) {
-              functionsBeingCalled.pop()
+              callStack.pop()
             }
             
             if (![this.BuiltIns.COMMA, this.BuiltIns.START_ARGUMENTS, this.BuiltIns.END_ARGUMENTS].includes(item) && !item.isAssignment) {
@@ -1581,12 +1487,12 @@ class Script {
                 endOfLineInstructions.push(Wasm.opcodes.else);
               } break;
               case this.BuiltIns.WHILE: {
-                initFunction.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
+                mainFunc.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
                 endOfLineInstructions.push(Wasm.opcodes.i32_eqz, Wasm.opcodes.br_if, 1);
                 endOfScopeData.push({wasmCode: [Wasm.opcodes.br, 0], isBranchable: true, blockCount: 2});
               } break;
               case this.BuiltIns.DO_WHILE: {
-                initFunction.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
+                mainFunc.push(Wasm.opcodes.block, Wasm.types.void, Wasm.opcodes.loop, Wasm.types.void);
                 endOfScopeData.push({wasmCode: [Wasm.opcodes.br_if, 0], isBranchable: true, blockCount: 2});
               } break;
               case this.BuiltIns.BREAK: {
@@ -1601,7 +1507,7 @@ class Script {
                 let depthTraveled = 1;
                 for (let i = endOfScopeData.length - 1; i >= 0; --i) {
                   if (endOfScopeData[i].isBranchable && --requestedDepth <= 0) {
-                    initFunction.push(Wasm.opcodes.br, depthTraveled);
+                    mainFunc.push(Wasm.opcodes.br, depthTraveled);
                     break;
                   }
 
@@ -1626,7 +1532,7 @@ class Script {
                   const scopeData = endOfScopeData[i];
                   if (scopeData.isBranchable && --requestedDepth <= 0) {
                     //slice off the depth of the branch instruction and use our own
-                    initFunction.push(...scopeData.wasmCode.slice(0, -1), depthTraveled);
+                    mainFunc.push(...scopeData.wasmCode.slice(0, -1), depthTraveled);
                     break;
                   }
 
@@ -1707,26 +1613,26 @@ class Script {
               Wasm.opcodes.br, 0,
             ], isBranchable: true, blockCount: 2});
           } else {
-            initFunction.push(...wasmCode);
+            mainFunc.push(...wasmCode);
           }
         } else {
-          initFunction.push(...wasmCode);
+          mainFunc.push(...wasmCode);
           if (endOfLineInstructions.length === 0) {
-            initFunction.push(Wasm.opcodes.drop);
+            mainFunc.push(Wasm.opcodes.drop);
           }
         }
       }
       
       if (endOfLineInstructions.length > 0) {
-        initFunction.push(...endOfLineInstructions);
+        mainFunc.push(...endOfLineInstructions);
         endOfLineInstructions.length = 0;
       }
     }
     
     while (endOfScopeData.length > 0) {
       const scopeData = endOfScopeData.pop();
-      initFunction.push(...scopeData.wasmCode);
-      initFunction.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
+      mainFunc.push(...scopeData.wasmCode);
+      mainFunc.push(...Array(scopeData.blockCount).fill(Wasm.opcodes.end));
     }
 
     const localVarDefinition = [
@@ -1736,38 +1642,76 @@ class Script {
     //at the moment, I make no attempt to collapse repeating types into a single type description
     for (let local of localVarMapping) {
       let type = 0;
-      switch (local.type) {
-        case this.BuiltIns.I32:
-        case this.BuiltIns.U32:
-        case this.BuiltIns.BOOL:
-          type = Wasm.types.i32;
-          break;
-        case this.BuiltIns.I64:
-        case this.BuiltIns.U64:
-          type = Wasm.types.i64;
-          break;
-        case this.BuiltIns.F32:
-          type = Wasm.types.f32;
-          break;
-        case this.BuiltIns.F64:
-          type = Wasm.types.f64;
-          break;
-        default:
-          throw "cannot find Wasm type of " + this.types.get(local.type).name;
-      }
+
 
       localVarDefinition.push(1, type);
     }
 
-    initFunction = [...localVarDefinition, ...initFunction, Wasm.opcodes.end];
+    mainFunc = [...localVarDefinition, ...mainFunc, Wasm.opcodes.end];
+
+    //figure out which function signatures we need to define
+    const signatures = [];
+
+    for (const func of [...importedFuncs, ...wasmFunctions]) {
+      const signatures = {};
+      if (func.signature.returnType === this.BuiltIns.VOID) {
+        signatures.return = [];
+      } else {
+        signatures.return = [getWasmType(func.signature.returnType)];
+      }
+      
+      signatures.parameters = func.signature.parameters.map(p => getWasmType(p.type));
+    }
+    console.log(signatures);
 
 
+    const typeSection = [
+      ...Wasm.varuint(signatures.length), //count of type entries
+    ];
+    for (const signature of signatures) {
+      typeSection.push(Wasm.types.func);
+      typeSection.push(signature.parameters.length, ...signature.parameters);
+      typeSection.push(signature.return.length, ...signature.return);
+    }
+   
+    let importSection = [
+      ...Wasm.varuint(importedFuncs.length + 1), //count of things to import
 
+      ...Wasm.stringToLenPrefixedUTF8("js"),
+      ...Wasm.stringToLenPrefixedUTF8("memory"),
+      Wasm.externalKind.Memory,
+      0, //flag that max pages is not specified
+      ...Wasm.varuint(1), //initially 1 page allocated
+    ]
+
+    for (const func of importedFuncs) {
+      importSection.push(
+        ...Wasm.stringToLenPrefixedUTF8(func.moduleName),
+        ...Wasm.stringToLenPrefixedUTF8(func.fieldName),
+        Wasm.externalKind.Function,
+        ...Wasm.varuint(signiture),
+      );
+    }
+
+    let functionSection = [
+      ...Wasm.varuint(3), //count of function bodies defined later
+      ...Wasm.varuint(funcSigs.void), //type indicies (func signitures)
+      ...Wasm.varuint(funcSigs.void_i64),
+      ...Wasm.varuint(funcSigs.void_i64),
+    ];
+
+    // let exportSection = [
+    //   ...Wasm.varuint(0), //count of exports
+
+    //   ...Wasm.getStringBytesAndData("init"), //length and bytes of function name
+    //   Wasm.externalKind.Function, //export type
+    //   ...Wasm.varuint(importedFunctionsCount), //exporting entry point function
+    // ];
 
     let codeSection = [
       ...Wasm.varuint(3), //count of functions to define
-      ...Wasm.varuint(initFunction.length),
-      ...initFunction,
+      ...Wasm.varuint(mainFunc.length),
+      ...mainFunc,
       ...Wasm.varuint(printU64.length),
       ...printU64,
       ...Wasm.varuint(printI64.length),
