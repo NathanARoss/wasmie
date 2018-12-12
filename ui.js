@@ -94,6 +94,7 @@ document.body.onresize = function () {
   //allow the viewport to scroll past the currently loaded rows
   list.style.height = getRowCount() * rowHeight + "px";
   
+  //TODO reimplement these to handle the last row not being the last child
   for(let i = 0; i < diff; ++i) {
     let div = createRow();
     let position = list.childNodes.length + firstLoadedPosition;
@@ -102,14 +103,12 @@ document.body.onresize = function () {
   }
 
   for (let i = diff; i < 0; ++i) {
-    let lastChild = list.lastChild;
-    list.removeChild(lastChild);
-
-    let innerDiv = lastChild.firstChild;
+    let lastLine = list.lastChild;
+    list.removeChild(lastLine);
   
-    while (innerDiv.childNodes.length > 2) {
-      itemPool.push(innerDiv.lastChild);
-      innerDiv.removeChild(innerDiv.lastChild);
+    while (lastLine.childNodes.length > 2) {
+      itemPool.push(lastLine.lastChild);
+      lastLine.removeChild(lastLine.lastChild);
     }
   }
 };
@@ -126,16 +125,16 @@ window.onscroll = function() {
   while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition)
   && (firstLoadedPosition + loadedCount < getRowCount())) {
     const position = firstLoadedPosition + loadedCount;
-    const outerDiv = list.childNodes[position % loadedCount];
-    loadRow(position, outerDiv);
+    const line = list.childNodes[position % loadedCount];
+    loadRow(position, line);
     ++firstLoadedPosition;
   }
   
   while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition)
   && (firstLoadedPosition > 0)) {
     const position = firstLoadedPosition - 1;
-    const outerDiv = list.childNodes[position % loadedCount];
-    loadRow(position, outerDiv);
+    const line = list.childNodes[position % loadedCount];
+    loadRow(position, line);
     --firstLoadedPosition;
   }
 };
@@ -533,17 +532,12 @@ function createRow() {
   const indentation = document.createElement("div");
   indentation.classList.add("indentation");
   
-  const innerDiv = document.createElement("div");
-  innerDiv.className = "inner-row";
-  innerDiv.addEventListener("click", rowClickHandler, {passive: true});
-  innerDiv.appendChild(indentation);
-  innerDiv.appendChild(append);
+  const lineDiv = document.createElement("div");
+  lineDiv.addEventListener("click", rowClickHandler, {passive: true});
+  lineDiv.appendChild(indentation);
+  lineDiv.appendChild(append);
   
-  const outerDiv = document.createElement("div");
-  outerDiv.className = "outer-row";
-  outerDiv.appendChild(innerDiv);
-  
-  return outerDiv;
+  return lineDiv;
 }
 
 
@@ -554,13 +548,13 @@ function insertRow(position) {
   
   if (position < firstLoadedPosition + loadedCount) {
     const selectedIndex = position % loadedCount;
-    const selectedOuterDiv = list.childNodes[selectedIndex];
+    const selectedLine = list.childNodes[selectedIndex];
 
     const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
-    const lastRowOuterDiv = list.childNodes[lastRowIndex];
+    const lastLine = list.childNodes[lastRowIndex];
 
-    list.insertBefore(lastRowOuterDiv, selectedOuterDiv);
-    loadRow(position, lastRowOuterDiv, -1);
+    list.insertBefore(lastLine, selectedLine);
+    loadRow(position, lastLine, -1);
 
     //if the bottom row must go up past the beginning of the array and back around to the
     //end to the new position, then a row must wrap around in the opposite direction
@@ -571,10 +565,10 @@ function insertRow(position) {
 
     //shift existing rows downward
     for (let i = position + 1; i < loadedCount + firstLoadedPosition; ++i) {
-      const outerDiv = list.childNodes[i % loadedCount];
-      outerDiv.firstChild.position = i;
-      outerDiv.style.setProperty("--position", i + 1);
-      outerDiv.firstChild.childNodes[1].textContent = i;
+      const line = list.childNodes[i % loadedCount];
+      line.position = i;
+      line.style.setProperty("--position", i + 1);
+      line.childNodes[1].textContent = i;
     }
   }
 
@@ -589,13 +583,13 @@ function deleteRow(position) {
   const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
   
   for (let i = 0; i < deletedCount; ++i) {
-    const selectedOuterDiv = list.childNodes[selectedIndex];
-    const lastRowOuterDiv = list.childNodes[lastRowIndex];
+    const selectedLine = list.childNodes[selectedIndex];
+    const lastLine = list.childNodes[lastRowIndex];
 
-    if (lastRowOuterDiv.nextSibling) {
-      list.insertBefore(selectedOuterDiv, lastRowOuterDiv.nextSibling);
+    if (lastLine.nextSibling) {
+      list.insertBefore(selectedLine, lastLine.nextSibling);
     } else {
-      list.appendChild(selectedOuterDiv);
+      list.appendChild(selectedLine);
     }
 
     if (lastRowIndex < selectedIndex) {
@@ -603,15 +597,15 @@ function deleteRow(position) {
     }
 
     const newPosition = firstLoadedPosition + loadedCount - deletedCount + i;
-    loadRow(newPosition, selectedOuterDiv);
+    loadRow(newPosition, selectedLine);
   }
 
   //shift the remaining lines down
   for (let i = position; i < firstLoadedPosition + loadedCount - deletedCount; ++i) {
-    const outerDiv = list.childNodes[i % loadedCount];    
-    outerDiv.firstChild.position = i;
-    outerDiv.style.setProperty("--position", 1);
-    outerDiv.firstChild.childNodes[1].textContent = i;
+    const line = list.childNodes[i % loadedCount];    
+    line.position = i;
+    line.style.setProperty("--position", 1);
+    line.childNodes[1].textContent = i;
   }
 
   list.style.height = getRowCount() * rowHeight + "px";
@@ -619,41 +613,39 @@ function deleteRow(position) {
 
 
 
-function loadRow(position, outerDiv, visualShift = 0) {
-  const innerDiv = outerDiv.firstChild;
-  
-  while (innerDiv.childNodes.length > 2) {
-    itemPool.push(innerDiv.removeChild(innerDiv.lastChild));
+function loadRow(position, line, visualShift = 0) {  
+  while (line.childNodes.length > 2) {
+    itemPool.push(line.removeChild(line.lastChild));
   }
 
   if (position >= script.rowCount) {
-    innerDiv.style.setProperty("--indentation", 0);
-    innerDiv.classList.remove("starting-scope");
+    line.style.setProperty("--indentation", 0);
+    line.classList.remove("starting-scope");
   } else {
     const itemCount = script.getItemCount(position);
 
     for (let col = 0; col < itemCount; ++col) {
       const [text, style] = script.getItem(position, col).getDisplay();
       const node = getItem(text, "item " + style, col);
-      innerDiv.appendChild(node);
+      line.appendChild(node);
     }
     
-    innerDiv.style.setProperty("--indentation", script.getIndent(position));
-    innerDiv.classList.toggle("starting-scope", script.isStartingScope(position));
+    line.style.setProperty("--indentation", script.getIndent(position));
+    line.classList.toggle("starting-scope", script.isStartingScope(position));
   }
 
-  if (innerDiv.position !== position) {
-    outerDiv.style.transition = "none";
+  if (line.position !== position) {
+    line.style.transition = "none";
     const isShiftedDown = selRow !== -1 && position > selRow;
-    outerDiv.style.setProperty("--position", position + visualShift + isShiftedDown|0);
-    outerDiv.offsetHeight;
-    outerDiv.style.transition = "";
-    innerDiv.childNodes[1].textContent = position;
-    innerDiv.position = position;
+    line.style.setProperty("--position", position + visualShift + isShiftedDown|0);
+    line.offsetHeight;
+    line.style.transition = "";
+    line.childNodes[1].textContent = position;
+    line.position = position;
 
     if (selRow === position) {
-      const button = innerDiv.childNodes[2 + selCol];
-      innerDiv.scrollLeft = button.offsetLeft - window.innerWidth / 2;
+      const button = line.childNodes[2 + selCol];
+      line.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     }
   }
 }
@@ -661,8 +653,8 @@ function loadRow(position, outerDiv, visualShift = 0) {
 function reloadAllRows() {
   list.style.height = getRowCount() * rowHeight + "px";
 
-  for (const outerDiv of list.childNodes) {
-    loadRow(outerDiv.firstChild.position, outerDiv);
+  for (const line of list.childNodes) {
+    loadRow(line.position, line);
   }
 }
 
@@ -744,9 +736,8 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
   menu.style.setProperty("--indentation", script.getInsertIndent(selRow + 1));
   
   //make room for the menu to slot below the selected row
-  for (const outerDiv of list.childNodes) {
-    const position = outerDiv.firstChild.position;
-    outerDiv.style.setProperty("--position", position + (position > selRow)|0);
+  for (const line of list.childNodes) {
+    line.style.setProperty("--position", line.position + (line.position > selRow)|0);
   }
 }
 
@@ -754,8 +745,8 @@ function closeMenu() {
   menu.style.setProperty("--position", selRow);
   menu.classList.remove("revealed");
   selRow = -1;
-  for (const outerDiv of list.childNodes) {
-    outerDiv.style.setProperty("--position", outerDiv.firstChild.position);
+  for (const line of list.childNodes) {
+    line.style.setProperty("--position", line.position);
   }
 
   editor.classList.remove("selected");
@@ -809,13 +800,13 @@ document.onkeydown = function(event) {
 
 function handleMenuItemResponse(response) {
   if ("rowUpdated" in response) {
-    const outerDiv = list.childNodes[selRow % loadedCount];
-    loadRow(selRow, outerDiv);
+    const line = list.childNodes[selRow % loadedCount];
+    loadRow(selRow, line);
     if (response.selectedCol >= script.getItemCount(selRow)) {
       response.selectedCol = -1;
     }
     if (selCol === -1) {
-      outerDiv.firstChild.scrollLeft = 1e10;
+      line.scrollLeft = 1e10;
     }
     list.style.height = getRowCount() * rowHeight + "px";
   }
@@ -866,7 +857,7 @@ function itemClicked(row, col, teleport = true) {
   if (row !== undefined && col !== undefined) {
     selectedItem && selectedItem.classList.remove("selected");
 
-    selectedItem = list.childNodes[row % loadedCount].firstChild.childNodes[2 + col];
+    selectedItem = list.childNodes[row % loadedCount].childNodes[2 + col];
     if (selectedItem) {
       selectedItem.classList.add("selected");
       selectedItem.focus();

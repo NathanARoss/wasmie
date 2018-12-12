@@ -21,40 +21,25 @@ body {
   background-color: #3B3B3B;
 }
 
-.outer-row {
+#list > div {
   position: absolute;
+  display: flex;
   /* higher lines occlude lower lines */
   z-index: calc(10000000 - var(--position));
-  overflow: hidden;
-  white-space: nowrap;
   background-color: #2B2B2B;
-}
-
-.inner-row {
-  display: inline-flex;
-  position: relative;
-  height: 40px;
-  width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
   vertical-align: top;
 }
 
-#menu, .outer-row {
+#menu, #list > div {
   height: 40px;
   width: 100%;
   transform: translateY(calc(var(--position, -1) * 40px));
   transition: 0.25s transform;
   -webkit-overflow-scrolling: touch;
-}
-
-/* Desktop Firefox, mobile Firefox (not Firefox Focus), Samsung Browser (oddly) */
-/* .inner-row is 30px taller than .outer-row so that the horizontal scrollbar is hidden */
-@-moz-document url-prefix() {
-  .inner-row {
-    height: 70px;
-  }
+  scrollbar-width: none;
 }
 
 button {
