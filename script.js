@@ -1316,6 +1316,10 @@ class Script {
       //console.log("remaining operands", ...operands, "remaining operators", ...operators.slice(0, -1));
       const expressionType = operands[0].getType(expectedType);
       const wasmCode = operands[0].getWasmCode(expectedType);
+
+      if (expressionType !== expectedType) {
+        console.log("cast from", expressionType.text, "to", expectedType.text)
+      }
       
       return [expressionType, wasmCode];
     }
@@ -1385,7 +1389,7 @@ class Script {
           } break;
           
           case FuncRef:
-            callStack.push(item);
+            callStack.push(item.funcDef);
             break;
 
           case ArgHint: {
@@ -1432,14 +1436,14 @@ class Script {
                 if (item === this.BuiltIns.ARG_SEPARATOR && funcCallDepth === 0) {
                   ++argumentIndex;
                 }
-                if (item === this.BuiltIns.START_ARGUMENTS) {
+                if (item === this.BuiltIns.BEGIN_ARGS) {
                   if (funcCallDepth === 0) {
-                    const func = this.getItem(row, j - 1);
+                    const func = this.getItem(row, j - 1).funcDef;
                     if (func === this.BuiltIns.PRINT) {
                       argumentIndex = 0;
                     }
                     const argumentType = func.signature.parameters[argumentIndex].type;
-                    //console.log(expression, "is argument ", argumentIndex, "to ", func.name, "argument type is", this.types.get(argumentType).name);
+                    //console.log(expression, "is argument ", argumentIndex, "to ", func.signature.name, "argument type is", argumentType.text);
                     expectedType = argumentType;
                     break;
                   }
@@ -1454,35 +1458,25 @@ class Script {
 
             mainFunc.push(...wasmCode);
 
-            //print() takes an arbitrary count of Any arguments and overloads for each argument in order
+            //print() prints out each argument string individually
             if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR && func == this.BuiltIns.PRINT) {
-              const overload = this.BuiltIns.FUNCTIONS.find(func => {
-                return func.signature.name === "print"
-                      && func.signature.scope === this.BuiltIns.SYSTEM
-                      && func.signature.parameters[0].type === expressionType;
-              })
-              
-              if (overload === undefined) {
-                throw `implementation of ${func.name}(${expressionType.text}) not found`;
+              if (func.wasmCode !== undefined) {
+                mainFunc.push(...func.wasmCode);
               }
-
-              if (overload.wasmCode !== undefined) {
-                mainFunc.push(...overload.wasmCode);
-              }
-              if (overload.constructor === PredefinedFunc) {
-                let index = wasmFuncs.indexOf(overload);
+              if (func.constructor === PredefinedFunc) {
+                let index = wasmFuncs.indexOf(func);
                 if (index === -1) {
                   index = wasmFuncs.length;
-                  wasmFuncs.push(overload);
+                  wasmFuncs.push(func);
                 }
                 mainFunc.push(Wasm.call, index);
               }
-              if (overload.constructor === ImportedFunc) {
-                const index = importedFuncs.indexOf(overload);
+              if (func.constructor === ImportedFunc) {
+                const index = importedFuncs.indexOf(func);
                 mainFunc.push(Wasm.call, index);
               }
-              if (overload.signature.returnType !== this.BuiltIns.VOID) {
-                expression.push(new Placeholder(overload.signature.returnType)); //TODO place wasm code of function call as 2nd argument
+              if (func.signature.returnType !== this.BuiltIns.VOID) {
+                expression.push(new Placeholder(func.signature.returnType)); //TODO place wasm code of function call as 2nd argument
               }
             } 
 
@@ -1490,7 +1484,7 @@ class Script {
               callStack.pop()
             }
             
-            if (![this.BuiltIns.ARG_SEPARATOR, this.BuiltIns.START_ARGUMENTS, this.BuiltIns.END_ARGS].includes(item) && !item.isAssignment) {
+            if (![this.BuiltIns.ARG_SEPARATOR, this.BuiltIns.BEGIN_ARGS, this.BuiltIns.END_ARGS].includes(item) && !item.isAssignment) {
               expression.push(item);
             }
           } break;
@@ -1498,7 +1492,7 @@ class Script {
           case Keyword: {
             switch (item) {
               case this.BuiltIns.IF: {
-                lvalueType = this.types.bool;
+                lvalueType = this.BuiltIns.BOOL;
                 endOfLineInstructions.push(Wasm.if, Wasm.types.void);
                 endOfScopeData.push({wasmCode: []});
               } break;

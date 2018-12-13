@@ -5,12 +5,6 @@ class RuntimeEnvironment {
       print(location) {
         self.print(location)
       },
-      printNum(num) {
-        print(String(num));
-      },
-      inputF64(defaultVal, min, max) {
-        return self.inputDouble(defaultVal, min, max);
-      },
     }
     this.js = {
       memory: new WebAssembly.Memory({initial: 1}),
