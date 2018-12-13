@@ -297,11 +297,11 @@ button {
   }
 }
 
+.keyword, .keyword::first-line {
+  color: #CC7832;
+}
 .class, .call {
   color: #A9B7C6;
-}
-.keyword::first-line {
-  color: #CC7832;
 }
 .number {
   color: #6897BB;
