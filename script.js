@@ -337,7 +337,8 @@ class Script {
       }
 
       let binOps = this.BuiltIns.SYMBOLS.filter(sym => sym.isBinary);
-      if (this.getItem(row, 0) === this.BuiltIns.IF || this.getItem(row, 1) === this.BuiltIns.IF) {
+      if (this.getItem(row, 1) === this.BuiltIns.IF
+      || [this.BuiltIns.IF, this.BuiltIns.WHILE, this.BuiltIns.DO_WHILE].includes(this.getItem(row, 0))) {
         //TODO generalize this to when a boolean return type, argument, or variable type is expected
         binOps = [...binOps.filter(op => op.isBool), ...binOps.filter(op => !op.isBool)];
       }
@@ -552,7 +553,10 @@ class Script {
     if (this.getItem(row, 0) === this.BuiltIns.FOR) {
       const lastItem = this.getItem(row, this.getItemCount(row) - 1);
       if (lastItem.constructor !== Symbol && !this.lines[row].items.includes(this.BuiltIns.STEP)) {
-        return [{text: "step", style: "keyword", action: this.pushItems, agrs: [row, this.BuiltIns.STEP]}];
+        return [{text: "step", style: "keyword", action: () => {
+          this.pushItems(row, this.BuiltIns.STEP);
+          return {rowUpdated: true};
+        }}];
       }
     }
 
@@ -1276,13 +1280,13 @@ class Script {
       for (let i = 0; i < expression.length; ++i) {
         const item = expression[i];
         if (item.constructor === Symbol) {
-          if (!item.direction === 1) {
+          if (item.direction !== 1) {
             //check if the previous operators have a higher precedence than the one that is about to be pushed
             while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
               const operator = operators.pop();
               const rightOperand = operands.pop();
               if (operator.isUnary) {
-                if (rightOperand.constructor === NumericLiteral) {
+                if (rightOperand.constructor === InternalNumericLiteral) {
                   rightOperand.performUnaryOp(operator.appearance);
                   operands.push(rightOperand);
                 } else {
@@ -1291,7 +1295,8 @@ class Script {
                 }
               } else {
                 const leftOperand = operands.pop();
-                if (operator.isFoldable && leftOperand.constructor === NumericLiteral && rightOperand.constructor === NumericLiteral) {
+                if (operator.isFoldable && leftOperand.constructor === InternalNumericLiteral
+                && rightOperand.constructor === InternalNumericLiteral) {
                   leftOperand.performBinaryOp(operator.appearance, rightOperand);
                   operands.push(leftOperand);
                 } else {
@@ -1349,6 +1354,32 @@ class Script {
     const endOfLineInstructions = [];
     const endOfScopeData = [];
 
+    function insertPrecondition(wasmCode) {
+      //The wasmCode array has code that produces a start value and an end value on the
+      //operand stack, then a comparison opcode, then an increment opcode (typed add or sub).
+      //Backup the comparison opcode for the break condition and the increment opcode for
+      //the end of the loop body, then the start and stop values.;
+      const lvar = localVarMapping[lvalueLocalIndex];
+
+      //create a new local var with the same type as the looping var to hold the end value
+      const endValLocalIndex = localVarMapping.length;
+      localVarMapping.push(new VarDef("inc", lvar.type, script.BuiltIns.VOID, -1));
+
+      const comparisonOpcode = wasmCode.pop();
+
+      mainFunc.push(...wasmCode);
+      endOfLineInstructions.push(Wasm.set_local, endValLocalIndex);
+      endOfLineInstructions.push(Wasm.set_local, lvalueLocalIndex);
+
+      endOfLineInstructions.push(Wasm.block, Wasm.types.void);
+      endOfLineInstructions.push(Wasm.loop, Wasm.types.void);
+
+      endOfLineInstructions.push(Wasm.get_local, lvalueLocalIndex);
+      endOfLineInstructions.push(Wasm.get_local, endValLocalIndex);
+      endOfLineInstructions.push(comparisonOpcode, Wasm.i32_eqz);
+      endOfLineInstructions.push(Wasm.br_if, 1);
+    }
+
     const initialData = [];
     initialData.push(...Wasm.stringToLenPrefixedUTF8("false")); //address 0
     initialData.push(...Wasm.stringToLenPrefixedUTF8("-"));     //address 6
@@ -1360,7 +1391,7 @@ class Script {
       
       if (row > 0) {
         let scopeDrop = this.getIndent(row - 1) - this.getIndent(row);
-        if (this.getItem(row, 1) === this.BuiltIns.ELSE) {
+        if (this.getItem(row, 0) === this.BuiltIns.ELSE) {
           --scopeDrop;
         }
         for (let i = 0; i < scopeDrop; ++i) {
@@ -1500,11 +1531,13 @@ class Script {
                 endOfLineInstructions.push(Wasm.else);
               } break;
               case this.BuiltIns.WHILE: {
+                lvalueType = this.BuiltIns.BOOL;
                 mainFunc.push(Wasm.block, Wasm.types.void, Wasm.loop, Wasm.types.void);
                 endOfLineInstructions.push(Wasm.i32_eqz, Wasm.br_if, 1);
                 endOfScopeData.push({wasmCode: [Wasm.br, 0], isBranchable: true, blockCount: 2});
               } break;
               case this.BuiltIns.DO_WHILE: {
+                lvalueType = this.BuiltIns.BOOL;
                 mainFunc.push(Wasm.block, Wasm.types.void, Wasm.loop, Wasm.types.void);
                 endOfScopeData.push({wasmCode: [Wasm.br_if, 0], isBranchable: true, blockCount: 2});
               } break;
@@ -1568,7 +1601,7 @@ class Script {
 
                 const lvar = localVarMapping[lvalueLocalIndex];
                 const stepSizeLocalIndex = localVarMapping.length;
-                localVarMapping.push({id: -1, type: lvar.type});
+                localVarMapping.push(new VarDef("inc", lvar.type, this.BuiltIns.VOID, -1));
 
                 endOfLineInstructions.push(Wasm.set_local, stepSizeLocalIndex);
 
@@ -1607,11 +1640,11 @@ class Script {
         const [, wasmCode] = compileExpression(expression, lvalueType);
         expression.length = 0;
 
-        if (this.getItem(row, 1) === this.BuiltIns.DO_WHILE) {
+        if (this.getItem(row, 0) === this.BuiltIns.DO_WHILE) {
           //move the expression to right before the conditional loop branch
           endOfScopeData[endOfScopeData.length - 1].wasmCode.unshift(...wasmCode);
-        } else if (this.getItem(row, 1) === this.BuiltIns.FOR) {
-          if (!this.lines[row].includes(this.BuiltIns.STEP)) {
+        } else if (this.getItem(row, 0) === this.BuiltIns.FOR) {
+          if (!this.lines[row].items.includes(this.BuiltIns.STEP)) {
             const incrementOpcode = wasmCode.pop();
             insertPrecondition(wasmCode)
 
