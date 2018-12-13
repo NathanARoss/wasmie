@@ -216,6 +216,7 @@ class Script {
       if (item.constructor === FuncSig) {
         const setReturnType = (type, item) => {
           item.returnType = type;
+          this.saveRows([this.lines[row]]);
           return {rowUpdated: true};
         };
         
@@ -229,6 +230,7 @@ class Script {
       if (item.constructor === VarDef) {
         const setType = (type, item) => {
           item.type = type;
+          this.saveRows([this.lines[row]]);
           return {rowUpdated: true};
         }
         
@@ -328,11 +330,28 @@ class Script {
 
         options.push(...this.getVisibleVars(row, false, setVarRef));
 
-        const scopes = new Set(this.BuiltIns.FUNCTIONS.map(func => func.signature.scope));
+        let type = this.BuiltIns.ANY;
+        if (this.getItem(row, 0).constructor === VarRef) {
+          type = this.getItem(row, 0).varDef.type;
+        }
+        else if (this.getItem(row, 1).constructor === VarDef) {
+          type = this.getItem(row, 1).type;
+        }
+
+        let funcs = this.BuiltIns.FUNCTIONS;
+        if (type !== this.BuiltIns.ANY) {
+          funcs = funcs.filter(func => {
+            return func.signature.returnType === type
+            || type.casts && type.casts.get(func.signature.returnType);
+          });
+        }
+        const scopes = new Set(funcs.map(func => func.signature.scope));
+          
         const style = "keyword";
         const action = this.getVisibleFuncs;
+
         for (const scope of scopes) {
-          options.push({text: scope.text, style, action, args: [row, col, scope, true]});
+          options.push({text: scope.text, style, action, args: [row, col, scope, type]});
         }
       }
 
@@ -511,7 +530,7 @@ class Script {
       const style = "keyword";
       const action = this.getVisibleFuncs;
       for (const scope of scopes) {
-        options.push({text: scope.text, style, action, args: [row, 0, scope, false]});
+        options.push({text: scope.text, style, action, args: [row, 0, scope, this.BuiltIns.ANY]});
       }
 
       return options;
@@ -983,14 +1002,25 @@ class Script {
     return options;
   }
 
-  getVisibleFuncs(row, col, scope, requiresReturn) {
-    //grab only the ones belonging to the scope and that return something
-    let funcs = this.BuiltIns.FUNCTIONS.filter(func => {
-      return func.signature.scope === scope
-      && func.signature.returnType !== this.BuiltIns.VOID || !requiresReturn;
-    });
+  getVisibleFuncs(row, col, scope, expectedType = this.BuiltIns.ANY) {
+    //grab only the ones belonging to the scope
+    let funcs = this.BuiltIns.FUNCTIONS.filter(func => func.signature.scope === scope);
+
+    //prioritize functions that return the right type or who's return type express every
+    //value the lvalue type can (i.e. double -> int)
+    if (expectedType !== this.BuiltIns.ANY) {
+      const lossLess = funcs.filter(func => {
+        return func.signature.returnType === expectedType
+        || (
+          func.signature.returnType.size > expectedType.size
+          && expectedType.casts && expectedType.casts.get(func.signature.returnType)
+        );
+      });
+
+      funcs.unshift(...lossLess);
+    }
     
-    //keep only the first function with a given name
+    //keep only the first function with a given name (rely on overloading)
     funcs = funcs.filter((v, i, a) => {
       return a.findIndex(func => func.signature.name === v.signature.name) === i;
     });
@@ -1216,7 +1246,8 @@ class Script {
       }
 
       getType(expectedType = script.BuiltIns.ANY) {
-        if (expectedType !== script.BuiltIns.ANY) {
+        if ([script.BuiltIns.I32, script.BuiltIns.I64, script.BuiltIns.U32, script.BuiltIns.U64,
+        script.BuiltIns.F32, script.BuiltIns.F64].includes(expectedType)) {
           return expectedType;
         }
 
@@ -1323,7 +1354,46 @@ class Script {
       const wasmCode = operands[0].getWasmCode(expectedType);
 
       if (expressionType !== expectedType) {
-        console.log("cast from", expressionType.text, "to", expectedType.text)
+        if (expectedType === script.BuiltIns.STRING) {
+          let func = script.BuiltIns.FUNCTIONS.find(func => {
+            const sig = func.signature;
+            return sig.scope === script.BuiltIns.STRING
+            && sig.name === "from"
+            && sig.parameters[0].type === expressionType;
+          });
+
+          if (!func) {
+            func = script.BuiltIns.FUNCTIONS.find(func => {
+              const sig = func.signature;
+              return sig.scope === script.BuiltIns.STRING
+              && sig.name === "from"
+              && sig.parameters[0].type.casts && sig.parameters[0].type.casts.get(expressionType);
+            });
+          }
+
+          const argType = func.signature.parameters[0].type;
+          if (argType !== expressionType) {
+            wasmCode.push(...argType.casts.get(expressionType));
+          }
+
+          if (func.constructor === PredefinedFunc) {
+            let funcIndex = wasmFuncs.indexOf(func);
+            if (funcIndex === -1) {
+              funcIndex = wasmFuncs.length;
+              wasmFuncs.push(func);
+            }
+            wasmCode.push(Wasm.call, funcIndex + importedFuncs.length + 1);
+          } else {
+            wasmCode.push(...func.wasmCode);
+          }
+        } else {
+          const cast = expectedType.casts && expectedType.casts.get(expressionType);
+          if (cast) {
+            wasmCode.push(...cast);
+          } else {
+            console.log("cast from", expressionType.text, "to", expectedType.text, "not found");
+          }
+        }
       }
       
       return [expressionType, wasmCode];
@@ -1452,7 +1522,6 @@ class Script {
               endOfLineInstructions.push(Wasm.set_local, localVar.index);
             }
 
-            let expressionType = this.BuiltIns.VOID;
             let wasmCode = [];
             if (item === this.BuiltIns.ARG_SEPARATOR || item === this.BuiltIns.END_ARGS) {
               //find argument type
@@ -1483,7 +1552,7 @@ class Script {
                 }
               }
               
-              [expressionType, wasmCode] = compileExpression(expression, expectedType);
+              wasmCode = compileExpression(expression, expectedType)[1];
               expression.length = 0;
             }
 
@@ -1491,7 +1560,7 @@ class Script {
 
             //print() prints out each argument string individually
             if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR && func == this.BuiltIns.PRINT) {
-              if (func.wasmCode !== undefined) {
+              if (func.constructor === Macro) {
                 mainFunc.push(...func.wasmCode);
               }
               if (func.constructor === PredefinedFunc) {
@@ -1500,7 +1569,7 @@ class Script {
                   index = wasmFuncs.length;
                   wasmFuncs.push(func);
                 }
-                mainFunc.push(Wasm.call, index);
+                mainFunc.push(Wasm.call, index + importedFuncs.length + 1);
               }
               if (func.constructor === ImportedFunc) {
                 const index = importedFuncs.indexOf(func);
@@ -1787,6 +1856,10 @@ class Script {
       ...Wasm.varuint(0), //type indicies (func signitures)
     ];
 
+    for (const func of wasmFuncs) {
+      functionSection.push(getSignature(func)); 
+    }
+
     // let exportSection = [
     //   ...Wasm.varuint(0), //count of exports
 
@@ -1800,6 +1873,13 @@ class Script {
       ...Wasm.varuint(mainFunc.length),
       ...mainFunc,
     ];
+
+    for (const func of wasmFuncs) {
+      codeSection.push(
+        ...Wasm.varuint(func.wasmCode.length),
+        ...func.wasmCode
+      );
+    }
 
     let dataSection = [
       ...Wasm.varuint(1), //1 data segment
