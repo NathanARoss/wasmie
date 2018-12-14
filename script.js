@@ -250,7 +250,11 @@ class Script {
           return {rowUpdated: true};
         }
         
-        if (this.getItemCount(row) > 2 && this.getItem(row, 2).isAssignment) {
+        if (this.getItemCount(row) > 2
+        && (
+          this.getItem(row, col + 1).isAssignment)
+          || this.getItem(row, col + 1) === this.BuiltIns.IN
+        ) {
           options.push({text: "auto", style: "comment",
             action: setType, args: [this.BuiltIns.ANY, item]
           });
@@ -1400,7 +1404,10 @@ class Script {
                   leftOperand.performBinaryOp(operator.appearance, rightOperand);
                   operands.push(leftOperand);
                 } else {
-                  const type = rightOperand.getType(leftOperand.getType());
+                  let type = rightOperand.getType(leftOperand.getType());
+                  if (operator.isRange) {
+                    type = expectedType;
+                  }
                   const {resultType, wasmCode} = operator.uses.get(type);
                   operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
                 }
@@ -1706,8 +1713,7 @@ class Script {
                 let requestedDepth = 1;
 
                 if (this.getItemCount(row) >= 2) {
-                  const {value} = this.getData(row, col + 1);
-                  requestedDepth = +this.literals.get(value);
+                  requestedDepth = this.getItem(row, 1).loopLayers;
                 }
 
                 let depthTraveled = 0;
@@ -1819,15 +1825,25 @@ class Script {
       mainFunc.push(...Array(scopeData.blockCount).fill(Wasm.end));
     }
 
-    const localVarDefinition = [
-      ...Wasm.varuint(localVarMapping.length), //count of local entries (count and type pairs, not total locals)
-    ];
+    const localVarDefinition = [];
 
-    //at the moment, I make no attempt to collapse repeating types into a single type description
-    for (let local of localVarMapping) {
+    //collapses paramaters of the same type that are next to each other
+    let localEntriesCount = 0;
+    for (let i = 0; i < localVarMapping.length; ++i) {
+      const local = localVarMapping[i];
       const type = getWasmType(local.type);
-      localVarDefinition.push(1, type);
+      let count = 0;
+      while (i < localVarMapping.length && getWasmType(localVarMapping[i].type) === type) {
+        ++count;
+        ++i;
+      }
+      localVarDefinition.push(count, type);
+      ++localEntriesCount;
     }
+
+    localVarDefinition.unshift(
+      ...Wasm.varuint(localEntriesCount), //count of local entries (count and type pairs, not total locals)
+    )
 
     mainFunc = [...localVarDefinition, ...mainFunc, Wasm.end];
 

@@ -506,7 +506,78 @@ function BuiltIns() {
     ), 
     new PredefinedFunc(
       new FuncSig(this.STRING, "from", this.STRING, [this.F64, "item"]),
-      //TODO
+      2, 2, Wasm.types.i32, 1, Wasm.types.i64, //TODO actually implement this
+      Wasm.get_local, 0,
+      Wasm.i64_trunc_s_from_f64,
+      Wasm.set_local, 3,
+
+      Wasm.get_global, 0, //address = top of stack + 24
+      Wasm.i32_const, 24,
+      Wasm.i32_add,
+      Wasm.set_local, 1,
+
+      Wasm.get_local, 3,
+      Wasm.i64_const, 0,
+      Wasm.i64_lt_s,
+      Wasm.if, Wasm.types.void,     //if val < 0
+        Wasm.i32_const, 1,         //isNeg = true
+        Wasm.set_local, 2,
+        Wasm.i64_const, 0,         //val = -val
+        Wasm.get_local, 3,
+        Wasm.i64_sub,
+        Wasm.set_local, 3,
+      Wasm.end,
+  
+      Wasm.loop, Wasm.types.void, //do
+        Wasm.get_local, 1, //address
+  
+        Wasm.get_local, 3,
+        Wasm.i64_const, 10,
+        Wasm.i64_rem_u,
+        Wasm.i32_wrap_from_i64,
+        Wasm.i32_const, '0'.charCodeAt(),
+        Wasm.i32_add, //value = val % 10 + '0'
+  
+        Wasm.i32_store8, 0, 0, //store value at address
+  
+        Wasm.get_local, 1, //address--
+        Wasm.i32_const, 1,
+        Wasm.i32_sub,
+        Wasm.set_local, 1,
+  
+        Wasm.get_local, 3, //val /= 10
+        Wasm.i64_const, 10,
+        Wasm.i64_div_u,
+        Wasm.tee_local, 3,
+        Wasm.i64_const, 0,
+        Wasm.i64_gt_u,
+      Wasm.br_if, 0, //while val > 0
+      Wasm.end,
+
+      Wasm.get_local, 2, //if isNeg, store a minus sign
+      Wasm.if, Wasm.types.void,
+        Wasm.get_local, 1, //address
+        Wasm.i32_const, '-'.charCodeAt(), //value = '-'
+        Wasm.i32_store8, 0, 0, //store value at address
+
+        Wasm.get_local, 1, //address--
+        Wasm.i32_const, 1,
+        Wasm.i32_sub,
+        Wasm.set_local, 1,
+      Wasm.end,
+  
+      Wasm.get_local, 1, //address = string write position
+  
+      Wasm.i32_const, 24, //value = length = 24 - address + top of stack
+      Wasm.get_local, 1,
+      Wasm.i32_sub,
+      Wasm.get_global, 0,
+      Wasm.i32_add,
+  
+      Wasm.i32_store8, 0, 0, //store length of string at address
+      
+      Wasm.get_local, 1, //return the address of the first byte
+      Wasm.end,
     ), 
     new ImportedFunc(
       new FuncSig(this.SYSTEM, "input", this.BOOL),
@@ -797,36 +868,36 @@ function BuiltIns() {
       [this.BOOL, this.U64, Wasm.i64_ge_u],
     ),
     this.HALF_OPEN_RANGE = new Symbol("..<", 0, {isRange: true},
-      [this.ITERABLE, this.I32, Wasm.i32_lt_s, Wasm.i32_add],
-      [this.ITERABLE, this.U32, Wasm.i32_lt_u, Wasm.i32_add],
-      [this.ITERABLE, this.I64, Wasm.i64_lt_s, Wasm.i64_add],
-      [this.ITERABLE, this.U64, Wasm.i64_lt_u, Wasm.i64_add],
-      [this.ITERABLE, this.F32, Wasm.f32_lt, Wasm.f32_add],
-      [this.ITERABLE, this.F64, Wasm.f64_lt, Wasm.f64_add],
+      [this.I32, this.I32, Wasm.i32_lt_s, Wasm.i32_add],
+      [this.U32, this.U32, Wasm.i32_lt_u, Wasm.i32_add],
+      [this.I64, this.I64, Wasm.i64_lt_s, Wasm.i64_add],
+      [this.U64, this.U64, Wasm.i64_lt_u, Wasm.i64_add],
+      [this.F32, this.F32, Wasm.f32_lt, Wasm.f32_add],
+      [this.F64, this.F64, Wasm.f64_lt, Wasm.f64_add],
     ),
     this.CLOSED_RANGE = new Symbol("..≤", 0, {isRange: true},
-      [this.ITERABLE, this.I32, Wasm.i32_le_s, Wasm.i32_add],
-      [this.ITERABLE, this.U32, Wasm.i32_le_u, Wasm.i32_add],
-      [this.ITERABLE, this.I64, Wasm.i64_le_s, Wasm.i64_add],
-      [this.ITERABLE, this.U64, Wasm.i64_le_u, Wasm.i64_add],
-      [this.ITERABLE, this.F32, Wasm.f32_le, Wasm.f32_add],
-      [this.ITERABLE, this.F64, Wasm.f64_le, Wasm.f64_add],
+      [this.I32, this.I32, Wasm.i32_le_s, Wasm.i32_add],
+      [this.U32, this.U32, Wasm.i32_le_u, Wasm.i32_add],
+      [this.I64, this.I64, Wasm.i64_le_s, Wasm.i64_add],
+      [this.U64, this.U64, Wasm.i64_le_u, Wasm.i64_add],
+      [this.F32, this.F32, Wasm.f32_le, Wasm.f32_add],
+      [this.F64, this.F64, Wasm.f64_le, Wasm.f64_add],
     ),
     this.BACKWARDS_HALF_OPEN_RANGE = new Symbol("..>", 0, {isRange: true},
-      [this.ITERABLE, this.I32, Wasm.i32_gt_s, Wasm.i32_sub],
-      [this.ITERABLE, this.U32, Wasm.i32_gt_u, Wasm.i32_sub],
-      [this.ITERABLE, this.I64, Wasm.i64_gt_s, Wasm.i64_sub],
-      [this.ITERABLE, this.U64, Wasm.i64_gt_u, Wasm.i64_sub],
-      [this.ITERABLE, this.F32, Wasm.f32_gt, Wasm.f32_sub],
-      [this.ITERABLE, this.F64, Wasm.f64_gt, Wasm.f64_sub],
+      [this.I32, this.I32, Wasm.i32_gt_s, Wasm.i32_sub],
+      [this.U32, this.U32, Wasm.i32_gt_u, Wasm.i32_sub],
+      [this.I64, this.I64, Wasm.i64_gt_s, Wasm.i64_sub],
+      [this.U64, this.U64, Wasm.i64_gt_u, Wasm.i64_sub],
+      [this.F32, this.F32, Wasm.f32_gt, Wasm.f32_sub],
+      [this.F64, this.F64, Wasm.f64_gt, Wasm.f64_sub],
     ),
     this.BACKWARDS_CLOSED_RANGE = new Symbol("..≥", 0, {isRange: true},
-      [this.ITERABLE, this.I32, Wasm.i32_ge_s, Wasm.i32_sub],
-      [this.ITERABLE, this.U32, Wasm.i32_ge_u, Wasm.i32_sub],
-      [this.ITERABLE, this.I64, Wasm.i64_ge_s, Wasm.i64_sub],
-      [this.ITERABLE, this.U64, Wasm.i64_ge_u, Wasm.i64_sub],
-      [this.ITERABLE, this.F32, Wasm.f32_ge, Wasm.f32_sub],
-      [this.ITERABLE, this.F64, Wasm.f64_ge, Wasm.f64_sub],
+      [this.I32, this.I32, Wasm.i32_ge_s, Wasm.i32_sub],
+      [this.U32, this.U32, Wasm.i32_ge_u, Wasm.i32_sub],
+      [this.I64, this.I64, Wasm.i64_ge_s, Wasm.i64_sub],
+      [this.U64, this.U64, Wasm.i64_ge_u, Wasm.i64_sub],
+      [this.F32, this.F32, Wasm.f32_ge, Wasm.f32_sub],
+      [this.F64, this.F64, Wasm.f64_ge, Wasm.f64_sub],
     ),
     this.TWOS_COMPLEMENT = new Symbol("-", 10, {isUnary: true},
       [this.I32, this.I32, Wasm.i32_const, 0, Wasm.i32_sub],
