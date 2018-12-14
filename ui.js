@@ -761,8 +761,11 @@ function closeMenu() {
   }
 
   editor.classList.remove("selected");
-  selectedItem && selectedItem.classList.remove("selected");
-  selectedItem = undefined;
+  if (selectedItem) {
+    selectedItem.classList.remove("selected");
+    selectedItem.blur();
+    selectedItem = undefined;
+  }
 
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
