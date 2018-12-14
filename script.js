@@ -11,6 +11,7 @@ class Script {
       this.getAll().onsuccess = function(event) {
         const scriptData = event.target.result;
         const varDefs = new Map();
+        let highestVarId = -1;
         
         for (const lineData of scriptData) {
           const items = [];
@@ -19,7 +20,10 @@ class Script {
             if ("type" in data) {
               const type = script.BuiltIns.TYPES.find(type => type.id === data.type);
               const scope = script.BuiltIns.VOID;
-              const varDef = new VarDef(data.name, type, scope, data.id);
+              const id = data.id;
+              highestVarId = Math.max(id, highestVarId);
+              const typeAnnotated = data.typeAnnotated;
+              const varDef = new VarDef(data.name, type, {scope, id, typeAnnotated});
               items.push(varDef);
               varDefs.set(data.id, varDef);
             } else if ("varDef" in data) {
@@ -56,6 +60,8 @@ class Script {
             items,
           });
         }
+
+        VarDef.nextId = highestVarId + 1;
 
         scriptLoaded();
       }
@@ -232,18 +238,31 @@ class Script {
 
       if (item.constructor === VarDef) {
         const setType = (type, item) => {
-          item.type = type;
+          if (type === this.BuiltIns.ANY) {
+            item.typeAnnotated = false;
+            this.runTypeInference(row);
+          } else {
+            item.typeAnnotated = true;
+            item.type = type;
+          }
+          
           this.saveRows([this.lines[row]]);
           return {rowUpdated: true};
         }
         
         if (this.getItemCount(row) > 2 && this.getItem(row, 2).isAssignment) {
           options.push({text: "auto", style: "comment",
-            action: setType, args: [item, this.BuiltIns.ANY]
+            action: setType, args: [this.BuiltIns.ANY, item]
           });
         }
 
-        options.push(...this.getSizedTypes(setType, item));
+        //indicate what the current type is within the type options
+        const typeOptions = this.getSizedTypes(setType, item);
+        const index = typeOptions.findIndex(op => op.args[0] === item.type);
+        if (index !== -1) {
+          typeOptions[index].isSelected = true;
+        }
+        options.push(...typeOptions);
       }
 
       const prevItem = this.getItem(row, col - 1);
@@ -308,8 +327,7 @@ class Script {
                 newItem = new StringLiteral(text);
               }
 
-              this.setItem(row, col, newItem);
-              return {rowUpdated: true, selectedCol: col + 1};
+              return replace(col, newItem);
             }, oninput: (event) => {
               const inputNode = event.target;
               inputNode.classList.remove("keyword", "number", "string");
@@ -428,7 +446,7 @@ class Script {
           this.appendRowsUpTo(row);
           this.pushItems(row,
             this.BuiltIns.VAR,
-            new VarDef(null, this.BuiltIns.I32, this.BuiltIns.VOID),
+            new VarDef(null, this.BuiltIns.I32),
             this.BuiltIns.ASSIGN
           );
           return {rowUpdated: true, selectedCol: 1};
@@ -483,7 +501,7 @@ class Script {
           this.appendRowsUpTo(row);
           this.pushItems(row,
             this.BuiltIns.FOR,
-            new VarDef("index", this.BuiltIns.I32, this.BuiltIns.VOID),
+            new VarDef("index", this.BuiltIns.I32),
             this.BuiltIns.IN,
             new NumericLiteral("0"),
             this.BuiltIns.HALF_OPEN_RANGE
@@ -542,7 +560,7 @@ class Script {
     }
     
     const defineVar = (type) => {
-      const newVar = new VarDef(null, type, this.BuiltIns.VOID);
+      const newVar = new VarDef(null, type);
       this.pushItems(row, newVar);
       return {rowUpdated: true};
     }
@@ -1048,6 +1066,10 @@ class Script {
     if (item.constructor !== VarDef) {
       return;
     }
+
+    if (item.typeAnnotated === true) {
+      return;
+    }
     
     //TODO handle detecting non-primative types
     const promotions = [
@@ -1065,7 +1087,7 @@ class Script {
       }
 
       if (item.getType) {
-        status = Math.max(status, promotions.indexOf(item.getType));
+        status = Math.max(status, promotions.indexOf(item.getType()));
       }
     }
 
@@ -1074,7 +1096,13 @@ class Script {
       rvalueType = promotions[status];
     }
 
-    console.log(status, rvalueType)
+    //this makes the assumption that any expression with a bool op is a bool expression
+    if (this.lines[row].items.some(item => item.isBool)) {
+      rvalueType = this.BuiltIns.BOOL;
+    }
+
+    item.type = rvalueType;
+    this.saveRows([this.lines[row]]);
   }
 
   get rowCount() {
@@ -1474,7 +1502,7 @@ class Script {
 
       //create a new local var with the same type as the looping var to hold the end value
       const endValLocalIndex = localVarMapping.length;
-      localVarMapping.push(new VarDef("inc", lvar.type, script.BuiltIns.VOID, -1));
+      localVarMapping.push(new VarDef("inc", lvar.type, {id: -1}));
 
       const comparisonOpcode = wasmCode.pop();
 
@@ -1711,7 +1739,7 @@ class Script {
 
                 const lvar = localVarMapping[lvalueLocalIndex];
                 const stepSizeLocalIndex = localVarMapping.length;
-                localVarMapping.push(new VarDef("inc", lvar.type, this.BuiltIns.VOID, -1));
+                localVarMapping.push(new VarDef("inc", lvar.type, {id: -1}));
 
                 endOfLineInstructions.push(Wasm.set_local, stepSizeLocalIndex);
 

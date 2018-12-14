@@ -1,28 +1,39 @@
 "use strict";
 
 class VarDef {
-  constructor(name, type, scope, id = VarDef.nextId++) {
+  constructor(name, type, details = {}) {
     this.type = type;
-    this.scope = scope;
-    this.id = id;
+    this.scope = details.scope || script.BuiltIns.VOID;
+    this.id = details.id !== undefined ? details.id : VarDef.nextId++;
+    this.typeAnnotated = details.typeAnnotated;
 
     if (name !== null) {
       this.name = name;
     } else {
-      this.name = "var" + id;
+      this.name = "var" + this.id;
     }
   }
 
   getDisplay() {
-    return [this.type.text + '\n' + this.name, "keyword vardef"];
+    if (this.typeAnnotated) {
+      return [this.type.text + '\n' + this.name, "keyword vardef"];
+    } else {
+      return [this.name, "vardef"];
+    }
   }
 
   serialize() {
-    return {
+    const data = {
       name: this.name,
       type: this.type.id,
       id: this.id,
     };
+
+    if (this.typeAnnotated) {
+      data.typeAnnotated = true;
+    }
+
+    return data;
   }
 }
 VarDef.nextId = 0;
@@ -230,11 +241,7 @@ class NumericLiteral {
     return [this.text, "number literal"];
   }
 
-  getType(expectedType = script.BuiltIns.ANY) {
-    if (expectedType !== script.BuiltIns.ANY) {
-      return expectedType;
-    }
-
+  getType() {
     if (/[\.e]/i.test(this.text)) {
       return script.BuiltIns.F32;
     } else {
@@ -764,30 +771,30 @@ function BuiltIns() {
       [this.BOOL, this.U32, Wasm.i32_eq, Wasm.i32_eqz],
       [this.BOOL, this.I64, Wasm.i64_eq, Wasm.i64_eqz],
       [this.BOOL, this.U64, Wasm.i64_eq, Wasm.i64_eqz],
-    ),
+      ),
+    this.LESS = new Symbol("<", 3, {isBool: true},
+        [this.BOOL, this.I32, Wasm.i32_lt_s],
+        [this.BOOL, this.U32, Wasm.i32_lt_u],
+        [this.BOOL, this.I64, Wasm.i64_lt_s],
+        [this.BOOL, this.U64, Wasm.i64_lt_u],
+      ),
     this.GREATER = new Symbol(">", 3, {isBool: true},
       [this.BOOL, this.I32, Wasm.i32_gt_s],
       [this.BOOL, this.U32, Wasm.i32_gt_u],
       [this.BOOL, this.I64, Wasm.i64_gt_s],
       [this.BOOL, this.U64, Wasm.i64_gt_u],
     ),
-    this.LESS = new Symbol("<", 3, {isBool: true},
-      [this.BOOL, this.I32, Wasm.i32_lt_s],
-      [this.BOOL, this.U32, Wasm.i32_lt_u],
-      [this.BOOL, this.I64, Wasm.i64_lt_s],
-      [this.BOOL, this.U64, Wasm.i64_lt_u],
+    this.LESS_EQUAL = new Symbol("≤", 3, {isBool: true},
+      [this.BOOL, this.I32, Wasm.i32_le_s],
+      [this.BOOL, this.U32, Wasm.i32_le_u],
+      [this.BOOL, this.I64, Wasm.i64_le_s],
+      [this.BOOL, this.U64, Wasm.i64_le_u],
     ),
     this.GREATER_EQUAL = new Symbol("≥", 3, {isBool: true},
       [this.BOOL, this.I32, Wasm.i32_ge_s],
       [this.BOOL, this.U32, Wasm.i32_ge_u],
       [this.BOOL, this.I64, Wasm.i64_ge_s],
       [this.BOOL, this.U64, Wasm.i64_ge_u],
-    ),
-    this.LESS_EQUAL = new Symbol("≤", 3, {isBool: true},
-      [this.BOOL, this.I32, Wasm.i32_le_s],
-      [this.BOOL, this.U32, Wasm.i32_le_u],
-      [this.BOOL, this.I64, Wasm.i64_le_s],
-      [this.BOOL, this.U64, Wasm.i64_le_u],
     ),
     this.HALF_OPEN_RANGE = new Symbol("..<", 0, {isRange: true},
       [this.ITERABLE, this.I32, Wasm.i32_lt_s, Wasm.i32_add],

@@ -69,7 +69,7 @@ button {
   position: relative;
   z-index: -1;
   height: 40px;
-  width: calc(12px * var(--indentation));
+  width: calc(12px * var(--indentation, 0));
   background: repeating-linear-gradient(to right, transparent, transparent 8px,
                                     DarkSlateGray 8px, DarkSlateGray 12px);
   flex-shrink: 0;
@@ -78,17 +78,17 @@ button {
 
 #menu > .indentation {
   width: 0;
-  padding-right: calc(12px * var(--indentation));
-  margin-right: calc(-12px * var(--indentation));
+  padding-right: calc(12px * var(--indentation, 0));
+  margin-right: calc(-12px * var(--indentation, 0));
   opacity: 0.5;
 }
 
 .starting-scope > .indentation {
-  width: calc(12px * var(--indentation) + 12px);
+  width: calc(12px * var(--indentation, 0) + 12px);
   clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
-             calc(12px * var(--indentation)) 70%, calc(12px * var(--indentation)) 0);
+             calc(12px * var(--indentation, 0)) 70%, calc(12px * var(--indentation, 0)) 0);
   -webkit-clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
-             calc(12px * var(--indentation)) 70%, calc(12px * var(--indentation)) 0);
+             calc(12px * var(--indentation, 0)) 70%, calc(12px * var(--indentation, 0)) 0);
 }
 
 .starting-scope > .item:nth-child(3) {

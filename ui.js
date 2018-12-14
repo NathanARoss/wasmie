@@ -619,7 +619,7 @@ function loadRow(position, line, visualShift = 0) {
   }
 
   if (position >= script.rowCount) {
-    line.style.setProperty("--indentation", 0);
+    line.style.removeProperty("--indentation");
     line.classList.remove("starting-scope");
   } else {
     const itemCount = script.getItemCount(position);
@@ -630,7 +630,12 @@ function loadRow(position, line, visualShift = 0) {
       line.appendChild(node);
     }
     
-    line.style.setProperty("--indentation", script.getIndent(position));
+    const indent = script.getIndent(position);
+    if (indent > 0) {
+      line.style.setProperty("--indentation", script.getIndent(position));
+    } else {
+      line.style.removeProperty("--indentation");
+    }
     line.classList.toggle("starting-scope", script.isStartingScope(position));
   }
 
@@ -715,6 +720,12 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
     }
     
     menu.appendChild(menuItem);
+  }
+
+  //allow the script to indicate a currently chosen option
+  const selectedIndex = options.findIndex(op => op.isSelected);
+  if (selectedIndex !== -1) {
+    menu.childNodes[selectedIndex + 3].focus();
   }
 
   //if teleport is forbidden, smoothly transition menu from previous position
