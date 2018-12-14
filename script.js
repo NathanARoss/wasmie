@@ -1011,7 +1011,15 @@ class Script {
         );
       });
 
-      funcs.unshift(...lossLess);
+      const lossy = funcs.filter(func => {
+        return func.signature.returnType === expectedType
+        || (
+          func.signature.returnType.size <= expectedType.size
+          && expectedType.casts && expectedType.casts.get(func.signature.returnType)
+        );
+      });
+
+      funcs = [...lossLess, ...lossy];
     }
     
     //keep only the first function with a given name (rely on overloading)
@@ -1061,7 +1069,12 @@ class Script {
       }
     }
 
-    console.log(status, status !== -1 ? promotions[status] : "")
+    let rvalueType = this.BuiltIns.VOID;
+    if (status !== -1) {
+      rvalueType = promotions[status];
+    }
+
+    console.log(status, rvalueType)
   }
 
   get rowCount() {
