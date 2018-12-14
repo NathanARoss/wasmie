@@ -84,6 +84,7 @@ class Script {
 
     this.appendRowsUpTo(row);
     this.spliceRow(row, col, 1, ...items);
+    this.runTypeInference(row);
     return {rowUpdated: true, selectedCol: col + 2};
   }
 
@@ -103,11 +104,13 @@ class Script {
 
     const replace = (col, item) => {
       this.setItem(row, col, item);
+      this.runTypeInference(row);
       return {rowUpdated: true};
     };
 
     const insert = (col, ...items) => {
       this.spliceRow(row, col, 0, ...items);
+      this.runTypeInference(row);
       return {rowUpdated: true, selectedCol: col + 1};
     };
 
@@ -331,11 +334,13 @@ class Script {
         options.push(...this.getVisibleVars(row, false, setVarRef));
 
         let type = this.BuiltIns.ANY;
-        if (this.getItem(row, 0).constructor === VarRef) {
-          type = this.getItem(row, 0).varDef.type;
-        }
-        else if (this.getItem(row, 1).constructor === VarDef) {
-          type = this.getItem(row, 1).type;
+        if (row < this.rowCount) {
+          if (this.getItemCount(row) > 0 && this.getItem(row, 0).constructor === VarRef) {
+            type = this.getItem(row, 0).varDef.type;
+          }
+          else if (this.getItemCount(row) > 1 && this.getItem(row, 1).constructor === VarDef) {
+            type = this.getItem(row, 1).type;
+          }
         }
 
         let funcs = this.BuiltIns.FUNCTIONS;
@@ -423,7 +428,7 @@ class Script {
           this.appendRowsUpTo(row);
           this.pushItems(row,
             this.BuiltIns.VAR,
-            new VarDef("myVar", this.BuiltIns.I32, this.BuiltIns.VOID),
+            new VarDef(null, this.BuiltIns.I32, this.BuiltIns.VOID),
             this.BuiltIns.ASSIGN
           );
           return {rowUpdated: true, selectedCol: 1};
@@ -537,35 +542,24 @@ class Script {
     }
     
     const defineVar = (type) => {
-      const newVar = new VarDef("$" + (this.getItemCount(row) - 2), type, this.BuiltIns.VOID);
+      const newVar = new VarDef(null, type, this.BuiltIns.VOID);
       this.pushItems(row, newVar);
       return {rowUpdated: true};
     }
 
     if (this.getItem(row, 0) === this.BuiltIns.VAR) {
-      const ditto = {text: "ditto", style: "comment", action: () => {
-        const prev = this.getItem(row, itemCount - 1);
-        const copy = new VarDef("$" + (this.getItemCount(row) - 2), prev.type, prev.scope);
-        this.pushItems(row, copy);
-        return {rowUpdated: true};
-      }}
-
       if (itemCount === 2) {
         return [
           {text: "=", action: () => {
             this.pushItems(row, this.BuiltIns.ASSIGN);
             return {rowUpdated: true};
           }},
-          ditto,
           ...this.getSizedTypes(defineVar)
         ];
       }
 
       if (this.getItem(row, itemCount - 1).constructor === VarDef) {
-        return [
-          ditto,
-          ...this.getSizedTypes(defineVar)
-        ];
+        return this.getSizedTypes(defineVar);
       }
     }
 
@@ -1034,6 +1028,40 @@ class Script {
     }
 
     return options;
+  }
+
+  runTypeInference(row) {
+    const itemCount = this.getItemCount(row);
+    if (itemCount < 2) {
+      return;
+    }
+
+    const item = this.getItem(row, 1);
+    if (item.constructor !== VarDef) {
+      return;
+    }
+    
+    //TODO handle detecting non-primative types
+    const promotions = [
+      this.BuiltIns.U32, this.BuiltIns.I32, this.BuiltIns.U64,
+      this.BuiltIns.I64, this.BuiltIns.F32, this.BuiltIns.F64, this.BuiltIns.STRING
+    ];
+    
+    let status = -1;
+    
+    for (let col = 2; col < itemCount; ++col) {
+      const item = this.getItem(row, col);
+
+      if (item.isUnary && (col === itemCount - 1 || this.getItem(row, col + 1) === this.BuiltIns.PLACEHOLDER)) {
+        status = Math.max(status, 1); //assume I32
+      }
+
+      if (item.getType) {
+        status = Math.max(status, promotions.indexOf(item.getType));
+      }
+    }
+
+    console.log(status, status !== -1 ? promotions[status] : "")
   }
 
   get rowCount() {

@@ -2,10 +2,15 @@
 
 class VarDef {
   constructor(name, type, scope, id = VarDef.nextId++) {
-    this.name = name;
     this.type = type;
     this.scope = scope;
     this.id = id;
+
+    if (name !== null) {
+      this.name = name;
+    } else {
+      this.name = "var" + id;
+    }
   }
 
   getDisplay() {
@@ -33,6 +38,10 @@ class VarRef {
       return [this.varDef.scope.text + '\n' + this.varDef.name, "keyword"];
     else
       return [this.varDef.name, ""];
+  }
+
+  getType() {
+    return this.varDef.type;
   }
 
   serialize() {
@@ -117,6 +126,10 @@ class FuncRef {
       return [this.funcDef.signature.scope.text + '\n' + this.funcDef.signature.name, "keyword call"];
     else
       return [this.funcDef.signature.name, "call"];
+  }
+
+  getType() {
+    return this.funcDef.signature.returnType;
   }
 
   serialize() {
