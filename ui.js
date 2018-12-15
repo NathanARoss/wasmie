@@ -4,7 +4,7 @@ const lineHeight = 40;
 const bufferCount = 10;
 const forwardBufferCount = 4;
 let loadedCount = 0;
-let firstLoadedPosition = Math.floor(window.scrollY / lineHeight);
+let firstLoadedPosition = 0;
 
 const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
@@ -16,6 +16,9 @@ const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
+
+editor.style.height = "10000000px";
+firstLoadedPosition = Math.max(0, Math.floor(window.scrollY / lineHeight) - bufferCount);
 
 const itemPool = [];
 let selectedItem;
@@ -104,38 +107,14 @@ document.body.onresize = function () {
     editor.removeChild(editor.firstChild);
   }
 
-  loadedCount += diff;
+  loadedCount = newLoadedCount;
   reloadAllLines();
   
   //allow the viewport to scroll past the currently loaded lines
   editor.style.height = getLineCount() * lineHeight + "px";
 };
-document.body.onresize();
 
 
-
-//detect when items need to be loaded in the direction of scroll
-//take nodes from the back to add to the front
-window.onscroll = function() {
-  const firstVisiblePosition = Math.floor(window.scrollY / lineHeight);
-  
-  //keep a number of lines prepared for both direction
-  while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition)
-  && (firstLoadedPosition + loadedCount < getLineCount())) {
-    const position = firstLoadedPosition + loadedCount;
-    const line = editor.childNodes[position % loadedCount];
-    loadLine(position, line);
-    ++firstLoadedPosition;
-  }
-  
-  while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition)
-  && (firstLoadedPosition > 0)) {
-    const position = firstLoadedPosition - 1;
-    const line = editor.childNodes[position % loadedCount];
-    loadLine(position, line);
-    --firstLoadedPosition;
-  }
-};
 
 window.onpopstate = function(event) {
   if (!event) {
@@ -419,8 +398,31 @@ window.onpopstate = function(event) {
 }
 
 function scriptLoaded() {
-  reloadAllLines();
+  document.body.onresize();
   window.onpopstate();
+
+  //detect when items need to be loaded in the direction of scroll
+  //take nodes from the back to add to the front
+  window.onscroll = function() {
+    const firstVisiblePosition = Math.floor(window.scrollY / lineHeight);
+    
+    //keep a number of lines prepared for both direction
+    while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition)
+    && (firstLoadedPosition + loadedCount < getLineCount())) {
+      const position = firstLoadedPosition + loadedCount;
+      const line = editor.childNodes[position % loadedCount];
+      loadLine(position, line);
+      ++firstLoadedPosition;
+    }
+    
+    while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition)
+    && (firstLoadedPosition > 0)) {
+      const position = firstLoadedPosition - 1;
+      const line = editor.childNodes[position % loadedCount];
+      loadLine(position, line);
+      --firstLoadedPosition;
+    }
+  };
 }
 
 
