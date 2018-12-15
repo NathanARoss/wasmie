@@ -88,10 +88,10 @@ class Script {
     items.pop();
     items.push(this.BuiltIns.END_ARGS);
 
-    this.appendRowsUpTo(row);
-    this.spliceRow(row, col, 1, ...items);
+    this.appendLinesUpTo(row);
+    this.spliceLine(row, col, 1, ...items);
     this.runTypeInference(row);
-    return {rowUpdated: true, selectedCol: col + 2};
+    return {lineUpdated: true, selectedCol: col + 2};
   }
 
   itemClicked(row, col) {
@@ -111,13 +111,13 @@ class Script {
     const replace = (col, item) => {
       this.setItem(row, col, item);
       this.runTypeInference(row);
-      return {rowUpdated: true};
+      return {lineUpdated: true};
     };
 
     const insert = (col, ...items) => {
-      this.spliceRow(row, col, 0, ...items);
+      this.spliceLine(row, col, 0, ...items);
       this.runTypeInference(row);
-      return {rowUpdated: true, selectedCol: col + 1};
+      return {lineUpdated: true, selectedCol: col + 1};
     };
 
     const setVarRef = (varDef) => {
@@ -182,9 +182,9 @@ class Script {
       || item === this.BuiltIns.END_EXPRESSION) {
         options.push({text: "", style: "delete-outline", action: () => {
           const [start, end] = this.getExpressionBounds(row, col);
-          this.spliceRow(row, end, 1);
-          this.spliceRow(row, start, 1);
-          return {rowUpdated: true, selectedCol: col === start ? col : col - 2};
+          this.spliceLine(row, end, 1);
+          this.spliceLine(row, start, 1);
+          return {lineUpdated: true, selectedCol: col === start ? col : col - 2};
         }});
       }
 
@@ -212,9 +212,9 @@ class Script {
       const wrapInParens = {
         text: "( )", action: () => {
         const [start, end] = this.getExpressionBounds(row, col);
-        this.spliceRow(row, end + 1, 0, this.BuiltIns.END_EXPRESSION);
-        this.spliceRow(row, start, 0, this.BuiltIns.BEGIN_EXPRESSION);
-        return {rowUpdated: true, selectedCol: col + 1};
+        this.spliceLine(row, end + 1, 0, this.BuiltIns.END_EXPRESSION);
+        this.spliceLine(row, start, 0, this.BuiltIns.BEGIN_EXPRESSION);
+        return {lineUpdated: true, selectedCol: col + 1};
       }};
 
       if (item.constructor === FuncRef
@@ -225,8 +225,8 @@ class Script {
       if (item.constructor === FuncSig) {
         const setReturnType = (type, item) => {
           item.returnType = type;
-          this.saveRows([this.lines[row]]);
-          return {rowUpdated: true};
+          this.saveLines([this.lines[row]]);
+          return {lineUpdated: true};
         };
         
         options.push({text: "void", style: "comment",
@@ -246,8 +246,8 @@ class Script {
             item.type = type;
           }
           
-          this.saveRows([this.lines[row]]);
-          return {rowUpdated: true};
+          this.saveLines([this.lines[row]]);
+          return {lineUpdated: true};
         }
         
         if (this.getItemCount(row) > 2
@@ -356,7 +356,7 @@ class Script {
         options.push(...this.getVisibleVars(row, false, setVarRef));
 
         let type = this.BuiltIns.ANY;
-        if (row < this.rowCount) {
+        if (row < this.lineCount) {
           if (this.getItemCount(row) > 0 && this.getItem(row, 0).constructor === VarRef) {
             type = this.getItem(row, 0).varDef.type;
           }
@@ -418,7 +418,7 @@ class Script {
       if (item !== this.BuiltIns.IF && prevItem === this.BuiltIns.ELSE) {
         options.push({text: "if", style: "keyword", action: () => {
           this.pushItems(row, this.BuiltIns.IF);
-          return {rowUpdated: true};
+          return {lineUpdated: true};
         }});
       }
     }
@@ -427,7 +427,7 @@ class Script {
   }
 
   appendClicked(row) {
-    const rowCount = this.rowCount;
+    const rowCount = this.lineCount;
     const itemCount = (row < rowCount) ? this.getItemCount(row) : 0;
 
     if (itemCount === 0) {
@@ -443,23 +443,23 @@ class Script {
         //   const func = new FuncSig(this.BuiltIns.VOID, "myFunc", this.BuiltIns.VOID);
         //   this.appendRowsUpTo(row);
         //   this.pushItems(row, this.BuiltIns.FUNC, func);
-        //   return {rowUpdated: true, rowInserted: true, selectedCol: 1};
+        //   return {lineUpdated: true, lineInserted: true, selectedCol: 1};
         // }},
 
         {text: "var", style: "keyword", action: () => {
-          this.appendRowsUpTo(row);
+          this.appendLinesUpTo(row);
           this.pushItems(row,
             this.BuiltIns.VAR,
             new VarDef(null, this.BuiltIns.I32),
             this.BuiltIns.ASSIGN
           );
-          return {rowUpdated: true, selectedCol: 1};
+          return {lineUpdated: true, selectedCol: 1};
         }},
 
         {text: "if", style: "keyword", action: () => {
-          this.appendRowsUpTo(row);
+          this.appendLinesUpTo(row);
           this.pushItems(row, this.BuiltIns.IF);
-          return {rowUpdated: true, rowInserted: true};
+          return {lineUpdated: true, lineInserted: true};
         }}
       ];
 
@@ -480,9 +480,9 @@ class Script {
                 if (this.getItem(r, 0) === this.BuiltIns.ELSE) {
                   return [
                     {text: "else if", style: "keyword", action: () => {
-                      this.appendRowsUpTo(row);
+                      this.appendLinesUpTo(row);
                       this.pushItems(row, this.BuiltIns.ELSE, this.BuiltIns.IF);
-                      return {rowUpdated: true, rowInserted: true};
+                      return {lineUpdated: true, lineInserted: true};
                     }}
                   ];
                 }
@@ -491,9 +491,9 @@ class Script {
 
             //if no succeeding else block is found, allow the user to create one
             options.push({text: "else", style: "keyword", action: () => {
-              this.appendRowsUpTo(row);
+              this.appendLinesUpTo(row);
               this.pushItems(row, this.BuiltIns.ELSE);
-              return {rowUpdated: true, rowInserted: true};
+              return {lineUpdated: true, lineInserted: true};
             }});
             break;
           }
@@ -502,7 +502,7 @@ class Script {
 
       options.push(
         {text: "for", style: "keyword", action: () => {
-          this.appendRowsUpTo(row);
+          this.appendLinesUpTo(row);
           this.pushItems(row,
             this.BuiltIns.FOR,
             new VarDef("index", this.BuiltIns.I32),
@@ -510,19 +510,19 @@ class Script {
             new NumericLiteral("0"),
             this.BuiltIns.HALF_OPEN_RANGE
           );
-          return {rowUpdated: true, rowInserted: true};
+          return {lineUpdated: true, lineInserted: true};
         }},
 
         {text: "while", style: "keyword", action: () => {
-          this.appendRowsUpTo(row);
+          this.appendLinesUpTo(row);
           this.pushItems(row, this.BuiltIns.WHILE);
-          return {rowUpdated: true, rowInserted: true};
+          return {lineUpdated: true, lineInserted: true};
         }},
 
         {text: "return", style: "keyword", action: () => {
-          this.appendRowsUpTo(row);
+          this.appendLinesUpTo(row);
           this.pushItems(row, this.BuiltIns.RETURN);
-          return {rowUpdated: true};
+          return {lineUpdated: true};
         }}
       );
 
@@ -536,7 +536,7 @@ class Script {
             options.push(
               {text: "break", style: "keyword", action: () => {
                 this.pushItems(row, this.BuiltIns.BREAK);
-                return {rowUpdated: true};
+                return {lineUpdated: true};
               }},
             );
             break;
@@ -545,12 +545,12 @@ class Script {
       }
 
       options.push(...this.getVisibleVars(row, true, (varDef) => {
-        this.appendRowsUpTo(row);
+        this.appendLinesUpTo(row);
         this.pushItems(row,
           new VarRef(varDef, this.BuiltIns.VOID),
           this.BuiltIns.ASSIGN
         );
-        return {rowUpdated: true};
+        return {lineUpdated: true};
       }));
 
       const scopes = new Set(this.BuiltIns.FUNCTIONS.map(func => func.signature.scope));
@@ -566,7 +566,7 @@ class Script {
     const defineVar = (type) => {
       const newVar = new VarDef(null, type);
       this.pushItems(row, newVar);
-      return {rowUpdated: true};
+      return {lineUpdated: true};
     }
 
     if (this.getItem(row, 0) === this.BuiltIns.VAR) {
@@ -574,7 +574,7 @@ class Script {
         return [
           {text: "=", action: () => {
             this.pushItems(row, this.BuiltIns.ASSIGN);
-            return {rowUpdated: true};
+            return {lineUpdated: true};
           }},
           ...this.getSizedTypes(defineVar)
         ];
@@ -590,7 +590,7 @@ class Script {
       if (lastItem.constructor !== Symbol && !this.lines[row].items.includes(this.BuiltIns.STEP)) {
         return [{text: "step", style: "keyword", action: () => {
           this.pushItems(row, this.BuiltIns.STEP);
-          return {rowUpdated: true};
+          return {lineUpdated: true};
         }}];
       }
     }
@@ -661,11 +661,11 @@ class Script {
     return [start, end];
   }
 
-  appendRowsUpTo(row) {
-    let oldLength = this.rowCount;
+  appendLinesUpTo(row) {
+    let oldLength = this.lineCount;
 
     let key = new Uint8Array((oldLength > 0) ? this.lines[oldLength - 1].key : 1);
-    while (row >= this.rowCount) {
+    while (row >= this.lineCount) {
       key = Script.getNextKey(key);
       this.lines.push({
         items: [],
@@ -674,14 +674,14 @@ class Script {
       });
     }
 
-    if (oldLength !== this.rowCount) {
-      this.saveRows(this.lines.slice(oldLength));
+    if (oldLength !== this.lineCount) {
+      this.saveLines(this.lines.slice(oldLength));
     }
   }
 
   getInsertIndent(row) {
     let indent = 0;
-    if (row > 0 && row <= this.rowCount) {
+    if (row > 0 && row <= this.lineCount) {
       indent = this.getIndent(row - 1) + this.isStartingScope(row - 1);
       if (this.getItemCount(row - 1) === 0) {
         indent = Math.max(indent - 1, this.getIndent(row));
@@ -691,10 +691,10 @@ class Script {
   }
 
   canInsert(row) {
-    return row < this.rowCount || this.getInsertIndent(row) > 0;
+    return row < this.lineCount || this.getInsertIndent(row) > 0;
   }
 
-  insertRow(row) {
+  insertLine(row) {
     if (!this.canInsert(row)) {
       return -1;
     }
@@ -705,7 +705,7 @@ class Script {
     //find the best place to insert a line to minimize key size
     //moving the insertion within equally indented blank lines is unnoticable
     for (let end = row ;; ++end) {
-      if (end >= this.rowCount) {
+      if (end >= this.lineCount) {
         //end of script found, append a line instead
         if (indent === 0) {
           //don't allow trailing whitespace
@@ -750,12 +750,12 @@ class Script {
       indent
     };
     this.lines.splice(row, 0, line);
-    this.saveRows([line]);
+    this.saveLines([line]);
     return row;
   }
 
-  deleteRow(row, keepRow = false) {
-    if (row >= this.rowCount) {
+  deleteLine(row, keepLine = false) {
+    if (row >= this.lineCount) {
       return 1;
     }
 
@@ -763,22 +763,22 @@ class Script {
     let r = row;
     do {
       ++r;
-    } while (r < this.rowCount && this.getIndent(r) > indent);
+    } while (r < this.lineCount && this.getIndent(r) > indent);
     let count = r - row;
 
     //manage orphaned else and else if structures
     if (this.getItem(row, 0) === this.BuiltIns.IF
     || this.getItem(row, 1) === this.BuiltIns.IF) {
-      while (r < this.rowCount && !this.isStartingScope(r)) {
+      while (r < this.lineCount && !this.isStartingScope(r)) {
         ++r;
       }
-      if (r < this.rowCount) {
+      if (r < this.lineCount) {
         if (this.getItem(row, 0) === this.BuiltIns.IF) {
           if (this.getItem(r, 1) === this.BuiltIns.IF) {
-            this.spliceRow(r, 0, 1);
+            this.spliceLine(r, 0, 1);
           }
           else if (this.getItem(r, 0) === this.BuiltIns.ELSE) {
-            this.spliceRow(r, 0, 1, this.BuiltIns.IF, this.BuiltIns.TRUE);
+            this.spliceLine(r, 0, 1, this.BuiltIns.IF, this.BuiltIns.TRUE);
           }
         }
       }
@@ -786,7 +786,7 @@ class Script {
 
     //trim whitespace off the bottom of the script
     let startRow = row;
-    if (row + count === this.rowCount) {
+    if (row + count === this.lineCount) {
       while (startRow > 0 && this.getIndent(startRow - 1) === 0 && this.getItemCount(startRow - 1) === 0) {
         --startRow;
       }
@@ -795,8 +795,8 @@ class Script {
 
     //Pressing backspace on a scope starter clears the line and its body, but keeps
     //the line itself.  If it is at the end of the script, it is trimmed as whitespace.
-    if ((indent > 0 || startRow + count !== this.rowCount) && keepRow) {
-      this.spliceRow(startRow, 0, this.getItemCount(startRow));
+    if ((indent > 0 || startRow + count !== this.lineCount) && keepLine) {
+      this.spliceLine(startRow, 0, this.getItemCount(startRow));
       ++startRow;
       --count;
     }
@@ -813,12 +813,12 @@ class Script {
 
   deleteItem(row, col) {
     if (this.getItemCount(row) === 0) {
-      return {rowDeleted: true};
+      return {lineDeleted: true};
     }
 
     let selCol = col;
     if (col === -1) {
-      if (row < this.rowCount) {
+      if (row < this.lineCount) {
         selCol = this.getItemCount(row);
         col = selCol - 1;
       } else {
@@ -835,52 +835,52 @@ class Script {
       && (this.getItem(row, col + 1) || {}).isAssignment )
       || this.getItemCount(row) === 2)
     {
-      const oldRowCount = this.rowCount;
-      this.deleteRow(row, true);
+      const oldLineCount = this.lineCount;
+      this.deleteLine(row, true);
 
-      return this.rowCount === oldRowCount ? {rowUpdated: true, selectedCol: 0x7FFFFF} : {scriptChanged: true};
+      return this.lineCount === oldLineCount ? {lineUpdated: true, selectedCol: 0x7FFFFF} : {scriptChanged: true};
     }
 
     if (item.isUnary
     || (col === this.getItemCount(row) - 1 && item === this.BuiltIns.PLACEHOLDER)
     || item.constructor === VarDef) {
-      this.spliceRow(row, col, 1);
-      return {rowUpdated: true, selectedCol: selCol - 1};
+      this.spliceLine(row, col, 1);
+      return {lineUpdated: true, selectedCol: selCol - 1};
     }
     else if (item.isBinary) {
       const nextItem = this.getItem(row, col + 1) || {};
       const delCount = 2 + (nextItem.isUnary|0);
-      this.spliceRow(row, col, delCount);
-      return {rowUpdated: true, selectedCol: selCol - 1};
+      this.spliceLine(row, col, delCount);
+      return {lineUpdated: true, selectedCol: selCol - 1};
     }
     else if (item === this.BuiltIns.PLACEHOLDER) {
       const prevItem = this.getItem(row, col - 1);
       if (prevItem.isBinary) {
-        this.spliceRow(row, col - 1, 2);
-        return {rowUpdated: true, selectedCol: selCol - 2};
+        this.spliceLine(row, col - 1, 2);
+        return {lineUpdated: true, selectedCol: selCol - 2};
       } else if (prevItem.isUnary) {
-        this.spliceRow(row, col - 1, 1);
-        return {rowUpdated: true, selectedCol: selCol - 1};
+        this.spliceLine(row, col - 1, 1);
+        return {lineUpdated: true, selectedCol: selCol - 1};
       } else if (prevItem === this.BuiltIns.ARG_SEPARATOR) {
-        this.spliceRow(row, col - 1, 2);
-        return {rowUpdated: true, selectedCol: selCol - 1};
+        this.spliceLine(row, col - 1, 2);
+        return {lineUpdated: true, selectedCol: selCol - 1};
       }
       console.trace();
       throw "unhandled placeholder delection";
     }
     else if (item === this.BuiltIns.IF) {
-      this.spliceRow(row, col, this.getItemCount(row) - col);
-      return {rowUpdated: true, selectedCol: 0};
+      this.spliceLine(row, col, this.getItemCount(row) - col);
+      return {lineUpdated: true, selectedCol: 0};
     }
     else {
       const [start, end] = this.getExpressionBounds(row, col);
 
       //assumes any selection that reaches the first item spans the whole line
       if (start === 0) {
-        if (this.getIndent(row) === 0 && row + 1 === this.rowCount) {
-          return {rowDeleted: true};
+        if (this.getIndent(row) === 0 && row + 1 === this.lineCount) {
+          return {lineDeleted: true};
         } else {
-          this.spliceRow(row, start, end - start + 1);
+          this.spliceLine(row, start, end - start + 1);
         }
       } else {
         let paramIndex = 0;
@@ -907,32 +907,32 @@ class Script {
           if (func === this.BuiltIns.PRINT) {
             //when removing an argument to print, just delete the argument since it's just an Any[] paramater
             if (paramIndex > 0) {
-              this.spliceRow(row, col - 1, 2);
-              return {rowUpdated: true, selectedCol: selCol - 2};
+              this.spliceLine(row, col - 1, 2);
+              return {lineUpdated: true, selectedCol: selCol - 2};
             }
             if (paramIndex === 0 && this.getItem(row, col + 1) === this.BuiltIns.ARG_SEPARATOR) {
-              this.spliceRow(row, col, 2);
-              return {rowUpdated: true};
+              this.spliceLine(row, col, 2);
+              return {lineUpdated: true};
             }
           }
-          this.spliceRow(row, start, end - start + 1, new ArgHint(func, paramIndex));
+          this.spliceLine(row, start, end - start + 1, new ArgHint(func, paramIndex));
         } else {
           if (end + 1 === this.getItemCount(row)) {
-            this.spliceRow(row, start, end - start + 1);
-            return {rowUpdated: true, selectedCol: 0x7FFFFFFF};
+            this.spliceLine(row, start, end - start + 1);
+            return {lineUpdated: true, selectedCol: 0x7FFFFFFF};
           } else {
-            this.spliceRow(row, start, end - start + 1, this.BuiltIns.PLACEHOLDER);
+            this.spliceLine(row, start, end - start + 1, this.BuiltIns.PLACEHOLDER);
           }
         }
       }
-      return {rowUpdated: true, selectedCol: start};
+      return {lineUpdated: true, selectedCol: start};
     }
 
     console.trace();
     throw "Reached bottom of DELETE_ITEM without hitting a case";
   }
 
-  saveRows(lines) {
+  saveLines(lines) {
     this.queueTransation(function(lines) {
       for (const line of lines) {
         const serialized = {key: line.key};
@@ -1002,7 +1002,7 @@ class Script {
 
     let indent = this.getIndent(row);
 
-    for (let r = Math.min(this.rowCount, row) - 1; r >= 0; --r) {
+    for (let r = Math.min(this.lineCount, row) - 1; r >= 0; --r) {
       const lineIndent = this.getIndent(r);
       if (lineIndent + this.isStartingScope(r) <= indent) {
         indent = lineIndent;
@@ -1106,10 +1106,10 @@ class Script {
     }
 
     item.type = rvalueType;
-    this.saveRows([this.lines[row]]);
+    this.saveLines([this.lines[row]]);
   }
 
-  get rowCount() {
+  get lineCount() {
     return this.lines.length;
   }
 
@@ -1123,17 +1123,17 @@ class Script {
 
   setItem(row, col, val) {
     this.lines[row].items[col] = val;
-    this.saveRows([this.lines[row]]);
+    this.saveLines([this.lines[row]]);
   }
 
-  spliceRow(row, col, count, ...items) {
+  spliceLine(row, col, count, ...items) {
     this.lines[row].items.splice(col, count, ...items);
-    this.saveRows([this.lines[row]]);
+    this.saveLines([this.lines[row]]);
   }
 
   pushItems(row, ...items) {
     this.lines[row].items.push(...items);
-    this.saveRows([this.lines[row]]);
+    this.saveLines([this.lines[row]]);
   }
 
   getIndent(row) {
@@ -1204,7 +1204,7 @@ class Script {
                 console.log("Successfully created new project.  ID is", this.projectID);
 
                 this.queuedTransations.length = 0;
-                this.saveRows(this.lines);
+                this.saveLines(this.lines);
                 this.performTransactions("readwrite", this.queuedTransations);
               }
             }
@@ -1531,7 +1531,7 @@ class Script {
     initialData.push(...Wasm.stringToLenPrefixedUTF8("-"));     //address 6
     initialData.push(...Wasm.stringToLenPrefixedUTF8("true"));  //address 8
 
-    for (let row = 0, endRow = this.rowCount; row < endRow; ++row) {
+    for (let row = 0, endRow = this.lineCount; row < endRow; ++row) {
       lvalueType = this.BuiltIns.VOID;
       lvalueLocalIndex = -1;
       

@@ -1,12 +1,11 @@
 "use strict";
 
-const rowHeight = 40;
+const lineHeight = 40;
 const bufferCount = 10;
 const forwardBufferCount = 4;
 let loadedCount = 0;
 let firstLoadedPosition = 0;
 
-const list = document.getElementById("list");
 const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
 const menuButton = document.getElementById("menu-button");
@@ -47,7 +46,7 @@ createButton.addEventListener("click", function(event) {
   
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
-  reloadAllRows();
+  reloadAllLines();
   closeMenu();
 });
 
@@ -87,54 +86,74 @@ menu.childNodes[2].oncontextmenu = function(event) {
 };
 
 document.body.onresize = function () {
-  let newLoadedCount = Math.ceil(window.innerHeight / rowHeight) + bufferCount;
-  let diff = newLoadedCount - loadedCount;
-  loadedCount = newLoadedCount;
+  const newLoadedCount = Math.ceil(window.innerHeight / lineHeight) + bufferCount;
+  const diff = newLoadedCount - loadedCount;
+
+  addOrRemoveLines(diff);
   
-  //allow the viewport to scroll past the currently loaded rows
-  list.style.height = getRowCount() * rowHeight + "px";
-  
-  //TODO reimplement these to handle the last row not being the last child
+  //allow the viewport to scroll past the currently loaded lines
+  editor.style.height = getLineCount() * lineHeight + "px";
+};
+document.body.onresize();
+
+function addOrRemoveLines(diff) {
   for(let i = 0; i < diff; ++i) {
-    let div = createRow();
-    let position = list.childNodes.length + firstLoadedPosition;
-    loadRow(position, div);
-    list.appendChild(div);
+    const position = firstLoadedPosition + loadedCount;
+    const newLine = createLine();
+    loadLine(position, newLine);
+    
+    let before;
+    if (loadedCount === 0) {
+      before = editor.firstChild;
+    } else {
+      const lastLine = editor.childNodes[(position - 1) % loadedCount];
+      console.log((position - 1),"%", loadedCount, "==", (position - 1) % loadedCount, lastLine)
+      before = lastLine.nextSibling;
+    }
+    
+    editor.insertBefore(newLine, before);
+
+    // for (let i = Math.floor(firstLoadedPosition / loadedCount); i > 0; --i) {
+    //   editor.insertBefore(editor.firstChild, editor.childNodes[loadedCount]);
+    // }
+
+    ++loadedCount;
   }
 
   for (let i = diff; i < 0; ++i) {
-    let lastLine = list.lastChild;
-    list.removeChild(lastLine);
+    --position;
+    const toRemove = editor.childNodes[position % loadedCount]
+    editor.removeChild(toRemove);
   
-    while (lastLine.childNodes.length > 2) {
-      itemPool.push(lastLine.lastChild);
-      lastLine.removeChild(lastLine.lastChild);
+    while (toRemove.childNodes.length > 2) {
+      itemPool.push(toRemove.removeChild(toRemove));
     }
+
+    --loadedCount;
   }
-};
-document.body.onresize();
+}
 
 
 
 //detect when items need to be loaded in the direction of scroll
 //take nodes from the back to add to the front
 window.onscroll = function() {
-  const firstVisiblePosition = Math.floor(window.scrollY / rowHeight);
+  const firstVisiblePosition = Math.floor(window.scrollY / lineHeight);
   
-  //keep a number of rows prepared for both direction
+  //keep a number of lines prepared for both direction
   while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition)
-  && (firstLoadedPosition + loadedCount < getRowCount())) {
+  && (firstLoadedPosition + loadedCount < getLineCount())) {
     const position = firstLoadedPosition + loadedCount;
-    const line = list.childNodes[position % loadedCount];
-    loadRow(position, line);
+    const line = editor.childNodes[position % loadedCount];
+    loadLine(position, line);
     ++firstLoadedPosition;
   }
   
   while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition)
   && (firstLoadedPosition > 0)) {
     const position = firstLoadedPosition - 1;
-    const line = list.childNodes[position % loadedCount];
-    loadRow(position, line);
+    const line = editor.childNodes[position % loadedCount];
+    loadLine(position, line);
     --firstLoadedPosition;
   }
 };
@@ -422,7 +441,7 @@ window.onpopstate = function(event) {
 }
 
 function scriptLoaded() {
-  reloadAllRows();
+  reloadAllLines();
   window.onpopstate();
 }
 
@@ -434,7 +453,7 @@ function selectProject(event) {
     if (projectID !== oldActiveProject) {
       localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
       script = new Script();
-      reloadAllRows();
+      reloadAllLines();
     }
     closeMenu();
     window.history.back();
@@ -455,7 +474,7 @@ function deleteProject(event) {
       if (script.projectID === id) {
         localStorage.removeItem(ACTIVE_PROJECT_KEY);
         script = new Script();
-        reloadAllRows();
+        reloadAllLines();
         closeMenu();
       }
     }
@@ -518,13 +537,13 @@ function getDateString(date) {
 }
 
 
-function getRowCount() {
-  return script.rowCount + loadedCount - bufferCount - 2;
+function getLineCount() {
+  return script.lineCount + loadedCount - bufferCount - 2;
 }
 
 
 
-function createRow() {
+function createLine() {
   const append = document.createElement("button");
   append.className = "append";
   append.position = -1;
@@ -533,7 +552,7 @@ function createRow() {
   indentation.classList.add("indentation");
   
   const lineDiv = document.createElement("div");
-  lineDiv.addEventListener("click", rowClickHandler, {passive: true});
+  lineDiv.addEventListener("click", lineClickHandler, {passive: true});
   lineDiv.appendChild(indentation);
   lineDiv.appendChild(append);
   
@@ -543,84 +562,80 @@ function createRow() {
 
 
 
-function insertRow(position) {
-  script.insertRow(position);
+function insertLine(position) {
+  script.insertLine(position);
   
   if (position < firstLoadedPosition + loadedCount) {
     const selectedIndex = position % loadedCount;
-    const selectedLine = list.childNodes[selectedIndex];
+    const selectedLine = editor.childNodes[selectedIndex];
 
-    const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
-    const lastLine = list.childNodes[lastRowIndex];
+    const lastLineIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
+    const lastLine = editor.childNodes[lastLineIndex];
 
-    list.insertBefore(lastLine, selectedLine);
-    loadRow(position, lastLine, -1);
+    editor.insertBefore(lastLine, selectedLine);
+    loadLine(position, lastLine, -1);
 
-    //if the bottom row must go up past the beginning of the array and back around to the
-    //end to the new position, then a row must wrap around in the opposite direction
-    //to prevent the remaining rows from having an index one too high
-    if (lastRowIndex < selectedIndex) {
-      list.insertBefore(list.lastChild, list.firstChild);
+    //if the bottom line must go up past the beginning of the array and back around to the
+    //end to the new position, then a line must wrap around in the opposite direction
+    //to prevent the remaining lines from having an index one too high
+    if (lastLineIndex < selectedIndex) {
+      editor.insertBefore(editor.childNodes[loadedCount - 1], editor.firstChild);
     }
 
-    //shift existing rows downward
+    //shift existing lines downward
     for (let i = position + 1; i < loadedCount + firstLoadedPosition; ++i) {
-      const line = list.childNodes[i % loadedCount];
+      const line = editor.childNodes[i % loadedCount];
       line.position = i;
       line.style.setProperty("--position", i + 1);
       line.childNodes[1].textContent = i;
     }
   }
 
-  list.style.height = getRowCount() * rowHeight + "px";
+  editor.style.height = getLineCount() * lineHeight + "px";
 }
 
-function deleteRow(position) {
-  let deletedCount = script.deleteRow(position);
+function deleteLine(position) {
+  let deletedCount = script.deleteLine(position);
   deletedCount = Math.min(deletedCount, loadedCount - (position - firstLoadedPosition));
 
   const selectedIndex = position % loadedCount;
-  const lastRowIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
+  const lastLineIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
   
   for (let i = 0; i < deletedCount; ++i) {
-    const selectedLine = list.childNodes[selectedIndex];
-    const lastLine = list.childNodes[lastRowIndex];
+    const selectedLine = editor.childNodes[selectedIndex];
+    const lastLine = editor.childNodes[lastLineIndex];
 
-    if (lastLine.nextSibling) {
-      list.insertBefore(selectedLine, lastLine.nextSibling);
-    } else {
-      list.appendChild(selectedLine);
-    }
+    editor.insertBefore(selectedLine, lastLine.nextSibling);
 
-    if (lastRowIndex < selectedIndex) {
-      list.appendChild(list.firstChild);
+    if (lastLineIndex < selectedIndex) {
+      editor.insertBefore(editor.firstChild, editor.childNodes[loadedCount]);
     }
 
     const newPosition = firstLoadedPosition + loadedCount - deletedCount + i;
-    loadRow(newPosition, selectedLine);
+    loadLine(newPosition, selectedLine);
   }
 
   //shift the remaining lines down
   for (let i = position; i < firstLoadedPosition + loadedCount - deletedCount; ++i) {
-    const line = list.childNodes[i % loadedCount];    
+    const line = editor.childNodes[i % loadedCount];    
     line.position = i;
     line.style.setProperty("--position", 1);
     line.childNodes[1].textContent = i;
   }
 
-  list.style.height = getRowCount() * rowHeight + "px";
+  editor.style.height = getLineCount() * lineHeight + "px";
 }
 
 
 
-function loadRow(position, line, visualShift = 0) {  
+function loadLine(position, line, visualShift = 0) {
   while (line.childNodes.length > 2) {
     itemPool.push(line.removeChild(line.lastChild));
   }
 
-  if (position >= script.rowCount) {
-    line.style.removeProperty("--indentation");
-    line.classList.remove("starting-scope");
+  if (position >= script.lineCount) {
+    line.style.removeProperty("--indent");
+    line.classList.remove("half-indent");
   } else {
     const itemCount = script.getItemCount(position);
 
@@ -632,11 +647,11 @@ function loadRow(position, line, visualShift = 0) {
     
     const indent = script.getIndent(position);
     if (indent > 0) {
-      line.style.setProperty("--indentation", script.getIndent(position));
+      line.style.setProperty("--indent", script.getIndent(position));
     } else {
-      line.style.removeProperty("--indentation");
+      line.style.removeProperty("--indent");
     }
-    line.classList.toggle("starting-scope", script.isStartingScope(position));
+    line.classList.toggle("half-indent", script.isStartingScope(position));
   }
 
   if (line.position !== position) {
@@ -655,11 +670,12 @@ function loadRow(position, line, visualShift = 0) {
   }
 }
 
-function reloadAllRows() {
-  list.style.height = getRowCount() * rowHeight + "px";
+function reloadAllLines() {
+  editor.style.height = getLineCount() * lineHeight + "px";
 
-  for (const line of list.childNodes) {
-    loadRow(line.position, line);
+  for (let i = 0; i < loadedCount; ++i) {
+    const line = editor.childNodes[i];
+    loadLine(line.position, line);
   }
 }
 
@@ -739,15 +755,19 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
     menu.style.transition = "";
   }
 
-  const insertPosition = selRow + (selCol !== 0 && selRow !== script.rowCount)|0;
+  const insertPosition = selRow + (selCol !== 0 && selRow !== script.lineCount)|0;
 
-  menu.classList.toggle("delete-button-shown", selRow < script.rowCount);
+  menu.classList.toggle("delete-button-shown", selRow < script.lineCount);
   menu.classList.toggle("insert-button-shown", script.canInsert(insertPosition));
   menu.style.setProperty("--position", selRow + 1);
-  menu.style.setProperty("--indentation", script.getInsertIndent(selRow + 1));
+  menu.style.setProperty("--indent", script.getInsertIndent(selRow + 1));
   
-  //make room for the menu to slot below the selected row
-  for (const line of list.childNodes) {
+  //make room for the menu to slot below the selected line
+  if (prevRow === -1) {
+    prevRow = selRow;
+  }
+  for (let i = Math.min(selRow, prevRow); i < loadedCount + firstLoadedPosition; ++i) {
+    const line = editor.childNodes[i % loadedCount];
     line.style.setProperty("--position", line.position + (line.position > selRow)|0);
   }
 }
@@ -755,10 +775,11 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
 function closeMenu() {
   menu.style.setProperty("--position", selRow);
   menu.classList.remove("revealed");
-  selRow = -1;
-  for (const line of list.childNodes) {
+  for (let i = selRow; i < loadedCount + firstLoadedPosition; ++i) {
+    const line = editor.childNodes[i % loadedCount];
     line.style.setProperty("--position", line.position);
   }
+  selRow = -1;
 
   editor.classList.remove("selected");
   if (selectedItem) {
@@ -785,7 +806,7 @@ document.onkeydown = function(event) {
 
   if (selRow !== -1) {
     if (event.key === "Delete") {
-      deleteRow(selRow);
+      deleteLine(selRow);
       const teleport = script.getItemCount(selRow) > 0;
       itemClicked(selRow, -1, teleport);
 
@@ -798,13 +819,13 @@ document.onkeydown = function(event) {
     }
 
     if (event.key === "Enter") {
-      if (selCol === 0 || selRow === script.rowCount) {
+      if (selCol === 0 || selRow === script.lineCount) {
         ++selRow;
-        insertRow(selRow - 1);
+        insertLine(selRow - 1);
       } else {
         selCol = -1;
         ++selRow;
-        insertRow(selRow);
+        insertLine(selRow);
       }
       itemClicked(selRow, selCol, false);
       event.preventDefault();
@@ -813,28 +834,28 @@ document.onkeydown = function(event) {
 };
 
 function handleMenuItemResponse(response) {
-  if ("rowUpdated" in response) {
-    const line = list.childNodes[selRow % loadedCount];
-    loadRow(selRow, line);
+  if ("lineUpdated" in response) {
+    const line = editor.childNodes[selRow % loadedCount];
+    loadLine(selRow, line);
     if (response.selectedCol >= script.getItemCount(selRow)) {
       response.selectedCol = -1;
     }
     if (selCol === -1) {
       line.scrollLeft = 1e10;
     }
-    list.style.height = getRowCount() * rowHeight + "px";
+    editor.style.height = getLineCount() * lineHeight + "px";
   }
 
-  if ("rowInserted" in response) {
-    insertRow(selRow + 1);
+  if ("lineInserted" in response) {
+    insertLine(selRow + 1);
   }
 
   if ("selectedCol" in response) {
     selCol = response.selectedCol;
   }
 
-  if ("rowDeleted" in response) {
-    deleteRow(selRow);
+  if ("lineDeleted" in response) {
+    deleteLine(selRow);
     if (selRow > 0) {
       selRow = selRow - 1;
     }
@@ -844,14 +865,14 @@ function handleMenuItemResponse(response) {
   }
 
   if ("scriptChanged" in response) {
-    reloadAllRows();
+    reloadAllLines();
     selCol = -1;
   }
   
   itemClicked(selRow, selCol);
 }
 
-function rowClickHandler(event) {
+function lineClickHandler(event) {
   if (menuButton.toggled) {
     menuButton.toggled = false;
     fabMenu.classList.remove("expanded");
@@ -871,7 +892,7 @@ function itemClicked(row, col, teleport = true) {
   if (row !== undefined && col !== undefined) {
     selectedItem && selectedItem.classList.remove("selected");
 
-    selectedItem = list.childNodes[row % loadedCount].childNodes[2 + col];
+    selectedItem = editor.childNodes[row % loadedCount].childNodes[2 + col];
     if (selectedItem) {
       selectedItem.classList.add("selected");
       selectedItem.focus();
