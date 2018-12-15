@@ -4,7 +4,7 @@ const lineHeight = 40;
 const bufferCount = 10;
 const forwardBufferCount = 4;
 let loadedCount = 0;
-let firstLoadedPosition = 0;
+let firstLoadedPosition = Math.floor(window.scrollY / lineHeight);
 
 const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
@@ -89,49 +89,28 @@ document.body.onresize = function () {
   const newLoadedCount = Math.ceil(window.innerHeight / lineHeight) + bufferCount;
   const diff = newLoadedCount - loadedCount;
 
-  addOrRemoveLines(diff);
+  for (let i = 0; i < diff; ++i) {
+    const newLine = createLine();
+    editor.insertBefore(newLine, editor.firstChild);
+  }
+  
+  for (let i = diff; i < 0; ++i) {
+    const toRemove = editor.firstChild;
+
+    while (toRemove.childNodes.length > 2) {
+      itemPool.push(toRemove.removeChild(toRemove.lastChild));
+    }
+
+    editor.removeChild(editor.firstChild);
+  }
+
+  loadedCount += diff;
+  reloadAllLines();
   
   //allow the viewport to scroll past the currently loaded lines
   editor.style.height = getLineCount() * lineHeight + "px";
 };
 document.body.onresize();
-
-function addOrRemoveLines(diff) {
-  for(let i = 0; i < diff; ++i) {
-    const position = firstLoadedPosition + loadedCount;
-    const newLine = createLine();
-    loadLine(position, newLine);
-    
-    let before;
-    if (loadedCount === 0) {
-      before = editor.firstChild;
-    } else {
-      const lastLine = editor.childNodes[(position - 1) % loadedCount];
-      console.log((position - 1),"%", loadedCount, "==", (position - 1) % loadedCount, lastLine)
-      before = lastLine.nextSibling;
-    }
-    
-    editor.insertBefore(newLine, before);
-
-    // for (let i = Math.floor(firstLoadedPosition / loadedCount); i > 0; --i) {
-    //   editor.insertBefore(editor.firstChild, editor.childNodes[loadedCount]);
-    // }
-
-    ++loadedCount;
-  }
-
-  for (let i = diff; i < 0; ++i) {
-    --position;
-    const toRemove = editor.childNodes[position % loadedCount]
-    editor.removeChild(toRemove);
-  
-    while (toRemove.childNodes.length > 2) {
-      itemPool.push(toRemove.removeChild(toRemove));
-    }
-
-    --loadedCount;
-  }
-}
 
 
 
@@ -157,7 +136,6 @@ window.onscroll = function() {
     --firstLoadedPosition;
   }
 };
-window.onscroll();
 
 window.onpopstate = function(event) {
   if (!event) {
@@ -674,8 +652,9 @@ function reloadAllLines() {
   editor.style.height = getLineCount() * lineHeight + "px";
 
   for (let i = 0; i < loadedCount; ++i) {
-    const line = editor.childNodes[i];
-    loadLine(line.position, line);
+    const position = firstLoadedPosition + i;
+    const line = editor.childNodes[position % loadedCount];
+    loadLine(position, line);
   }
 }
 
