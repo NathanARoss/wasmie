@@ -333,43 +333,43 @@ function BuiltIns() {
   ];
 
   this.I64.casts = new Map([
-    [this.U64, []],
-    [this.I32, [Wasm.i64_extend_s_from_i32]],
-    [this.U32, [Wasm.i64_extend_u_from_i32]],
-    [this.F32, [Wasm.i64_trunc_s_from_f32]],
-    [this.F64, [Wasm.i64_trunc_s_from_f64]],
+    [this.U64, {wasmCode: [], preferred: true}],
+    [this.I32, {wasmCode: [Wasm.i64_extend_s_from_i32], preferred: true}],
+    [this.U32, {wasmCode: [Wasm.i64_extend_u_from_i32], preferred: true}],
+    [this.F32, {wasmCode: [Wasm.i64_trunc_s_from_f32]}],
+    [this.F64, {wasmCode: [Wasm.i64_trunc_s_from_f64]}],
   ]);
 
   this.U64.casts = new Map([
-    [this.I64, []],
-    [this.I32, [Wasm.i64_extend_s_from_i32]],
-    [this.U32, [Wasm.i64_extend_u_from_i32]],
-    [this.F32, [Wasm.i64_trunc_u_from_f32]],
-    [this.F64, [Wasm.i64_trunc_u_from_f64]],
+    [this.I64, {wasmCode: [], preferred: true}],
+    [this.I32, {wasmCode: [Wasm.i64_extend_s_from_i32], preferred: true}],
+    [this.U32, {wasmCode: [Wasm.i64_extend_u_from_i32], preferred: true}],
+    [this.F32, {wasmCode: [Wasm.i64_trunc_u_from_f32]}],
+    [this.F64, {wasmCode: [Wasm.i64_trunc_u_from_f64]}],
   ]);
 
   this.I32.casts = new Map([
-    [this.I64, [Wasm.i32_wrap_from_i64]],
-    [this.U32, []],
-    [this.U64, [Wasm.i32_wrap_from_i64]],
-    [this.F32, [Wasm.i32_trunc_s_from_f32]],
-    [this.F64, [Wasm.i32_trunc_s_from_f64]],
+    [this.I64, {wasmCode: [Wasm.i32_wrap_from_i64], preferred: true}],
+    [this.U32, {wasmCode: [], preferred: true}],
+    [this.U64, {wasmCode: [Wasm.i32_wrap_from_i64], preferred: true}],
+    [this.F32, {wasmCode: [Wasm.i32_trunc_s_from_f32]}],
+    [this.F64, {wasmCode: [Wasm.i32_trunc_s_from_f64]}],
   ]);
 
   this.F32.casts = new Map([
-    [this.I32, [Wasm.f32_convert_s_from_i32]],
-    [this.I64, [Wasm.f32_convert_s_from_i64]],
-    [this.U32, [Wasm.f32_convert_u_from_i32]],
-    [this.U64, [Wasm.f32_convert_u_from_i64]],
-    [this.F64, [Wasm.f32_demote_from_f64]],
+    [this.I32, {wasmCode: [Wasm.f32_convert_s_from_i32]}],
+    [this.I64, {wasmCode: [Wasm.f32_convert_s_from_i64]}],
+    [this.U32, {wasmCode: [Wasm.f32_convert_u_from_i32]}],
+    [this.U64, {wasmCode: [Wasm.f32_convert_u_from_i64]}],
+    [this.F64, {wasmCode: [Wasm.f32_demote_from_f64], preferred: true}],
   ]);
 
   this.F64.casts = new Map([
-    [this.I32, [Wasm.f64_convert_s_from_i32]],
-    [this.I64, [Wasm.f64_convert_s_from_i64]],
-    [this.U32, [Wasm.f64_convert_u_from_i32]],
-    [this.U64, [Wasm.f64_convert_u_from_i64]],
-    [this.F32, [Wasm.f64_promote_from_f32]],
+    [this.I32, {wasmCode: [Wasm.f64_convert_s_from_i32]}],
+    [this.I64, {wasmCode: [Wasm.f64_convert_s_from_i64]}],
+    [this.U32, {wasmCode: [Wasm.f64_convert_u_from_i32]}],
+    [this.U64, {wasmCode: [Wasm.f64_convert_u_from_i64]}],
+    [this.F32, {wasmCode: [Wasm.f64_promote_from_f32], preferred: true}],
   ]);
 
 

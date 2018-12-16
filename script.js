@@ -1029,7 +1029,9 @@ class Script {
         return func.signature.returnType === expectedType
         || (
           func.signature.returnType.size > expectedType.size
-          && expectedType.casts && expectedType.casts.get(func.signature.returnType)
+          && expectedType.casts
+          && expectedType.casts.get(func.signature.returnType)
+          && expectedType.casts.get(func.signature.returnType).preferred
         );
       });
 
@@ -1443,13 +1445,15 @@ class Script {
               const sig = func.signature;
               return sig.scope === script.BuiltIns.STRING
               && sig.name === "from"
-              && sig.parameters[0].type.casts && sig.parameters[0].type.casts.get(expressionType);
+              && sig.parameters[0].type.casts
+              && sig.parameters[0].type.casts.get(expressionType)
+              && sig.parameters[0].type.casts.get(expressionType).preferred;
             });
           }
 
           const argType = func.signature.parameters[0].type;
           if (argType !== expressionType) {
-            wasmCode.push(...argType.casts.get(expressionType));
+            wasmCode.push(...argType.casts.get(expressionType).wasmCode);
           }
 
           if (func.constructor === PredefinedFunc) {
