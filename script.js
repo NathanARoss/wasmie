@@ -1037,10 +1037,7 @@ class Script {
 
       const lossy = funcs.filter(func => {
         return func.signature.returnType === expectedType
-        || (
-          func.signature.returnType.size <= expectedType.size
-          && expectedType.casts && expectedType.casts.get(func.signature.returnType)
-        );
+        || expectedType.casts && expectedType.casts.get(func.signature.returnType);
       });
 
       funcs = [...lossLess, ...lossy];
@@ -1469,7 +1466,7 @@ class Script {
         } else {
           const cast = expectedType.casts && expectedType.casts.get(expressionType);
           if (cast) {
-            wasmCode.push(...cast);
+            wasmCode.push(...cast.wasmCode);
           } else {
             console.log("cast from", expressionType.text, "to", expectedType.text, "not found");
           }
@@ -1603,7 +1600,8 @@ class Script {
             }
 
             let wasmCode = [];
-            if (item === this.BuiltIns.ARG_SEPARATOR || item === this.BuiltIns.END_ARGS) {
+            if ((item === this.BuiltIns.ARG_SEPARATOR || item === this.BuiltIns.END_ARGS)
+            && func.signature.parameters.length > 0) {
               //find argument type
               let expectedType = this.BuiltIns.ANY;
               let funcCallDepth = 0;
@@ -1631,7 +1629,7 @@ class Script {
                   --funcCallDepth;
                 }
               }
-              
+
               wasmCode = compileExpression(expression, expectedType)[1];
               expression.length = 0;
             }
