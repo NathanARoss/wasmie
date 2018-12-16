@@ -81,11 +81,11 @@ class Script {
   }
 
   insertFuncCall(row, col, func) {
-    const items = [new FuncRef(func, this.BuiltIns.VOID), this.BuiltIns.BEGIN_ARGS];
+    const items = [new FuncRef(func, this.BuiltIns.VOID)];
     for (let i = 0; i < func.signature.parameters.length; ++i) {
-      items.push(new ArgHint(func, i), this.BuiltIns.ARG_SEPARATOR);
+      items.push(this.BuiltIns.ARG_SEPARATOR, new ArgHint(func, i));
     }
-    items.pop();
+    items[1] = this.BuiltIns.BEGIN_ARGS;
     items.push(this.BuiltIns.END_ARGS);
 
     this.appendLinesUpTo(row);
@@ -450,7 +450,7 @@ class Script {
           this.appendLinesUpTo(row);
           this.pushItems(row,
             this.BuiltIns.VAR,
-            new VarDef(null, this.BuiltIns.I32),
+            new VarDef(null, this.BuiltIns.ANY),
             this.BuiltIns.ASSIGN
           );
           return {lineUpdated: true, selectedCol: 1};

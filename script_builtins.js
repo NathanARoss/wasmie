@@ -683,6 +683,86 @@ function BuiltIns() {
       new FuncSig(this.MATH, "copysign", this.F64, [this.F64, "magNum", 1], [this.F64, "signNum"]),
       Wasm.f64_copysign
     ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "cos", this.F64, [this.F64, "num"]),
+      "Math", "cos"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "sin", this.F64, [this.F64, "num"]),
+      "Math", "sin"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "tan", this.F64, this.F64, "y/x"),
+      "Math", "tan"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "acos", this.F64, [this.F64, "num"]),
+      "Math", "acos"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "asin", this.F64, [this.F64, "num"]),
+      "Math", "asin"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "atan", this.F64, [this.F64, "y/x"]),
+      "Math", "atan"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "atan2", this.F64, [this.F64, "y"], [this.F64, "x"]),
+      "Math", "atan2"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "cosh", this.F64, [this.F64, "num"]),
+      "Math", "cosh"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "sinh", this.F64, [this.F64, "num"]),
+      "Math", "sinh"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "tanh", this.F64, [this.F64, "y/x"]),
+      "Math", "tanh"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "acosh", this.F64, [this.F64, "num"]),
+      "Math", "acosh"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "asinh", this.F64, [this.F64, "num"]),
+      "Math", "asinh"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "atanh", this.F64, [this.F64, "y/x"]),
+      "Math", "atanh"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "cubeRoot", this.F64, [this.F64, "num"]),
+      "Math", "cbrt"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "E^", this.F64, [this.F64, "num"]),
+      "Math", "exp"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "logₑ", this.F64, [this.F64, "num"]),
+      "Math", "log"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "log₁₀", this.F64, [this.F64, "num"]),
+      "Math", "log10"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "log₂", this.F64, [this.F64, "num"]),
+      "Math", "log2"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "pow", this.F64, [this.F64, "base"], [this.F64, "power"]),
+      "Math", "pow"
+    ),
+    new ImportedFunc(
+      new FuncSig(this.MATH, "random", this.F64),
+      "Math", "random"
+    ),
   ];
 
   this.SYMBOLS = [
