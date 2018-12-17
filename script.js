@@ -28,8 +28,12 @@ class Script {
               varDefs.set(data.id, varDef);
             } else if ("varDef" in data) {
               const varDef = varDefs.get(data.varDef);
-              const currentscope = script.BuiltIns.VOID;
-              items.push(new VarRef(varDef, currentscope));
+              if (varDef) {
+                const currentscope = script.BuiltIns.VOID;
+                items.push(new VarRef(varDef, currentscope));
+              } else {
+                items.push(script.BuiltIns.PLACEHOLDER);
+              }
             } else if ("argIndex" in data) {
               const funcDef = script.BuiltIns.FUNCTIONS[-1 - data.funcDef];
               items.push(new ArgHint(funcDef, data.argIndex));
@@ -1025,22 +1029,29 @@ class Script {
     //prioritize functions that return the right type or who's return type express every
     //value the lvalue type can (i.e. double -> int)
     if (expectedType !== this.BuiltIns.ANY) {
+      const perfect = funcs.filter(func => {
+        return func.signature.returnType === expectedType;
+      });
+
       const lossLess = funcs.filter(func => {
-        return func.signature.returnType === expectedType
-        || (
-          func.signature.returnType.size > expectedType.size
+        return func.signature.returnType.size >= expectedType.size
           && expectedType.casts
           && expectedType.casts.get(func.signature.returnType)
-          && expectedType.casts.get(func.signature.returnType).preferred
-        );
+          && expectedType.casts.get(func.signature.returnType).preferred;
       });
 
       const lossy = funcs.filter(func => {
-        return func.signature.returnType === expectedType
-        || expectedType.casts && expectedType.casts.get(func.signature.returnType);
+        return func.signature.returnType.size >= expectedType.size
+          && expectedType.casts
+          && expectedType.casts.get(func.signature.returnType);
       });
 
-      funcs = [...lossLess, ...lossy];
+      const lossier = funcs.filter(func => {
+        return expectedType.casts
+        && expectedType.casts.get(func.signature.returnType)
+      });
+
+      funcs = [...perfect, ...lossLess, ...lossy, ...lossier];
     }
     
     //keep only the first function with a given name (rely on overloading)
@@ -1831,7 +1842,7 @@ class Script {
 
     //collapses paramaters of the same type that are next to each other
     let localEntriesCount = 0;
-    for (let i = 0; i < localVarMapping.length; ++i) {
+    for (let i = 0; i < localVarMapping.length;) {
       const local = localVarMapping[i];
       const type = getWasmType(local.type);
       let count = 0;

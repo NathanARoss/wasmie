@@ -50,7 +50,9 @@ createButton.addEventListener("click", function(event) {
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
   reloadAllLines();
-  closeMenu();
+  if (selRow !== -1) {
+    closeMenu();
+  }
 });
 
 loadButton.addEventListener("click", function(event) {
@@ -435,7 +437,9 @@ function selectProject(event) {
       script = new Script();
       reloadAllLines();
     }
-    closeMenu();
+    if (selRow !== -1) {
+      closeMenu();
+    }
     window.history.back();
   }
 }

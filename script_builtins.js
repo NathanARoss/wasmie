@@ -578,7 +578,7 @@ function BuiltIns() {
       
       Wasm.get_local, 1, //return the address of the first byte
       Wasm.end,
-    ), 
+    ),
     new ImportedFunc(
       new FuncSig(this.SYSTEM, "input", this.BOOL),
       "System", "inputBool" //TODO
@@ -763,6 +763,22 @@ function BuiltIns() {
       new FuncSig(this.MATH, "random", this.F64),
       "Math", "random"
     ),
+    new Macro(
+      new FuncSig(this.SYSTEM, "reinterpret", this.U32, [this.F32, "num"]),
+      Wasm.i32_reinterpret_from_f32
+    ),
+    new Macro(
+      new FuncSig(this.SYSTEM, "reinterpret", this.U64, [this.F64, "num"]),
+      Wasm.i64_reinterpret_from_f64
+    ),
+    new Macro(
+      new FuncSig(this.SYSTEM, "reinterpret", this.F32, [this.I32, "num"]),
+      Wasm.i32_reinterpret_from_f32
+    ),
+    new Macro(
+      new FuncSig(this.SYSTEM, "reinterpret", this.F64, [this.I64, "num"]),
+      Wasm.i64_reinterpret_from_f64
+    ),
   ];
 
   this.SYMBOLS = [
@@ -796,8 +812,8 @@ function BuiltIns() {
       [this.VOID, this.U32, Wasm.i32_div_u],
       [this.VOID, this.I64, Wasm.i64_div_s],
       [this.VOID, this.U64, Wasm.i64_div_u],
-      [this.VOID, this.F32, Wasm.f32_div_s],
-      [this.VOID, this.F64, Wasm.f64_div_u],
+      [this.VOID, this.F32, Wasm.f32_div],
+      [this.VOID, this.F64, Wasm.f64_div],
     ),
     this.MOD_ASSIGN = new Symbol("%=", 0, {isAssignment: true},
       [this.VOID, this.I32, Wasm.i32_rem_s],
@@ -864,8 +880,8 @@ function BuiltIns() {
       [this.U32, this.U32, Wasm.i32_div_u],
       [this.I64, this.I64, Wasm.i64_div_s],
       [this.U64, this.U64, Wasm.i64_div_u],
-      [this.F32, this.F32, Wasm.f32_div_s],
-      [this.F64, this.F64, Wasm.f64_div_u],
+      [this.F32, this.F32, Wasm.f32_div],
+      [this.F64, this.F64, Wasm.f64_div],
     ),
     this.MODULUS = new Symbol("%", 9, {isArith: true},
       [this.I32, this.I32, Wasm.i32_rem_s],
