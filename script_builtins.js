@@ -458,52 +458,51 @@ function BuiltIns() {
       Wasm.end,
     ), 
     new PredefinedFunc(
-      new FuncSig(this.STRING, "from", this.STRING, [this.U64, "item"]),
-      1, 1, Wasm.types.i32,
-      Wasm.get_global, 0, //address = top of stack + 20
-      Wasm.i32_const, 20,
-      Wasm.i32_add,
-      Wasm.set_local, 1,
+      new FuncSig(this.U32, "toString", this.U64, [this.U64, "number"], [this.U32, "address"]),
+      1, 1, Wasm.types.i64, //var copy: u64
+      Wasm.get_local, 0, //copy = number
+      Wasm.set_local, 2,
+      Wasm.get_local, 1,
+
+      Wasm.loop, Wasm.types.i32, //do
+        Wasm.i32_const, 1,       //  ++address
+        Wasm.i32_add,
+        Wasm.get_local, 2,       //  copy /= 10
+        Wasm.i32_const, 10,
+        Wasm.i32_div_u,
+        Wasm.tee_local, 2,
+        Wasm.br_if, 0,           //while copy != 0
+      Wasm.end,
+
+      Wasm.tee_local, 1,         //next = address
   
       Wasm.loop, Wasm.types.void, //do
-        Wasm.get_local, 1, //address
+        Wasm.get_local, 1,        //  MEM[c] =
   
         Wasm.get_local, 0,
         Wasm.i64_const, 10,
         Wasm.i64_rem_u,
-        Wasm.i32_wrap_from_i64,
-        Wasm.i32_const, '0'.charCodeAt(),
-        Wasm.i32_add, //value = val % 10 + '0'
+        Wasm.i64_const, '0'.charCodeAt(),
+        Wasm.i64_add,             //  number % 10 + '0'
   
-        Wasm.i32_store8, 0, 0, //store value at address
+        Wasm.i64_store8, 0, 0,    //  ;
   
-        Wasm.get_local, 1, //address--
+        Wasm.get_local, 1,        //  --c
         Wasm.i32_const, 1,
         Wasm.i32_sub,
         Wasm.set_local, 1,
   
-        Wasm.get_local, 0, //val /= 10
+        Wasm.get_local, 0,        //  number /= 10
         Wasm.i64_const, 10,
         Wasm.i64_div_u,
         Wasm.tee_local, 0,
-        Wasm.i64_const, 0,
-        Wasm.i64_gt_u,
-      Wasm.br_if, 0, //while val > 0
+        Wasm.i64_eqz,
+        Wasm.i32_eqz,
+      Wasm.br_if, 0,              //while number != 0
       Wasm.end,
-  
-      Wasm.get_local, 1, //address of string length
-  
-      Wasm.i32_const, 20, //length = 20 - address + top of stack
-      Wasm.get_local, 1,
-      Wasm.i32_sub,
-      Wasm.get_global, 0,
-      Wasm.i32_add,
-  
-      Wasm.i32_store8, 0, 0, //store length of string at address
       
-      Wasm.get_local, 1, //return the address of the first byte
-      Wasm.end,
-    ), 
+      Wasm.end, //return next
+    ),
     new PredefinedFunc(
       new FuncSig(this.STRING, "from", this.STRING, [this.F64, "item"]),
       2, 2, Wasm.types.i32, 1, Wasm.types.i64, //TODO actually implement this

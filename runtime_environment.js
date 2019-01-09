@@ -2,23 +2,19 @@ class RuntimeEnvironment {
   constructor() {
     const self = this;
     this.System = {
-      print(location) {
-        self.print(location)
+      print(address) {
+        const memory = new Uint8Array(self.js.memory.buffer);
+        const [sizeOfString, bytesRead] = Wasm.decodeVaruint(memory, address);
+        address += bytesRead;
+        const bytes = memory.slice(address, address + sizeOfString);
+        const message = Wasm.UTF8toString(bytes);
+        print(message);
       },
     }
     this.js = {
       memory: new WebAssembly.Memory({initial: 1}),
     }
     this.Math = Math;
-  }
-  
-  print(location) {
-    const memory = new Uint8Array(this.js.memory.buffer);
-    const [sizeOfString, bytesRead] = Wasm.decodeVaruint(memory, location);
-    location += bytesRead;
-    const bytes = memory.slice(location, location + sizeOfString);
-    const message = Wasm.UTF8toString(bytes);
-    print(message);
   }
 
   inputDouble(defaultVal, min, max) {
