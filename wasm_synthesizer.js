@@ -21,8 +21,9 @@ class Wasm {
         do {
             let byte = value & 0x7F;
             value = Math.floor(value / 128);
-            if (value !== 0) /* more bytes to come */
-            byte |= 0x80;
+            if (value !== 0) {/* more bytes to come */
+                byte |= 0x80;
+            }
             
             yield byte;
         } while (value !== 0);

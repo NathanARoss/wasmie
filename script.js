@@ -1539,9 +1539,8 @@ class Script {
     }
 
     const initialData = [];
-    initialData.push(...Wasm.stringToLenPrefixedUTF8("false")); //address 0
-    initialData.push(...Wasm.stringToLenPrefixedUTF8("-"));     //address 6
-    initialData.push(...Wasm.stringToLenPrefixedUTF8("true"));  //address 8
+    initialData.push(...Wasm.stringToLenPrefixedUTF8("false"), 0, 0); //address 0
+    initialData.push(...Wasm.stringToLenPrefixedUTF8("true"));        //address 8
 
     for (let row = 0, endRow = this.lineCount; row < endRow; ++row) {
       lvalueType = this.BuiltIns.VOID;
@@ -1647,8 +1646,34 @@ class Script {
 
             mainFunc.push(...wasmCode);
 
-            //print() prints out each argument string individually
-            if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR && func == this.BuiltIns.PRINT) {
+            //print() builds a string in memory from each argument before printing it
+            if (func === this.BuiltIns.PRINT || func === this.BuiltIns.PRINTLN) {
+              if (item === this.BuiltIns.BEGIN_ARGS) {
+                //push the current stack pointer onto the operand stack for later retrival
+                mainFunc.push(
+                  Wasm.get_global, 0,
+                );
+              } else if (item === this.BuiltIns.ARG_SEPARATOR) {
+                //append a space to the stack string
+                mainFunc.push(
+                  Wasm.get_global, 0, //*SP = ' '
+                  Wasm.i32_const, ' '.charCodeAt(),
+                  Wasm.i32_store8, 0, 0,
+                  Wasm.get_global, 0, // ++SP
+                  Wasm.i32_const, 1,
+                  Wasm.i32_add,
+                  Wasm.set_global, 0,
+                );
+              }
+              
+              if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {
+
+              }
+
+
+            }
+
+            if (item === this.BuiltIns.END_ARGS) {
               if (func.constructor === Macro) {
                 mainFunc.push(...func.wasmCode);
               }

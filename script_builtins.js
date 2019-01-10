@@ -375,7 +375,7 @@ function BuiltIns() {
 
 
   this.PRINT = new ImportedFunc(
-    new FuncSig(this.SYSTEM, "print", this.VOID, [this.STRING, "item"]),
+    new FuncSig(this.SYSTEM, "print", this.VOID, [this.ANY, "item"]),
     "System", "print"
   );
 
@@ -468,9 +468,11 @@ function BuiltIns() {
         Wasm.i32_const, 1,       //  ++address
         Wasm.i32_add,
         Wasm.get_local, 2,       //  copy /= 10
-        Wasm.i32_const, 10,
-        Wasm.i32_div_u,
+        Wasm.i64_const, 10,
+        Wasm.i64_div_u,
         Wasm.tee_local, 2,
+        Wasm.i64_eqz,
+        Wasm.i32_eqz,
         Wasm.br_if, 0,           //while copy != 0
       Wasm.end,
 
