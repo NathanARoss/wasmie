@@ -1440,47 +1440,11 @@ class Script {
       const wasmCode = operands[0].getWasmCode(expectedType);
 
       if (expressionType !== expectedType) {
-        if (expectedType === script.BuiltIns.STRING) {
-          let func = script.BuiltIns.FUNCTIONS.find(func => {
-            const sig = func.signature;
-            return sig.scope === script.BuiltIns.STRING
-            && sig.name === "from"
-            && sig.parameters[0].type === expressionType;
-          });
-
-          if (!func) {
-            func = script.BuiltIns.FUNCTIONS.find(func => {
-              const sig = func.signature;
-              return sig.scope === script.BuiltIns.STRING
-              && sig.name === "from"
-              && sig.parameters[0].type.casts
-              && sig.parameters[0].type.casts.get(expressionType)
-              && sig.parameters[0].type.casts.get(expressionType).preferred;
-            });
-          }
-
-          const argType = func.signature.parameters[0].type;
-          if (argType !== expressionType) {
-            wasmCode.push(...argType.casts.get(expressionType).wasmCode);
-          }
-
-          if (func.constructor === PredefinedFunc) {
-            let funcIndex = wasmFuncs.indexOf(func);
-            if (funcIndex === -1) {
-              funcIndex = wasmFuncs.length;
-              wasmFuncs.push(func);
-            }
-            wasmCode.push(Wasm.call, funcIndex + importedFuncs.length + 1);
-          } else {
-            wasmCode.push(...func.wasmCode);
-          }
+        const cast = expectedType.casts && expectedType.casts.get(expressionType);
+        if (cast) {
+          wasmCode.push(...cast.wasmCode);
         } else {
-          const cast = expectedType.casts && expectedType.casts.get(expressionType);
-          if (cast) {
-            wasmCode.push(...cast.wasmCode);
-          } else {
-            console.log("cast from", expressionType.text, "to", expectedType.text, "not found");
-          }
+          console.log("cast from", expressionType.text, "to", expectedType.text, "not found");
         }
       }
       
@@ -1610,6 +1574,7 @@ class Script {
             }
 
             let wasmCode = [];
+            let expressionType;
             if ((item === this.BuiltIns.ARG_SEPARATOR || item === this.BuiltIns.END_ARGS)
             && func.signature.parameters.length > 0) {
               //find argument type
@@ -1640,7 +1605,7 @@ class Script {
                 }
               }
 
-              wasmCode = compileExpression(expression, expectedType)[1];
+              [expressionType, wasmCode] = compileExpression(expression, expectedType);
               expression.length = 0;
             }
 
@@ -1664,13 +1629,57 @@ class Script {
                   Wasm.i32_add,
                   Wasm.set_global, 0,
                 );
+              } else if (item === this.BuiltIns.END_ARGS && func === this.BuiltIns.PRINTLN) {
+                //append a newline to the stack string
+                mainFunc.push(
+                  Wasm.get_global, 0, //*SP = '\n'
+                  Wasm.i32_const, '\n'.charCodeAt(),
+                  Wasm.i32_store8, 0, 0,
+                  Wasm.get_global, 0, // ++SP
+                  Wasm.i32_const, 1,
+                  Wasm.i32_add,
+                  Wasm.set_global, 0,
+                );
               }
               
               if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {
+                //build the string of the argument in-place on the stack
 
+                //if the argument is a primative, use specialized printing functions
+                if (expressionType === this.BuiltIns.I32) {
+                  wasmCode.push(Wasm.i64_extend_s_from_i32);
+                  expressionType = this.BuiltIns.I64;
+                }
+                if (expressionType === this.BuiltIns.U32) {
+                  wasmCode.push(Wasm.i64_extend_u_from_i32);
+                  expressionType = this.BuiltIns.U64;
+                }
+                if (expressionType === this.BuiltIns.F32) {
+                  wasmCode.push(Wasm.f64_promote_from_f32);
+                  expressionType = this.BuiltIns.F64;
+                }
+
+                const func = script.BuiltIns.FUNCTIONS.find(func => {
+                  return func.signature.scope === expressionType
+                          && func.signature.name === "toString"
+                });
+      
+                if (func) {
+                  if (func.constructor === PredefinedFunc) {
+                    let funcIndex = wasmFuncs.indexOf(func);
+                    if (funcIndex === -1) {
+                      funcIndex = wasmFuncs.length;
+                      wasmFuncs.push(func);
+                    }
+                    wasmCode.push(Wasm.call, funcIndex + importedFuncs.length + 1);
+                  } else {
+                    wasmCode.push(...func.wasmCode);
+                  }
+                } else {
+                  console.log("failed to find toString() implementation for", expressionType);
+                  throw "failed to find toString() implementation for " + expressionType.text;
+                }
               }
-
-
             }
 
             if (item === this.BuiltIns.END_ARGS) {
