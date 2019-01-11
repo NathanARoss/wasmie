@@ -458,11 +458,11 @@ function BuiltIns() {
       Wasm.end,
     ), 
     new PredefinedFunc(
-      new FuncSig(this.U32, "toString", this.U64, [this.U64, "number"], [this.U32, "address"]),
+      new FuncSig(this.U32, "toString", this.U64, [this.U32, "address"], [this.U64, "number"]),
       1, 1, Wasm.types.i64, //var copy: u64
-      Wasm.get_local, 0, //copy = number
+      Wasm.get_local, 1, //copy = number
       Wasm.set_local, 2,
-      Wasm.get_local, 1,
+      Wasm.get_local, 0,
 
       Wasm.loop, Wasm.types.i32, //do
         Wasm.i32_const, 1,       //  ++address
@@ -476,12 +476,12 @@ function BuiltIns() {
         Wasm.br_if, 0,           //while copy != 0
       Wasm.end,
 
-      Wasm.tee_local, 1,         //next = address
+      Wasm.tee_local, 0,         //next = address
   
       Wasm.loop, Wasm.types.void, //do
-        Wasm.get_local, 1,        //  MEM[c] =
+        Wasm.get_local, 0,        //  MEM[c] =
   
-        Wasm.get_local, 0,
+        Wasm.get_local, 1,
         Wasm.i64_const, 10,
         Wasm.i64_rem_u,
         Wasm.i64_const, '0'.charCodeAt(),
@@ -489,15 +489,15 @@ function BuiltIns() {
   
         Wasm.i64_store8, 0, 0,    //  ;
   
-        Wasm.get_local, 1,        //  --c
+        Wasm.get_local, 0,        //  --c
         Wasm.i32_const, 1,
         Wasm.i32_sub,
-        Wasm.set_local, 1,
+        Wasm.set_local, 0,
   
-        Wasm.get_local, 0,        //  number /= 10
+        Wasm.get_local, 1,        //  number /= 10
         Wasm.i64_const, 10,
         Wasm.i64_div_u,
-        Wasm.tee_local, 0,
+        Wasm.tee_local, 1,
         Wasm.i64_eqz,
         Wasm.i32_eqz,
       Wasm.br_if, 0,              //while number != 0

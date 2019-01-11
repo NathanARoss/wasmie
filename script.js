@@ -1614,36 +1614,23 @@ class Script {
             //print() builds a string in memory from each argument before printing it
             if (func === this.BuiltIns.PRINT || func === this.BuiltIns.PRINTLN) {
               if (item === this.BuiltIns.BEGIN_ARGS) {
-                //push the current stack pointer onto the operand stack for later retrival
+                //printed strings are constructed beginning at address 4
                 mainFunc.push(
-                  Wasm.get_global, 0,
+                  Wasm.i32_const, 4,
                 );
               } else if (item === this.BuiltIns.ARG_SEPARATOR) {
-                //append a space to the stack string
+                //append a space to the printed string
                 mainFunc.push(
-                  Wasm.get_global, 0, //*SP = ' '
-                  Wasm.i32_const, ' '.charCodeAt(),
+                  Wasm.i32_const, ' '.charCodeAt(), //*SP = ' '
                   Wasm.i32_store8, 0, 0,
                   Wasm.get_global, 0, // ++SP
                   Wasm.i32_const, 1,
                   Wasm.i32_add,
-                  Wasm.set_global, 0,
-                );
-              } else if (item === this.BuiltIns.END_ARGS && func === this.BuiltIns.PRINTLN) {
-                //append a newline to the stack string
-                mainFunc.push(
-                  Wasm.get_global, 0, //*SP = '\n'
-                  Wasm.i32_const, '\n'.charCodeAt(),
-                  Wasm.i32_store8, 0, 0,
-                  Wasm.get_global, 0, // ++SP
-                  Wasm.i32_const, 1,
-                  Wasm.i32_add,
-                  Wasm.set_global, 0,
                 );
               }
               
               if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {
-                //build the string of the argument in-place on the stack
+                //build the string of the argument in-place
 
                 //if the argument is a primative, use specialized printing functions
                 if (expressionType === this.BuiltIns.I32) {
@@ -1679,6 +1666,23 @@ class Script {
                   console.log("failed to find toString() implementation for", expressionType);
                   throw "failed to find toString() implementation for " + expressionType.text;
                 }
+              }
+
+              if (item === this.BuiltIns.END_ARGS) {
+                if (func === this.BuiltIns.PRINTLN) {
+                  //append a newline to the printed string
+                  mainFunc.push(
+                    Wasm.get_global, 0, //*SP = '\n'
+                    Wasm.i32_const, '\n'.charCodeAt(),
+                    Wasm.i32_store8, 0, 0,
+                    Wasm.get_global, 0, // ++SP
+                    Wasm.i32_const, 1,
+                    Wasm.i32_add,
+                    Wasm.set_global, 0,
+                  );
+                }
+
+
               }
             }
 
@@ -1971,7 +1975,7 @@ class Script {
       ...Wasm.stringToLenPrefixedUTF8("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
-      ...Wasm.varuint(1), //initially 1 page allocated
+      ...Wasm.varuint(2), //initially 2 pages allocated
     ]
 
     for (const func of importedFuncs) {
@@ -2017,7 +2021,7 @@ class Script {
       ...Wasm.varuint(1), //1 data segment
 
       0, //memory index 0
-      Wasm.i32_const, Wasm.varint(0), Wasm.end, //fill memory starting at address 0
+      Wasm.i32_const, Wasm.varint(1 << 16), Wasm.end, //fill memory starting at 2nd 64KB page
       ...Wasm.varuint(initialData.length), //count of bytes to fill in
       ...initialData,
     ];
@@ -2025,7 +2029,7 @@ class Script {
     const globalSection = [
       ...Wasm.varuint(1),
       Wasm.types.i32, 1,
-      Wasm.i32_const, ...Wasm.varuint(initialData.length),
+      Wasm.i32_const, ...Wasm.varint(initialData.length + (1<<16)),
       Wasm.end,
     ];
 
