@@ -897,8 +897,12 @@ function clickPreviousLine() {
 }
 
 function print(value) {
-  const textNode = document.createTextNode(value);
-  consoleOutput.appendChild(textNode);
+  if (consoleOutput.childNodes.length == 0 || consoleOutput.lastChild.nodeValue.length > 512) {
+    const textNode = document.createTextNode(value);
+    consoleOutput.appendChild(textNode);
+  } else {
+    consoleOutput.lastChild.nodeValue += value;
+  }
 }
 
 function escapeControlCodes(string) {

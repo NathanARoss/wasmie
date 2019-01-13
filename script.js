@@ -1611,27 +1611,9 @@ class Script {
 
             mainFunc.push(...wasmCode);
 
-            //print() builds a string in memory from each argument before printing it
+            //println and print call system print function on each argument separately
             if (func === this.BuiltIns.PRINT || func === this.BuiltIns.PRINTLN) {
-              if (item === this.BuiltIns.BEGIN_ARGS) {
-                //printed strings are constructed beginning at address 4
-                mainFunc.push(
-                  Wasm.i32_const, 4,
-                );
-              } else if (item === this.BuiltIns.ARG_SEPARATOR) {
-                //append a space to the printed string
-                mainFunc.push(
-                  Wasm.i32_const, ' '.charCodeAt(), //*SP = ' '
-                  Wasm.i32_store8, 0, 0,
-                  Wasm.get_global, 0, // ++SP
-                  Wasm.i32_const, 1,
-                  Wasm.i32_add,
-                );
-              }
-              
-              if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {
-                //build the string of the argument in-place
-
+              if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {                
                 //if the argument is a primative, use specialized printing functions
                 if (expressionType === this.BuiltIns.I32) {
                   wasmCode.push(Wasm.i64_extend_s_from_i32);
@@ -1645,48 +1627,44 @@ class Script {
                   wasmCode.push(Wasm.f64_promote_from_f32);
                   expressionType = this.BuiltIns.F64;
                 }
-
-                const func = script.BuiltIns.FUNCTIONS.find(func => {
-                  return func.signature.scope === expressionType
-                          && func.signature.name === "toString"
-                });
-      
-                if (func) {
-                  if (func.constructor === PredefinedFunc) {
-                    let funcIndex = wasmFuncs.indexOf(func);
-                    if (funcIndex === -1) {
-                      funcIndex = wasmFuncs.length;
-                      wasmFuncs.push(func);
+                
+                if (expressionType !== this.BuiltIns.STRING) {
+                  const func = script.BuiltIns.FUNCTIONS.find(func => {
+                    return func.signature.scope === expressionType
+                    && func.signature.name === "toString"
+                  });
+                  
+                  if (func) {
+                    if (func.constructor === PredefinedFunc) {
+                      let funcIndex = wasmFuncs.indexOf(func);
+                      if (funcIndex === -1) {
+                        funcIndex = wasmFuncs.length;
+                        wasmFuncs.push(func);
+                      }
+                      wasmCode.push(Wasm.call, funcIndex + importedFuncs.length + 1);
+                    } else if (func.constructor === Macro) {
+                      wasmCode.push(...func.wasmCode);
+                    } else {
+                      console.log("invalid function type for converting", expressionType, "to string:", func);
+                      throw "unrecognized function type: " + func.constructor;
                     }
-                    wasmCode.push(Wasm.call, funcIndex + importedFuncs.length + 1);
                   } else {
-                    wasmCode.push(...func.wasmCode);
+                    console.log("failed to find toString() implementation for", expressionType);
+                    throw "failed to find toString() implementation for " + expressionType.text;
                   }
-                } else {
-                  console.log("failed to find toString() implementation for", expressionType);
-                  throw "failed to find toString() implementation for " + expressionType.text;
                 }
               }
-
-              if (item === this.BuiltIns.END_ARGS) {
-                if (func === this.BuiltIns.PRINTLN) {
-                  //append a newline to the printed string
-                  mainFunc.push(
-                    Wasm.get_global, 0, //*SP = '\n'
-                    Wasm.i32_const, '\n'.charCodeAt(),
-                    Wasm.i32_store8, 0, 0,
-                    Wasm.get_global, 0, // ++SP
-                    Wasm.i32_const, 1,
-                    Wasm.i32_add,
-                    Wasm.set_global, 0,
-                  );
-                }
-
-
+              
+              if (item === this.BuiltIns.ARG_SEPARATOR) {
+                //TODO print ' '
+              }
+              else if (item === this.BuiltIns.END_ARGS && func === this.BuiltIns.PRINTLN) {
+                  //TODO print '\n
               }
             }
 
-            if (item === this.BuiltIns.END_ARGS) {
+            //any other function
+            else if (item === this.BuiltIns.END_ARGS) {
               if (func.constructor === Macro) {
                 mainFunc.push(...func.wasmCode);
               }
@@ -2021,7 +1999,7 @@ class Script {
       ...Wasm.varuint(1), //1 data segment
 
       0, //memory index 0
-      Wasm.i32_const, Wasm.varint(1 << 16), Wasm.end, //fill memory starting at 2nd 64KB page
+      Wasm.i32_const, 0, Wasm.end, //fill memory starting at address 0
       ...Wasm.varuint(initialData.length), //count of bytes to fill in
       ...initialData,
     ];
@@ -2029,7 +2007,7 @@ class Script {
     const globalSection = [
       ...Wasm.varuint(1),
       Wasm.types.i32, 1,
-      Wasm.i32_const, ...Wasm.varint(initialData.length + (1<<16)),
+      Wasm.i32_const, ...Wasm.varint(initialData.length),
       Wasm.end,
     ];
 
