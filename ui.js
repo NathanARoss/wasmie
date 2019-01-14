@@ -174,7 +174,7 @@ window.onpopstate = function(event) {
     let offset = 0;
     const maxOffsetDigits = Math.ceil(Math.log2(wasm.length) / Math.log2(10));
 
-    function printDisassembly(count, comment = "") {      
+    function printDisassembly(count, comment = "") {
       const addressNode = document.createElement("span");
       addressNode.textContent = offset.toString().padStart(maxOffsetDigits) + ": ";
       addressNode.className = "wasm-byte-offset";
@@ -204,7 +204,7 @@ window.onpopstate = function(event) {
       printDisassembly(Math.min(8, count), beginComment + sanitizedStr + endComment);
 
       while (offset < end) {
-        const count = Math.min(8, end - begin);
+        const count = Math.min(8, end - offset);
         printDisassembly(count);
       }
     }
@@ -219,7 +219,7 @@ window.onpopstate = function(event) {
     printDisassembly(4, "Wasm version");
 
     while (offset < wasm.length) {
-      print("\n");
+      consoleOutput.appendChild(document.createElement("BR"));
 
       const sectionCode = wasm[offset];
       printDisassembly(1, "section " + Wasm.sectionNames[sectionCode] + " ("+sectionCode+")");
@@ -337,7 +337,8 @@ window.onpopstate = function(event) {
             while (offset < subEnd) {
               const count = Math.min(8, subEnd - offset);
               const slice = wasm.slice(offset, offset + count);
-              printDisassembly(count, escapeControlCodes(Wasm.UTF8toString(slice)));
+              const asText = Wasm.UTF8toString(slice).replace(/[^ -~]/g, '.'); //remove non-ASCII characters
+              printDisassembly(count, asText);
             }
           } break;
 

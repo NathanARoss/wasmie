@@ -439,8 +439,9 @@ class Script {
 
       const options = [
         {
-          text: "print", style: "funcdef", action: this.insertFuncCall,
-          args: [row, 0, this.BuiltIns.PRINT]
+          text: this.BuiltIns.PRINTLN.signature.name,
+          style: "funcdef", action: this.insertFuncCall,
+          args: [row, 0, this.BuiltIns.PRINTLN]
         },
 
         // {text: "fn", style: "keyword", action: () => {
@@ -1439,7 +1440,7 @@ class Script {
       const expressionType = operands[0].getType(expectedType);
       const wasmCode = operands[0].getWasmCode(expectedType);
 
-      if (expressionType !== expectedType) {
+      if (expectedType !== script.BuiltIns.ANY && expressionType !== expectedType) {
         const cast = expectedType.casts && expectedType.casts.get(expressionType);
         if (cast) {
           wasmCode.push(...cast.wasmCode);
@@ -1458,8 +1459,20 @@ class Script {
     for (const line of this.lines) {
       for (const item of line.items) {
         if (item.constructor === FuncRef && item.funcDef.constructor === ImportedFunc) {
-          if (!importedFuncs.includes(item.funcDef)) {
-            importedFuncs.push(item.funcDef);
+          let func = item.funcDef;
+          if (func === this.BuiltIns.PRINTLN) {
+            func = this.BuiltIns.PRINT;
+          }
+
+          if (!importedFuncs.includes(func)) {
+            importedFuncs.push(func);
+          }
+
+          //at the moment, I assume all uses of PRINT and PRINTLN will call PRINT_CHAR after compilation
+          if (func === this.BuiltIns.PRINT) {
+            if (!importedFuncs.includes(this.BuiltIns.PRINT_CHAR)) {
+              importedFuncs.push(this.BuiltIns.PRINT_CHAR);
+            }
           }
         }
       }
@@ -1592,7 +1605,7 @@ class Script {
                 if (item === this.BuiltIns.BEGIN_ARGS) {
                   if (funcCallDepth === 0) {
                     const func = this.getItem(row, j - 1).funcDef;
-                    if (func === this.BuiltIns.PRINT) {
+                    if (func === this.BuiltIns.PRINT || func === this.BuiltIns.PRINTLN) {
                       argumentIndex = 0;
                     }
                     const argumentType = func.signature.parameters[argumentIndex].type;
@@ -1613,7 +1626,7 @@ class Script {
 
             //println and print call system print function on each argument separately
             if (func === this.BuiltIns.PRINT || func === this.BuiltIns.PRINTLN) {
-              if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {                
+              if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {
                 //if the argument is a primative, use specialized printing functions
                 if (expressionType === this.BuiltIns.I32) {
                   wasmCode.push(Wasm.i64_extend_s_from_i32);
@@ -1641,7 +1654,7 @@ class Script {
                         funcIndex = wasmFuncs.length;
                         wasmFuncs.push(func);
                       }
-                      wasmCode.push(Wasm.call, funcIndex + importedFuncs.length + 1);
+                      wasmCode.push(Wasm.call, ...Wasm.varuint(funcIndex + importedFuncs.length + 1));
                     } else if (func.constructor === Macro) {
                       wasmCode.push(...func.wasmCode);
                     } else {
@@ -1653,13 +1666,25 @@ class Script {
                     throw "failed to find toString() implementation for " + expressionType.text;
                   }
                 }
+
+                mainFunc.push(
+                  Wasm.call, ...Wasm.varuint(importedFuncs.indexOf(this.BuiltIns.PRINT)),
+                );
               }
               
               if (item === this.BuiltIns.ARG_SEPARATOR) {
-                //TODO print ' '
+                //print ' '
+                mainFunc.push(
+                  Wasm.i32_const, ' '.charCodeAt(),
+                  Wasm.call, ...Wasm.varuint(importedFuncs.indexOf(this.BuiltIns.PRINT_CHAR)),
+                );
               }
               else if (item === this.BuiltIns.END_ARGS && func === this.BuiltIns.PRINTLN) {
-                  //TODO print '\n
+                //print '\n'
+                mainFunc.push(
+                  Wasm.i32_const, '\n'.charCodeAt(),
+                  Wasm.call, ...Wasm.varuint(importedFuncs.indexOf(this.BuiltIns.PRINT_CHAR)),
+                );
               }
             }
 
@@ -1674,11 +1699,11 @@ class Script {
                   index = wasmFuncs.length;
                   wasmFuncs.push(func);
                 }
-                mainFunc.push(Wasm.call, index + importedFuncs.length + 1);
+                mainFunc.push(Wasm.call, ...Wasm.varuint(index + importedFuncs.length + 1));
               }
               if (func.constructor === ImportedFunc) {
                 const index = importedFuncs.indexOf(func);
-                mainFunc.push(Wasm.call, index);
+                mainFunc.push(Wasm.call, ...Wasm.varuint(index));
               }
               if (func.signature.returnType !== this.BuiltIns.VOID) {
                 expression.push(new Placeholder(func.signature.returnType)); //TODO place wasm code of function call as 2nd argument
@@ -1953,7 +1978,7 @@ class Script {
       ...Wasm.stringToLenPrefixedUTF8("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
-      ...Wasm.varuint(2), //initially 2 pages allocated
+      ...Wasm.varuint(1), //initially 1 page allocated
     ]
 
     for (const func of importedFuncs) {

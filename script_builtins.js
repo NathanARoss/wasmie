@@ -375,12 +375,22 @@ function BuiltIns() {
 
 
   this.PRINT = new ImportedFunc(
-    new FuncSig(this.SYSTEM, "print", this.VOID, [this.ANY, "item"]),
+    new FuncSig(this.SYSTEM, "print", this.VOID, [this.STRING, "item"]),
     "System", "print"
+  );
+  this.PRINTLN = new ImportedFunc(
+    new FuncSig(this.SYSTEM, "print↲", this.VOID, [this.STRING, "item"]),
+    "System", "print"
+  );
+  this.PRINT_CHAR = new ImportedFunc(
+    new FuncSig(this.SYSTEM, "printChar", this.VOID, [this.U32, "charCode"]),
+    "System", "printChar"
   );
 
   this.FUNCTIONS = [
     this.PRINT,
+    this.PRINTLN,
+    this.PRINT_CHAR,
     new Macro(
       new FuncSig(this.STRING, "from", this.STRING, [this.BOOL, "item"]),
       Wasm.i32_const, 3,

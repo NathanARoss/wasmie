@@ -10,6 +10,10 @@ class RuntimeEnvironment {
         const message = Wasm.UTF8toString(bytes);
         print(message);
       },
+      printChar(char) {
+        const message = String.fromCharCode(char);
+        print(message);
+      }
     }
     this.js = {
       memory: new WebAssembly.Memory({initial: 1}),
