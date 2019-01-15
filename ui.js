@@ -841,14 +841,7 @@ document.onkeydown = function(event) {
 
 function handleMenuItemResponse(response) {
   if ("lineUpdated" in response) {
-    const line = editor.childNodes[selRow % loadedCount];
-    loadLine(selRow, line);
-    if (response.selectedCol >= script.getItemCount(selRow)) {
-      response.selectedCol = -1;
-    }
-    if (selCol === -1) {
-      line.scrollLeft = 1e10;
-    }
+    loadLine(selRow, editor.childNodes[selRow % loadedCount]);
     editor.style.height = getLineCount() * lineHeight + "px";
   }
 
@@ -865,17 +858,26 @@ function handleMenuItemResponse(response) {
     if (selRow > 0) {
       selRow = selRow - 1;
     }
-    const teleport = script.getItemCount(selRow) > 0;
-    itemClicked(selRow, -1, teleport);
-    return;
+    selCol = -1;
   }
 
   if ("scriptChanged" in response) {
     reloadAllLines();
     selCol = -1;
   }
-  
-  itemClicked(selRow, selCol);
+
+  if (selCol >= script.getItemCount(selRow)) {
+    selCol = -1;
+  }
+
+  //move selected item into view
+  const line = editor.childNodes[selRow % loadedCount];
+  const item = line.childNodes[2 + selCol];
+  const leftBound = item.offsetLeft - 40;
+  const rightBound = leftBound + 80 + item.offsetWidth - editor.offsetWidth;
+  line.scrollLeft = Math.max(Math.min(leftBound, line.scrollLeft), rightBound);
+
+  itemClicked(selRow, selCol, false);
 }
 
 function lineClickHandler(event) {

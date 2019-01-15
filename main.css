@@ -38,8 +38,8 @@ body {
   width: 100%;
   transform: translateY(calc(var(--position, -1) * 40px));
   transition: 0.25s transform;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; /* use momentum scrolling on iOS Safari */
+  scrollbar-width: none; /* hide scrollbar on firefox */
 }
 
 button {
