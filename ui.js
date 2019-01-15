@@ -202,7 +202,7 @@ window.onpopstate = function(event) {
     }
 
     printDisassembly(4, 'Wasm magic number: "\\0asm"');
-    printDisassembly(4, "Wasm version");
+    printDisassembly(4, "Wasm version: 1");
 
     const typeDescription = [];
 
