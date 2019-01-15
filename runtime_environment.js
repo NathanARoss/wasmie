@@ -10,7 +10,7 @@ class RuntimeEnvironment {
         const message = Wasm.UTF8toString(bytes);
         print(message);
       },
-      printChar(char) {
+      printC(char) {
         const message = String.fromCharCode(char);
         print(message);
       }

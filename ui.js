@@ -195,28 +195,16 @@ window.onpopstate = function(event) {
       consoleOutput.appendChild(commentNode);
     }
 
-    //reads and prints a whole string on the first line
-    //remaining bytes spill into later lines
-    function printEncodedString(count, beginComment = '"', endComment = '"') {
-      const end = offset + count;
-      
-      const sanitizedStr = escapeControlCodes(Wasm.UTF8toString(wasm.slice(offset, end)));
-      printDisassembly(Math.min(8, count), beginComment + sanitizedStr + endComment);
-
-      while (offset < end) {
-        const count = Math.min(8, end - offset);
-        printDisassembly(count);
-      }
-    }
-
     function readVaruintAndPrint(beginComment = "", endComment = "") {
       const [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
       printDisassembly(bytesRead, beginComment + val + endComment);
       return val;
     }
 
-    printEncodedString(4, 'Wasm magic number: "');
+    printDisassembly(4, 'Wasm magic number: "\\0asm"');
     printDisassembly(4, "Wasm version");
+
+    const typeDescription = [];
 
     while (offset < wasm.length) {
       consoleOutput.appendChild(document.createElement("BR"));
@@ -235,25 +223,27 @@ window.onpopstate = function(event) {
           case Wasm.section.Type: {
             if (wasm[offset] === Wasm.types.func) {
               let bytesRead = 1;
-              let [typeCount, LEBbytes] = Wasm.decodeVaruint(wasm, offset + bytesRead);
+              let [count, LEBbytes] = Wasm.decodeVaruint(wasm, offset + bytesRead);
               bytesRead += LEBbytes;
               
+              const paramTypes = Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + count));
               let comment = "func (";
-              comment += Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + typeCount))
-                          .map(type => Wasm.typeNames[type & 0x7F]).join(", ");
-              bytesRead += typeCount;
+              comment += paramTypes.map(t => Wasm.typeNames[t & 0x7F]).join(", ");
               comment += ") -> ";
+              bytesRead += count;
 
-              [typeCount, LEBbytes] = Wasm.decodeVaruint(wasm, offset + bytesRead);
+              [count, LEBbytes] = Wasm.decodeVaruint(wasm, offset + bytesRead);
               bytesRead += LEBbytes;
 
-              if (typeCount === 0) {
+              if (count === 0) {
                 comment += "void";
               } else {
-                comment += Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + typeCount))
-                            .map(type => Wasm.typeNames[type & 0x7F]).join(", ");
-                bytesRead += typeCount;
+                const returnTypes = wasm.slice(offset + bytesRead, offset + bytesRead + count);
+                comment += Array.map.call(returnTypes, t => Wasm.typeNames[t & 0x7F]).join(", ");
+                bytesRead += count;
               }
+
+              typeDescription.push(comment);
 
               //print the comment on the first line of bytes up to 8 bytes
               //print the remaining bytes in groups of 8
@@ -269,29 +259,44 @@ window.onpopstate = function(event) {
           } break;
           
           case Wasm.section.Import: {
-            for (const description of ["module", "field"]) {
-              const stringLength = readVaruintAndPrint(description + " name: ", " bytes");
-              printEncodedString(stringLength);
+            for (const description of ['module: "', 'field:  "']) {
+              const [stringLength, LEBbytes] = Wasm.decodeVaruint(wasm, offset);
+              const end = offset + stringLength + LEBbytes;
+      
+              const str = Wasm.UTF8toString(wasm.slice(offset + LEBbytes, end));
+              const sanitizedStr = escapeControlCodes(str);
+              let comment = description + sanitizedStr + '"';
+        
+              do {
+                const count = Math.min(8, end - offset);
+                printDisassembly(count, comment);
+                comment = "";
+              } while (offset < end);
             }
 
             const exportType = wasm[offset];
-            printDisassembly(1, "external " + Wasm.externalKindNames[exportType]);
-
             if (exportType === Wasm.externalKind.Memory) {
+              //print memory description
+              printDisassembly(1, "external " + Wasm.externalKindNames[exportType]);
               const maxPagesSpecifiedFlag = wasm[offset];
               printDisassembly(1, maxPagesSpecifiedFlag ? "limit" : "no limit");
-              readVaruintAndPrint("initial allocation: ", " pages");
+              readVaruintAndPrint("initial pages: ");
 
               if (maxPagesSpecifiedFlag) {
                 readVaruintAndPrint("max allocation: ", " pages");
               }
             } else if (exportType === Wasm.externalKind.Function) {
-              readVaruintAndPrint("signature: type index ");
+              //print imported function's signature
+              const [type, LEBbytes] = Wasm.decodeVaruint(wasm, offset + 1);
+              const comment = "external " + typeDescription[type];
+              printDisassembly(LEBbytes + 1, comment);
             }
           } break;
           
           case Wasm.section.Function: {
-            readVaruintAndPrint("signature: type index ");
+            const [type, LEBbytes] = Wasm.decodeVaruint(wasm, offset);
+            const comment = typeDescription[type];
+            printDisassembly(LEBbytes, comment);
           } break;
 
           case Wasm.section.Global: {
