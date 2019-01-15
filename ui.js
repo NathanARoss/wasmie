@@ -262,7 +262,7 @@ window.onpopstate = function(event) {
               const end = offset + stringLength + LEBbytes;
       
               const str = Wasm.UTF8toString(wasm.slice(offset + LEBbytes, end));
-              const sanitizedStr = escapeControlCodes(str);
+              const sanitizedStr = str.replace(/\n/g, "\\n").replace(/\0/g, "\\0");
               let comment = description + sanitizedStr + '"';
         
               do {
@@ -924,8 +924,4 @@ function print(value) {
   } else {
     consoleOutput.lastChild.nodeValue += value;
   }
-}
-
-function escapeControlCodes(string) {
-  return string.replace(/\n/g, "\\n").replace(/\0/g, "\\0");
 }
