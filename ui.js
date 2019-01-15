@@ -233,21 +233,38 @@ window.onpopstate = function(event) {
       while (offset < end) {
         switch (sectionCode) {
           case Wasm.section.Type: {
-            printDisassembly(1, Wasm.typeNames[wasm[offset]]);
-            
-            for (let comment of ["params: ", "return: "]) {
-              let [typeCount, bytesRead] = Wasm.decodeVaruint(wasm, offset);
-              const bytesToRead = bytesRead + typeCount;
+            if (wasm[offset] === Wasm.types.func) {
+              let bytesRead = 1;
+              let [typeCount, LEBbytes] = Wasm.decodeVaruint(wasm, offset + bytesRead);
+              bytesRead += LEBbytes;
               
-              while (bytesRead < bytesToRead) {
-                const count = Math.min(8, bytesToRead - bytesRead);
-                const begin = offset + bytesRead;
-                comment += Array.from(wasm.slice(begin, begin + count))
-                           .map(type => Wasm.typeNames[type & 0x7F]).join(" ");
-                bytesRead += count;
+              let comment = "func (";
+              comment += Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + typeCount))
+                          .map(type => Wasm.typeNames[type & 0x7F]).join(", ");
+              bytesRead += typeCount;
+              comment += ") -> ";
+
+              [typeCount, LEBbytes] = Wasm.decodeVaruint(wasm, offset + bytesRead);
+              bytesRead += LEBbytes;
+
+              if (typeCount === 0) {
+                comment += "void";
+              } else {
+                comment += Array.from(wasm.slice(offset + bytesRead, offset + bytesRead + typeCount))
+                            .map(type => Wasm.typeNames[type & 0x7F]).join(", ");
+                bytesRead += typeCount;
               }
-              
-              printDisassembly(bytesRead, comment);
+
+              //print the comment on the first line of bytes up to 8 bytes
+              //print the remaining bytes in groups of 8
+              do {
+                const count = Math.min(8, bytesRead);
+                printDisassembly(count, comment);
+                bytesRead -= count;
+                comment = "";
+              } while (bytesRead > 0)
+            } else {
+              throw "unrecognized Wasm type " + Wasm.typeNames[type] || type;
             }
           } break;
           
