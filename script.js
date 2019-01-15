@@ -1246,6 +1246,9 @@ class Script {
 
         case script.BuiltIns.F64:
           return Wasm.types.f64;
+        
+        case script.BuiltIns.VOID:
+          return Wasm.types.void;
 
         default:
           console.log(type);
@@ -1903,14 +1906,14 @@ class Script {
 
     //figure out which function signatures we need to define
     const signatures = [{
-      returnType: this.BuiltIns.VOID,
+      returnType: Wasm.types.void,
       parameterTypes: [],
     }];
 
     for (const func of [...importedFuncs, ...wasmFuncs]) {
       const signature = {
-        returnType: func.signature.returnType,
-        parameterTypes: func.signature.parameters.map(p => p.type),
+        returnType: getWasmType(func.signature.returnType),
+        parameterTypes: func.signature.parameters.map(p => p.type).map(getWasmType),
       };
 
       if (!signatures.find(sig => {
@@ -1936,7 +1939,7 @@ class Script {
 
     const getSignature = (func) => {
       return signatures.findIndex(sig => {
-        if (func.signature.returnType !== sig.returnType) {
+        if (getWasmType(func.signature.returnType) !== sig.returnType) {
           return false;
         }
 
@@ -1945,13 +1948,13 @@ class Script {
         }
 
         for (let i = 0; i < func.signature.parameters.length; ++i) {
-          if (func.signature.parameters[i].type !== sig.parameterTypes[i]) {
+          if (getWasmType(func.signature.parameters[i].type) !== sig.parameterTypes[i]) {
             return false;
           }
         }
 
         return true;
-      })
+      });
     }
 
 
@@ -1960,14 +1963,12 @@ class Script {
     ];
     for (const signature of signatures) {
       const wasmReturnTypes = [];
-      if (signature.returnType !== this.BuiltIns.VOID) {
-        wasmReturnTypes.push(getWasmType(signature.returnType));
+      if (signature.returnType !== Wasm.types.void) {
+        wasmReturnTypes.push(signature.returnType);
       }
-      
-      const wasmParamaterTypes = signature.parameterTypes.map(type => getWasmType(type));
 
       typeSection.push(Wasm.types.func);
-      typeSection.push(wasmParamaterTypes.length, ...wasmParamaterTypes);
+      typeSection.push(signature.parameterTypes.length, ...signature.parameterTypes);
       typeSection.push(wasmReturnTypes.length, ...wasmReturnTypes);
     }
    
@@ -2021,7 +2022,7 @@ class Script {
     }
 
     let dataSection = [
-      ...Wasm.varuint(1), //1 data segment
+      1, //1 data segment
 
       0, //memory index 0
       Wasm.i32_const, 0, Wasm.end, //fill memory starting at address 0
@@ -2030,10 +2031,9 @@ class Script {
     ];
 
     const globalSection = [
-      ...Wasm.varuint(1),
-      Wasm.types.i32, 1,
-      Wasm.i32_const, ...Wasm.varint(initialData.length),
-      Wasm.end,
+      1, //1 global
+      Wasm.types.i32, 1, //1 global of type i32
+      Wasm.i32_const, ...Wasm.varint(initialData.length), Wasm.end, //initialized to stop of stack
     ];
 
     let wasm = [
