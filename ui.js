@@ -50,9 +50,7 @@ createButton.addEventListener("click", function(event) {
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
   reloadAllLines();
-  if (selRow !== -1) {
-    closeMenu();
-  }
+  closeMenu();
 });
 
 loadButton.addEventListener("click", function(event) {
@@ -460,9 +458,7 @@ function selectProject(event) {
       script = new Script();
       reloadAllLines();
     }
-    if (selRow !== -1) {
-      closeMenu();
-    }
+    closeMenu();
     window.history.back();
   }
 }
@@ -526,7 +522,7 @@ function performActionOnProjectListDatabase(mode, action) {
     let db = event.target.result;
 
     db.onerror = function(event) {
-      alert("Database error: " + event.target.errorCode);
+      console.log(event.target);
     };
 
     let transaction = db.transaction("project-list", mode);
@@ -783,11 +779,13 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
 function closeMenu() {
   menu.style.setProperty("--position", selRow);
   menu.classList.remove("revealed");
-  for (let i = selRow; i < loadedCount + firstLoadedPosition; ++i) {
-    const line = editor.childNodes[i % loadedCount];
-    line.style.setProperty("--position", line.position);
+  if (selRow !== -1) {
+    for (let i = selRow; i < loadedCount + firstLoadedPosition; ++i) {
+      const line = editor.childNodes[i % loadedCount];
+      line.style.setProperty("--position", line.position);
+    }
+    selRow = -1;
   }
-  selRow = -1;
 
   editor.classList.remove("selected");
   if (selectedItem) {
