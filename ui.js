@@ -915,10 +915,6 @@ function itemClicked(row, col, teleport = true) {
   }
 }
 
-function clickPreviousLine() {
-  itemClicked(Math.max(0, selRow - 1), -1);
-}
-
 function print(value) {
   if (consoleOutput.childNodes.length == 0 || consoleOutput.lastChild.nodeValue.length > 512) {
     const textNode = document.createTextNode(value);
