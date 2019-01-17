@@ -446,7 +446,7 @@ function loadLine(position, line, visualShift = 0) {
     
     const indent = script.getIndent(position);
     if (indent > 0) {
-      line.style.setProperty("--indent", script.getIndent(position));
+      line.style.setProperty("--indent", indent);
     } else {
       line.style.removeProperty("--indent");
     }
