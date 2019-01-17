@@ -210,12 +210,6 @@ button {
   color: white;
   box-sizing: border-box;
 }
-.wasm-byte-offset {
-  font-weight: bold;
-}
-.wasm-comment, .wasm-byte-offset {
-  color: #808080;
-}
 
 .project-list-entry {
   position: relative;

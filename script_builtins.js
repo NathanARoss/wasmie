@@ -384,7 +384,7 @@ function BuiltIns() {
   );
   this.PRINT_CHAR = new ImportedFunc(
     new FuncSig(this.SYSTEM, "printChar", this.VOID, [this.U32, "charCode"]),
-    "System", "printC"
+    "System", "printCharazar"
   );
 
   this.FUNCTIONS = [
