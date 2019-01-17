@@ -188,7 +188,7 @@ window.onpopstate = function(event) {
       consoleOutput.appendChild(byteNode);
 
       const commentNode = document.createElement("span");
-      commentNode.textContent = comment + "\n";
+      commentNode.textContent = "; " + comment + "\n";
       commentNode.className = "wasm-comment";
       consoleOutput.appendChild(commentNode);
     }
