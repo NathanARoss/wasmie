@@ -544,7 +544,7 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
     menu.childNodes[selectedIndex + 3].focus();
   }
 
-  //if teleport is forbidden, smoothly transition menu from previous position
+  //if teleport is requested, skip the smooth transition to the line's position
   if (teleport) {
     menu.style.transition = "none";
 
@@ -609,8 +609,7 @@ document.onkeydown = function(event) {
   if (selRow !== -1) {
     if (event.key === "Delete") {
       deleteLine(selRow);
-      const teleport = script.getItemCount(selRow) > 0;
-      itemClicked(selRow, -1, teleport);
+      itemClicked(selRow, -1);
 
       event.preventDefault();
     }
@@ -629,7 +628,7 @@ document.onkeydown = function(event) {
         ++selRow;
         insertLine(selRow);
       }
-      itemClicked(selRow, selCol, false);
+      itemClicked(selRow, selCol);
       event.preventDefault();
     }
   }
@@ -673,7 +672,7 @@ function handleMenuItemResponse(response) {
   const rightBound = leftBound + 80 + item.offsetWidth - editor.offsetWidth;
   line.scrollLeft = Math.max(Math.min(leftBound, line.scrollLeft), rightBound);
 
-  itemClicked(selRow, selCol, false);
+  itemClicked(selRow, selCol);
 }
 
 function lineClickHandler(event) {
@@ -686,29 +685,27 @@ function lineClickHandler(event) {
     if (row === selRow && col === selCol) {
       closeMenu();
     } else {
-      itemClicked(row, col);
+      itemClicked(row, col, true);
       editor.classList.add("selected");
     }
   }
 }
 
-function itemClicked(row, col, teleport = true) {
-  if (row !== undefined && col !== undefined) {
-    selectedItem && selectedItem.classList.remove("selected");
+function itemClicked(row, col, teleport = false) {
+  selectedItem && selectedItem.classList.remove("selected");
 
-    selectedItem = editor.childNodes[row % loadedCount].childNodes[2 + col];
-    if (selectedItem) {
-      selectedItem.classList.add("selected");
-      selectedItem.focus();
-    }
-    
-    const prevRow = selRow;
-    selRow = row;
-    selCol = col;
-    
-    const options = script.itemClicked(row, col);
-    configureMenu(options, prevRow, teleport);
+  selectedItem = editor.childNodes[row % loadedCount].childNodes[2 + col];
+  if (selectedItem) {
+    selectedItem.classList.add("selected");
+    selectedItem.focus();
   }
+  
+  const prevRow = selRow;
+  selRow = row;
+  selCol = col;
+  
+  const options = script.itemClicked(row, col);
+  configureMenu(options, prevRow, teleport);
 }
 
 function print(value) {
