@@ -376,15 +376,15 @@ function BuiltIns() {
 
   this.PRINT = new ImportedFunc(
     new FuncSig(this.SYSTEM, "print", this.VOID, [this.STRING, "item"]),
-    "System", "print"
+    "System", "puts"
   );
   this.PRINTLN = new ImportedFunc(
     new FuncSig(this.SYSTEM, "print↲", this.VOID, [this.STRING, "item"]),
-    "System", "print"
+    "System", "puts"
   );
   this.PRINT_CHAR = new ImportedFunc(
     new FuncSig(this.SYSTEM, "printChar", this.VOID, [this.U32, "charCode"]),
-    "System", "printCharazar"
+    "System", "put"
   );
 
   this.FUNCTIONS = [

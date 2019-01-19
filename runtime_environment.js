@@ -2,7 +2,7 @@ class RuntimeEnvironment {
   constructor() {
     const self = this;
     this.System = {
-      print(address) {
+      puts(address) {
         const memory = new Uint8Array(self.js.memory.buffer);
         const [sizeOfString, bytesRead] = Wasm.decodeVaruint(memory, address);
         address += bytesRead;
@@ -10,7 +10,7 @@ class RuntimeEnvironment {
         const message = Wasm.UTF8toString(bytes);
         print(message);
       },
-      printC(char) {
+      put(char) {
         const message = String.fromCharCode(char);
         print(message);
       }
