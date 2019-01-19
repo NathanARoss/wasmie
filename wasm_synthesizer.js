@@ -68,18 +68,23 @@ class Wasm {
         return [result, bytesRead];
     }
     
-    static decodeArrayOfVaruint(bytes, offset) {
+    static decodeBranchTable(bytes, offset) {
       const output = [];
       
+      //target_count
       let [val, bytesRead] = Wasm.decodeVaruint(bytes, offset);
       offset += bytesRead;
       output.push(val, bytesRead);
       
+      //target_table (has target_count entries)
       for (let i = 0; i < val; ++i) {
         [val, bytesRead] = Wasm.decodeVaruint(bytes, offset);
         offset += bytesRead;
         output.push(val, bytesRead);
       }
+
+      //default_target
+      output.push(...Wasm.decodeVaruint(bytes, offset));
       
       return output;
     }
@@ -142,15 +147,15 @@ class Wasm {
       const typeDescription = [];
   
       while (offset < wasm.length) {
-        output += '\n';
+        output += '\n\n\n';
   
         const sectionCode = wasm[offset];
-        printDisassembly(1, "section " + Wasm.sectionNames[sectionCode] + " ("+sectionCode+")");
+        printDisassembly(1, "section: " + Wasm.sectionNames[sectionCode] + " ("+sectionCode+")");
   
         const payloadLength = readVaruintAndPrint("size: ", " bytes");
         const end = offset + payloadLength;
   
-        let firstItemLabel = sectionCode === Wasm.section.Start ? "entry point: " : "count: ";
+        let firstItemLabel = sectionCode === Wasm.section.Start ? "entry point: func " : "count: ";
         readVaruintAndPrint(firstItemLabel);
   
         while (offset < end) {
@@ -186,6 +191,7 @@ class Wasm {
             } break;
             
             case Wasm.section.Import: {
+              output += '\n';
               for (const description of ['module: "', 'field:  "']) {
                 const [stringLength, LEBbytes] = Wasm.decodeVaruint(wasm, offset);
                 const end = offset + stringLength + LEBbytes;
@@ -389,7 +395,7 @@ Wasm.opcodeData = [
   new OpcodeData("end"),
   new OpcodeData("br", Wasm.decodeVaruint),
   new OpcodeData("br_if", Wasm.decodeVaruint),
-  new OpcodeData("br_table", Wasm.decodeArrayOfVaruint),
+  new OpcodeData("br_table", Wasm.decodeBranchTable),
   new OpcodeData("return"),
   new OpcodeData("call", Wasm.decodeVaruint), //0x10
   new OpcodeData("call_indirect", Wasm.decodeVaruint, Wasm.decodeVaruint),
