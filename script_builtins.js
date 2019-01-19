@@ -604,7 +604,7 @@ function BuiltIns() {
     ),
     new ImportedFunc(
       new FuncSig(this.SYSTEM, "input", this.F64, [this.F64, "default", 0], [this.F64, "min", -Infinity], [this.F64, "max", Infinity]),
-      "System", "input"
+      "System", "inputF64" //TODO
     ),
     new Macro(
       new FuncSig(this.MATH, "rotateLeft", this.I32, [this.I32, "num"], [this.I32, "count"]),

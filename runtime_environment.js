@@ -20,25 +20,4 @@ class RuntimeEnvironment {
     }
     this.Math = Math;
   }
-
-  inputDouble(defaultVal, min, max) {
-    let response = prompt(`Enter a value between ${min} and ${max}:`, defaultVal);
-
-    while (true) {
-      if (response === null) {
-        print(+defaultVal + "\n");
-        return defaultVal;
-      }
-      if (+response < min) {
-        response = prompt(`Too small.  Enter a value between ${min} and ${max}:`, defaultVal);
-      }
-      else if (+response > max) {
-        response = prompt(`Too big.  Enter a value between ${min} and ${max}:`, defaultVal);
-      }
-      else {
-        print(+response + "\n");
-        return +response;
-      }
-    }
-  }
 }
