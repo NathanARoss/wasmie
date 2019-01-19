@@ -128,11 +128,16 @@ class Wasm {
       let output = "";
   
       function printDisassembly(count, comment = "") {
-        const bytes = Array.from(wasm.subarray(offset, offset + count));
-        const byteText = bytes.map(b => b.toString(16).padStart(2, "0")).join(" ").padEnd(27);
-        const addressText = offset.toString().padStart(maxOffsetDigits, '0');
-        output += `${byteText} @${addressText}: ${comment}\n`;
-        offset += count;
+        do {
+          const bytesThisLine = Math.min(9, count);
+          const bytes = Array.from(wasm.subarray(offset, offset + bytesThisLine));
+          const byteText = bytes.map(b => b.toString(16).padStart(2, "0")).join(" ").padEnd(27);
+          const addressText = offset.toString().padStart(maxOffsetDigits, '0');
+          output += `${byteText} @${addressText}: ${comment}\n`;
+          offset += bytesThisLine;
+          count -= bytesThisLine;
+          comment = "";
+        } while (count > 0);
       }
   
       function readVaruintAndPrint(beginComment = "", endComment = "") {
@@ -193,14 +198,7 @@ class Wasm {
                 comment += ')';
   
                 typeDescription.push(comment);
-  
-                //print the comment on the first line. groups bytes in 9s
-                do {
-                  const count = Math.min(9, bytesRead);
-                  printDisassembly(count, comment);
-                  bytesRead -= count;
-                  comment = "";
-                } while (bytesRead > 0)
+                printDisassembly(bytesRead, comment);
               } else {
                 throw "unrecognized Wasm type " + Wasm.typeNames[type] || type;
               }
@@ -208,19 +206,12 @@ class Wasm {
             
             case Wasm.section.Import: {
               output += '\n';
-              for (const description of ['module: "', 'field:  "']) {
-                const [stringLength, LEBbytes] = Wasm.decodeVaruint(wasm, offset);
-                const end = offset + stringLength + LEBbytes;
-        
-                const str = Wasm.UTF8toString(wasm.slice(offset + LEBbytes, end));
+              for (const description of ['module: ', 'field:  ']) {
+                const [size, LEBbytes] = Wasm.decodeVaruint(wasm, offset);
+                const UTF8bytes = wasm.slice(offset + LEBbytes, offset + LEBbytes + size);
+                const str = Wasm.UTF8toString(UTF8bytes);
                 const sanitizedStr = str.replace(/\n/g, "\\n").replace(/\0/g, "\\0");
-                let comment = description + sanitizedStr + '"';
-          
-                do {
-                  const count = Math.min(9, end - offset);
-                  printDisassembly(count, comment);
-                  comment = "";
-                } while (offset < end);
+                printDisassembly(size + LEBbytes, `${description} "${sanitizedStr}"`);
               }
   
               const exportType = wasm[offset];
@@ -259,13 +250,14 @@ class Wasm {
               output += '\n';
               const bodySize = readVaruintAndPrint("func body size: ", " bytes");
               const subEnd = offset + bodySize;
+
               let [localCount, bytesRead] = Wasm.decodeVaruint(wasm, offset);
               let localVariableComment = "local vars:";
               
               for (let i = 0; i < localCount; ++i) {
-                //assumes no more than 127 locals specified at once
-                const [count] = Wasm.decodeVaruint(wasm, offset + bytesRead);
-                ++bytesRead;
+                const [count, LEBbytes] = Wasm.decodeVaruint(wasm, offset + bytesRead);
+                bytesRead += LEBbytes;
+
                 const type = wasm[offset + bytesRead];
                 localVariableComment += (" " + Wasm.typeNames[type]).repeat(count);
                 ++bytesRead;
