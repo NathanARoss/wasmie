@@ -85,7 +85,7 @@ class Wasm {
 
       //default_target
       output.push(...Wasm.decodeVaruint(bytes, offset));
-      
+
       return output;
     }
 
@@ -139,6 +139,22 @@ class Wasm {
         const [val, bytesRead] = Wasm.decodeVaruint(wasm, offset);
         printDisassembly(bytesRead, beginComment + val + endComment);
         return val;
+      }
+
+      function printExpression() {
+        const opcodeData = Wasm.opcodeData[wasm[offset]];
+        let comment = opcodeData.name;
+        let bytesRead = 1;
+        
+        for (const immediates of opcodeData.immediates) {
+          const valsAndBytesRead = immediates(wasm, offset + bytesRead);
+          for (let i = 0; i < valsAndBytesRead.length; i += 2) {
+            comment += " " + valsAndBytesRead[i];
+            bytesRead += valsAndBytesRead[i+1];
+          }
+        }
+        
+        printDisassembly(bytesRead, comment);
       }
   
       printDisassembly(4, 'Wasm magic number: "\\0asm"');
@@ -235,12 +251,8 @@ class Wasm {
             case Wasm.section.Global: {
               printDisassembly(1, Wasm.typeNames[wasm[offset]]);
               printDisassembly(1, wasm[offset] ? "mutable" : "immutable");
-  
-              //the initial value is assumed to be an i32.const expression
-              //TODO should support other constant types
-              const [val, bytesRead] = Wasm.decodeVarint(wasm, offset + 1);
-              printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
-              printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
+              printExpression(); //expression of propper type
+              printExpression(); //Wasm.end
             } break;
             
             case Wasm.section.Code: {
@@ -262,29 +274,14 @@ class Wasm {
               printDisassembly(bytesRead, localVariableComment);
               
               while (offset < subEnd) {
-                const opcodeData = Wasm.opcodeData[wasm[offset]];
-                let comment = opcodeData.name;
-                let bytesRead = 1;
-                
-                for (const immediates of opcodeData.immediates) {
-                  const valsAndBytesRead = immediates(wasm, offset + bytesRead);
-                  for (let i = 0; i < valsAndBytesRead.length; i += 2) {
-                    comment += " " + valsAndBytesRead[i];
-                    bytesRead += valsAndBytesRead[i+1];
-                  }
-                }
-                
-                printDisassembly(bytesRead, comment);
+                printExpression();
               }
             } break;
   
             case Wasm.section.Data: {
               readVaruintAndPrint("linear memory index: ");
-  
-              //the memory offset is assumed to be an i32.const expression
-              const [val, bytesRead] = Wasm.decodeVarint(wasm, offset + 1);
-              printDisassembly(1 + bytesRead, Wasm.opcodeData[wasm[offset]].name + " " + val);
-              printDisassembly(1, Wasm.opcodeData[wasm[offset]].name);
+              printExpression(); //expression of type i32
+              printExpression(); //Wasm.end
   
               const dataSize = readVaruintAndPrint("size of data: ", " bytes");
               const subEnd = offset + dataSize;
