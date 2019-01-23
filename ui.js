@@ -11,7 +11,6 @@ const menu = document.getElementById("menu");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
 const loadButton = document.getElementById("load-button");
-const viewCodeButton = document.getElementById("view-code-button");
 const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
@@ -60,16 +59,6 @@ loadButton.addEventListener("click", function(event) {
   menuButton.toggled = false;
 
   history.pushState({action: "load"}, "TouchScript Project Manager");
-  window.onpopstate();
-});
-
-viewCodeButton.addEventListener("click", function(event) {
-  event.stopPropagation();
-  
-  fabMenu.classList.remove("expanded");
-  menuButton.toggled = false;
-
-  history.pushState({action: "disassemble"}, "TouchScript Disassembly");
   window.onpopstate();
 });
 
@@ -153,20 +142,6 @@ window.onpopstate = function(event) {
       print(error);
     }
     
-    runtime.style.display = "";
-  }
-  else if (event.state.action === "disassemble") {
-    document.title = "TouchScript Disassembly"
-
-    try {
-      const wasmBinary = script.getWasm();
-      const disassembly = Wasm.getDisassembly(wasmBinary);
-      print(disassembly);
-    } catch (error) {
-      console.log(error);
-      print(error);
-    }
-
     runtime.style.display = "";
   }
   else if (event.state.action === "load") {

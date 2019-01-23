@@ -1326,9 +1326,9 @@ class Script {
           case Wasm.types.i64:
             return [Wasm.i64_const, ...Wasm.varint(this.value)];
           case Wasm.types.f32:
-            return [Wasm.f32_const, ...Wasm.f32ToBytes(this.value)];
+            return [Wasm.f32_const, ...Wasm.encodeF32(this.value)];
           case Wasm.types.f64:
-            return [Wasm.f64_const, ...Wasm.f64ToBytes(this.value)];
+            return [Wasm.f64_const, ...Wasm.encodeF64(this.value)];
         }
       }
 
@@ -1519,8 +1519,8 @@ class Script {
     }
 
     const initialData = [];
-    initialData.push(...Wasm.stringToLenPrefixedUTF8("false"), 0, 0); //address 0
-    initialData.push(...Wasm.stringToLenPrefixedUTF8("true"));        //address 8
+    initialData.push(...Wasm.encodeString("false"), 0, 0); //address 0
+    initialData.push(...Wasm.encodeString("true"));        //address 8
 
     for (let row = 0, endRow = this.lineCount; row < endRow; ++row) {
       lvalueType = this.BuiltIns.VOID;
@@ -1565,7 +1565,7 @@ class Script {
             if (param.default) {
               if (param.type === this.BuiltIns.STRING || param.type === this.BuiltIns.ANY) {
                 expression.push(new InternalStringLiteral(initialData.length));
-                initialData.push(...Wasm.stringToLenPrefixedUTF8(param.default));
+                initialData.push(...Wasm.encodeString(param.default));
               } else {
                 expression.push(new InternalNumericLiteral(param.default));
               }
@@ -1827,7 +1827,7 @@ class Script {
             expression.push(new InternalStringLiteral(initialData.length));
 
             const stringLiteral = item.text.replace(/\\n/g, "\n");
-            initialData.push(...Wasm.stringToLenPrefixedUTF8(stringLiteral));
+            initialData.push(...Wasm.encodeString(stringLiteral));
           break;
 
           case NumericLiteral:
@@ -1975,8 +1975,8 @@ class Script {
     let importSection = [
       ...Wasm.varuint(importedFuncs.length + 1), //count of things to import
 
-      ...Wasm.stringToLenPrefixedUTF8("js"),
-      ...Wasm.stringToLenPrefixedUTF8("memory"),
+      ...Wasm.encodeString("js"),
+      ...Wasm.encodeString("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified
       ...Wasm.varuint(1), //initially 1 page allocated
@@ -1984,8 +1984,8 @@ class Script {
 
     for (const func of importedFuncs) {
       importSection.push(
-        ...Wasm.stringToLenPrefixedUTF8(func.moduleName),
-        ...Wasm.stringToLenPrefixedUTF8(func.fieldName),
+        ...Wasm.encodeString(func.moduleName),
+        ...Wasm.encodeString(func.fieldName),
         Wasm.externalKind.Function,
         ...Wasm.varuint(getSignature(func)),
       );
