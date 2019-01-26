@@ -52,15 +52,15 @@ class Wasm {
   //the array is prepended by the size of the coded string encoded as a varuint
   //TODO support full UTF-8 rather than just ASCII
   static encodeString(string) {
-    const encoding = string.split('').map(a => a.charCodeAt());
+    const encoding = Wasm.UTF8Encoder.encode(string);
     return [...Wasm.varuint(encoding.length), ...encoding];
   }
 
   static decodeString(ubytes, offset) {
     const [size, bytesRead] = Wasm.decodeVaruint(ubytes, offset);
     const data = ubytes.subarray(offset + bytesRead, offset + bytesRead + size);
-    return String.fromCharCode.apply(String, data);
-}
+    return Wasm.UTF8Decoder.decode(data);
+  }
 
   static encodeF32(num) {
     return new Uint8Array(Float32Array.of(num).buffer);
@@ -70,6 +70,9 @@ class Wasm {
     return new Uint8Array(Float64Array.of(num).buffer);
   }
 }
+
+Wasm.UTF8Encoder = new TextEncoder("utf-8");
+Wasm.UTF8Decoder = new TextDecoder("utf-8");
 
 Wasm.section = {
   Type: 1,
@@ -298,7 +301,6 @@ Wasm.externalKind = {
     "f64.reinterpret/i64",
   ];
 
-  Wasm.opcodes = {};
   for (let i = 0; i < wasmOpcodes.length; ++i) {
     if (wasmOpcodes[i] !== undefined) {
       const propName = wasmOpcodes[i].replace(/\./, "_").replace(/\//, "_from_");
