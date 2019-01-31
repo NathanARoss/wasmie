@@ -80,6 +80,9 @@ menu.childNodes[2].oncontextmenu = function(event) {
 document.body.onresize = function () {
   const newLoadedCount = Math.ceil(window.innerHeight / lineHeight) + bufferCount;
   const diff = newLoadedCount - loadedCount;
+  if (diff === 0) {
+    return;
+  }
 
   for (let i = 0; i < diff; ++i) {
     const newLine = createLine();
@@ -338,7 +341,8 @@ function createLine() {
 
 function insertLine(position) {
   script.insertLine(position);
-  
+  editor.style.height = getLineCount() * lineHeight + "px";
+
   if (position < firstLoadedPosition + loadedCount) {
     const selectedIndex = position % loadedCount;
     const selectedLine = editor.childNodes[selectedIndex];
@@ -360,12 +364,9 @@ function insertLine(position) {
     for (let i = position + 1; i < loadedCount + firstLoadedPosition; ++i) {
       const line = editor.childNodes[i % loadedCount];
       line.position = i;
-      line.style.setProperty("--position", i + 1);
       line.childNodes[1].textContent = i;
     }
   }
-
-  editor.style.height = getLineCount() * lineHeight + "px";
 }
 
 function deleteLine(position) {
@@ -436,9 +437,10 @@ function loadLine(position, line, visualShift = 0) {
     line.style.transition = "";
     line.childNodes[1].textContent = position;
     line.position = position;
-
+  
     if (selRow === position) {
       const button = line.childNodes[2 + selCol];
+      button.classList.add("selected");
       line.scrollLeft = button.offsetLeft - window.innerWidth / 2;
     }
   }
@@ -541,7 +543,7 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
   if (prevRow === -1) {
     prevRow = selRow;
   }
-  for (let i = Math.min(selRow, prevRow); i < loadedCount + firstLoadedPosition; ++i) {
+  for (let i = Math.max(0, Math.min(selRow, prevRow) - 1); i < loadedCount + firstLoadedPosition; ++i) {
     const line = editor.childNodes[i % loadedCount];
     line.style.setProperty("--position", line.position + (line.position > selRow)|0);
   }
