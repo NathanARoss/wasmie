@@ -70,15 +70,32 @@ downloadButton.addEventListener("click", function(event) {
   menuButton.toggled = false;
 
   try {
-    const wasmBinary = script.getWasm();
-    var a = document.createElement('a');
-    a.href = window.URL.createObjectURL(new File([wasmBinary], "out.wasm"));
+    function save(filename) {
+      const wasmBinary = script.getWasm();
+      var a = document.createElement('a');
+      a.href = window.URL.createObjectURL(new File([wasmBinary], filename));
+    
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
   
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+      window.URL.revokeObjectURL(a.href);
+    }
 
-    window.URL.revokeObjectURL(a.href);
+    performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
+      const request = objStore.get(script.projectID);
+      request.onsuccess = (event) => {
+        if (event.target.result) {
+          save(event.target.result.name + ".wasm");
+        } else {
+          save("new.wasm");
+        }
+      };
+      request.onerror = (event) => {
+        console.log("Error getting project name: ", event.target.error);
+        save("temp.wasm")
+      };
+    });
   } catch (error) {
     console.log(error);
     print(error);

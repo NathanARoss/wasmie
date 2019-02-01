@@ -1187,7 +1187,7 @@ class Script {
     };
     openRequest.onsuccess = function(event) {
       const db = event.target.result;
-      db.onerror = (event) => alert("Database error: " + event.target.errorCode);
+      db.onerror = e => alert("Database error: " + e.target.error);
 
       const transaction = db.transaction("lines", mode);
       const linesStore = transaction.objectStore("lines");
