@@ -306,11 +306,10 @@ function performActionOnProjectListDatabase(mode, action) {
 }
 
 function getDateString(date) {
-  var options = {
+  return date.toLocaleDateString("en-US", {
     year: "numeric", month: "numeric", day: "numeric",
     hour: "numeric", minute: "2-digit"
-  };
-  return date.toLocaleDateString("en-US", options);
+  });
 }
 
 
@@ -370,8 +369,10 @@ function insertLine(position) {
 }
 
 function deleteLine(position) {
-  let deletedCount = script.deleteLine(position);
-  deletedCount = Math.min(deletedCount, loadedCount - (position - firstLoadedPosition));
+  const deletedCount = Math.min(
+    script.deleteLine(position),
+    loadedCount - (position - firstLoadedPosition)
+  );
 
   const selectedIndex = position % loadedCount;
   const lastLineIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
