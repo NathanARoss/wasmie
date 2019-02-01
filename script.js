@@ -93,7 +93,15 @@ class Script {
     items.push(this.BuiltIns.END_ARGS);
 
     this.appendLinesUpTo(row);
-    this.spliceLine(row, col, 1, ...items);
+    let count = 1;
+    if (col < this.getItemCount(row)) {
+      const [start, end] = this.getExpressionBounds(row, col);
+      count = end - start;
+      this.spliceLine(row, col, count, ...items);
+    } else {
+      this.pushItems(row, ...items);
+    }
+    
     this.runTypeInference(row);
     return {lineUpdated: true, selectedCol: col + 2};
   }
@@ -1120,7 +1128,7 @@ class Script {
       return;
     }
 
-    item.type = getExpressionType(row, 2, itemCount);
+    item.type = this.getExpressionType(row, 2, itemCount);
     this.saveLines([this.lines[row]]);
   }
 
