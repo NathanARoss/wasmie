@@ -50,7 +50,6 @@ createButton.addEventListener("click", function(event) {
   
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
-  reloadAllLines();
   closeMenu();
 });
 
@@ -220,6 +219,7 @@ window.onpopstate = function(event) {
 function scriptLoaded() {
   document.body.onresize();
   window.onpopstate();
+  reloadAllLines();
 
   //detect when items need to be loaded in the direction of scroll
   //take nodes from the back to add to the front
@@ -253,7 +253,6 @@ function selectProject(event) {
     if (projectID !== oldActiveProject) {
       localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
       script = new Script();
-      reloadAllLines();
     }
     closeMenu();
     window.history.back();
@@ -274,7 +273,6 @@ function deleteProject(event) {
       if (script.projectID === id) {
         localStorage.removeItem(ACTIVE_PROJECT_KEY);
         script = new Script();
-        reloadAllLines();
         closeMenu();
       }
     }
