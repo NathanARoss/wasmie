@@ -1,19 +1,17 @@
 class RuntimeEnvironment {
   constructor() {
-    const self = this;
-    this.System = {
+    const wasmMemory = new WebAssembly.Memory({initial: 1});
+    const memoryUbytes = new Uint8Array(wasmMemory.buffer);
+    this.env = {
+      memory: wasmMemory,
       puts(address) {
-        const memory = new Uint8Array(self.js.memory.buffer);
-        const message = Wasm.decodeString(memory, address);
+        const message = Wasm.decodeString(memoryUbytes, address);
         print(message);
       },
       put(char) {
         const message = String.fromCharCode(char);
         print(message);
       }
-    }
-    this.js = {
-      memory: new WebAssembly.Memory({initial: 1}),
     }
     this.Math = Math;
   }

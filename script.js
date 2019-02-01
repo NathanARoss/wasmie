@@ -1975,7 +1975,7 @@ class Script {
     let importSection = [
       ...Wasm.varuint(importedFuncs.length + 1), //count of things to import
 
-      ...Wasm.encodeString("js"),
+      ...Wasm.encodeString("env"),
       ...Wasm.encodeString("memory"),
       Wasm.externalKind.Memory,
       0, //flag that max pages is not specified

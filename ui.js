@@ -24,6 +24,7 @@ let selectedItem;
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
+const runtimeEnvironment = new RuntimeEnvironment();
 
 let selRow = -1;
 let selCol = -1;
@@ -138,9 +139,8 @@ window.onpopstate = function(event) {
       print(error);
     }
 
-    const environment = new RuntimeEnvironment();
     try {
-      WebAssembly.instantiate(wasm, environment)
+      WebAssembly.instantiate(wasm, runtimeEnvironment)
     } catch (error) {
       print(error);
     }
