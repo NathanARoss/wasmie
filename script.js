@@ -173,7 +173,12 @@ class Script {
       if (item.constructor === VarRef) {
         options.push(...this.getVisibleVars(row, true, setVarRef));
       } else if (item.constructor === FuncRef) {
-        //options.push(...this.getFunctionList(false));
+        const scopes = new Set(this.BuiltIns.FUNCTIONS.map(func => func.signature.scope));
+        const style = "keyword";
+        const action = this.getVisibleFuncs;
+        for (const scope of scopes) {
+          options.push({text: scope.text, style, action, args: [row, 0, scope, this.BuiltIns.ANY]});
+        }
       } else if (item === this.BuiltIns.IF) {
         const indent = this.getIndent(row);
         for (let r = row - 1; r >= 0; --r) {
