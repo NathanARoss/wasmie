@@ -11,6 +11,7 @@ const menu = document.getElementById("menu");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
 const loadButton = document.getElementById("load-button");
+const downloadButton = document.getElementById("download-button");
 const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
@@ -61,6 +62,28 @@ loadButton.addEventListener("click", function(event) {
 
   history.pushState({action: "load"}, "TouchScript Project Manager");
   window.onpopstate();
+});
+
+downloadButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+  
+  fabMenu.classList.remove("expanded");
+  menuButton.toggled = false;
+
+  try {
+    const wasmBinary = script.getWasm();
+    var a = document.createElement('a');
+    a.href = window.URL.createObjectURL(new File([wasmBinary], "out.wasm"));
+  
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    window.URL.revokeObjectURL(a.href);
+  } catch (error) {
+    console.log(error);
+    print(error);
+  }
 });
 
 menu.childNodes[1].onclick = function() {

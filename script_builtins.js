@@ -108,6 +108,16 @@ class PredefinedFunc {
   constructor(signature, ...wasmCode) {
     this.signature = signature;
     this.wasmCode = wasmCode;
+    this.dependencies = [];
+
+    for (const item of wasmCode) {
+      if (item.constructor === ImportedFunc || item.constructor === PredefinedFunc) {
+        this.dependencies.push(item);
+      }
+      if (item.constructor === PredefinedFunc) {
+        this.dependencies.push(...item.dependencies);
+      }
+    }
   }
 
   getDisplay() {
@@ -326,7 +336,7 @@ function BuiltIns() {
     this.U32      = new TypeDef("uint",     {size: 4, id: -13}),
     this.F64      = new TypeDef("double",   {size: 8, id: -20}),
     this.F32      = new TypeDef("float",    {size: 4, id: -21}),
-    this.STRING   = new TypeDef("string",   {size: 4, id: -30}),
+    this.STRING   = new TypeDef("string",   {size: 0, id: -30}),
     this.ITERABLE = new TypeDef("iterable", {size: 0, id: -31}),
     this.SYSTEM   = new TypeDef("System",   {size: 0, id: -40}),
     this.MATH     = new TypeDef("Math",     {size: 0, id: -41}),
@@ -383,213 +393,102 @@ function BuiltIns() {
     "env", "puts"
   );
   this.PRINT_CHAR = new ImportedFunc(
-    new FuncSig(this.SYSTEM, "printChar", this.VOID, [this.U32, "charCode"]),
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.U32, null]),
     "env", "put"
+  );
+  this.PRINT_U32 = new ImportedFunc(
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.U32, null]),
+    "env", "putu32"
+  );
+  this.PRINT_BOOL = new ImportedFunc(
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.BOOL, null]),
+    "env", "putbool"
+  );
+  this.PRINT_I32 = new ImportedFunc(
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.I32, null]),
+    "env", "putnum"
+  );
+  this.PRINT_F32 = new ImportedFunc(
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.F32, null]),
+    "env", "putnum"
+  );
+  this.PRINT_F64 = new ImportedFunc(
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.F64, null]),
+    "env", "putnum"
+  );
+
+
+  this.PRINT_U64 = new PredefinedFunc(
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.U64, null]),
+    1, 1, Wasm.types.i32,
+    Wasm.get_global, 0, //address = top of stack
+    Wasm.set_local, 1,
+
+    Wasm.loop, Wasm.types.void, //do
+      Wasm.get_local, 1, //address
+
+      Wasm.get_local, 0,
+      Wasm.i64_const, 10,
+      Wasm.i64_rem_u,
+      Wasm.i32_wrap_from_i64,
+      Wasm.i32_const, '0'.charCodeAt(),
+      Wasm.i32_add, //value = val % 10 + '0'
+
+      Wasm.i32_store8, 0, 0, //store value at address
+
+      Wasm.get_local, 1, //address--
+      Wasm.i32_const, ...Wasm.varint(-1),
+      Wasm.i32_add,
+      Wasm.set_local, 1,
+
+      Wasm.get_local, 0, //val /= 10
+      Wasm.i64_const, 10,
+      Wasm.i64_div_u,
+      Wasm.tee_local, 0,
+      Wasm.i64_const, 0,
+      Wasm.i64_gt_u,
+    Wasm.br_if, 0, //while val > 0
+    Wasm.end,
+
+    //this Wasm func assumes that the length of the string does not exceed 63 bytes,
+    //so the length can safely be encoded in one byte
+    Wasm.get_local, 1, //address = string write position
+
+    Wasm.get_global, 0, //value = top of stack - address
+    Wasm.get_local, 1,
+    Wasm.i32_sub,
+    
+    Wasm.i32_store8, 0, 0, //store length of string at address
+
+    Wasm.get_local, 1,
+    Wasm.call, this.PRINT,
+    
+    Wasm.end,
+  );
+
+  this.PRINT_I64 = new PredefinedFunc(
+    new FuncSig(this.SYSTEM, null, this.VOID, [this.I64, null]),
+    0, //no local vars,
+    Wasm.get_local, 0,
+    Wasm.i64_const, 0,
+    Wasm.i64_lt_s,
+    Wasm.if, Wasm.types.i64,     //if val < 0
+      Wasm.i32_const, '-'.charCodeAt(),
+      Wasm.call, this.PRINT_CHAR,
+      Wasm.i64_const, 0,         //val = -val
+      Wasm.get_local, 0,
+      Wasm.i64_sub,
+    Wasm.else,
+      Wasm.get_local, 0,
+    Wasm.end,
+
+    Wasm.call, this.PRINT_U64,
+    Wasm.end,
   );
 
   this.FUNCTIONS = [
     this.PRINT,
     this.PRINTLN,
-    this.PRINT_CHAR,
-    new Macro(
-      new FuncSig(this.STRING, "from", this.STRING, [this.BOOL, "item"]),
-      Wasm.i32_const, 3,
-      Wasm.i32_shl,
-    ),
-    new PredefinedFunc(
-      new FuncSig(this.STRING, "from", this.STRING, [this.I64, "item"]),
-      1, 2, Wasm.types.i32,
-      Wasm.get_global, 0, //address = top of stack + 24
-      Wasm.i32_const, 24,
-      Wasm.i32_add,
-      Wasm.set_local, 1,
-
-      Wasm.get_local, 0,
-      Wasm.i64_const, 0,
-      Wasm.i64_lt_s,
-      Wasm.if, Wasm.types.void,     //if val < 0
-        Wasm.i32_const, 1,         //isNeg = true
-        Wasm.set_local, 2,
-        Wasm.i64_const, 0,         //val = -val
-        Wasm.get_local, 0,
-        Wasm.i64_sub,
-        Wasm.set_local, 0,
-      Wasm.end,
-  
-      Wasm.loop, Wasm.types.void, //do
-        Wasm.get_local, 1, //address
-  
-        Wasm.get_local, 0,
-        Wasm.i64_const, 10,
-        Wasm.i64_rem_u,
-        Wasm.i32_wrap_from_i64,
-        Wasm.i32_const, '0'.charCodeAt(),
-        Wasm.i32_add, //value = val % 10 + '0'
-  
-        Wasm.i32_store8, 0, 0, //store value at address
-  
-        Wasm.get_local, 1, //address--
-        Wasm.i32_const, 1,
-        Wasm.i32_sub,
-        Wasm.set_local, 1,
-  
-        Wasm.get_local, 0, //val /= 10
-        Wasm.i64_const, 10,
-        Wasm.i64_div_u,
-        Wasm.tee_local, 0,
-        Wasm.i64_const, 0,
-        Wasm.i64_gt_u,
-      Wasm.br_if, 0, //while val > 0
-      Wasm.end,
-
-      Wasm.get_local, 2, //if isNeg, store a minus sign
-      Wasm.if, Wasm.types.void,
-        Wasm.get_local, 1, //address
-        Wasm.i32_const, '-'.charCodeAt(), //value = '-'
-        Wasm.i32_store8, 0, 0, //store value at address
-
-        Wasm.get_local, 1, //address--
-        Wasm.i32_const, 1,
-        Wasm.i32_sub,
-        Wasm.set_local, 1,
-      Wasm.end,
-  
-      Wasm.get_local, 1, //address = string write position
-  
-      Wasm.i32_const, 24, //value = length = 24 - address + top of stack
-      Wasm.get_local, 1,
-      Wasm.i32_sub,
-      Wasm.get_global, 0,
-      Wasm.i32_add,
-  
-      Wasm.i32_store8, 0, 0, //store length of string at address
-      
-      Wasm.get_local, 1, //return the address of the first byte
-      Wasm.end,
-    ), 
-    new PredefinedFunc(
-      new FuncSig(this.U32, "toString", this.U64, [this.U32, "address"], [this.U64, "number"]),
-      1, 1, Wasm.types.i64, //var copy: u64
-      Wasm.get_local, 1, //copy = number
-      Wasm.set_local, 2,
-      Wasm.get_local, 0,
-
-      Wasm.loop, Wasm.types.i32, //do
-        Wasm.i32_const, 1,       //  ++address
-        Wasm.i32_add,
-        Wasm.get_local, 2,       //  copy /= 10
-        Wasm.i64_const, 10,
-        Wasm.i64_div_u,
-        Wasm.tee_local, 2,
-        Wasm.i64_eqz,
-        Wasm.i32_eqz,
-        Wasm.br_if, 0,           //while copy != 0
-      Wasm.end,
-
-      Wasm.tee_local, 0,         //next = address
-  
-      Wasm.loop, Wasm.types.void, //do
-        Wasm.get_local, 0,        //  MEM[c] =
-  
-        Wasm.get_local, 1,
-        Wasm.i64_const, 10,
-        Wasm.i64_rem_u,
-        Wasm.i64_const, '0'.charCodeAt(),
-        Wasm.i64_add,             //  number % 10 + '0'
-  
-        Wasm.i64_store8, 0, 0,    //  ;
-  
-        Wasm.get_local, 0,        //  --c
-        Wasm.i32_const, 1,
-        Wasm.i32_sub,
-        Wasm.set_local, 0,
-  
-        Wasm.get_local, 1,        //  number /= 10
-        Wasm.i64_const, 10,
-        Wasm.i64_div_u,
-        Wasm.tee_local, 1,
-        Wasm.i64_eqz,
-        Wasm.i32_eqz,
-      Wasm.br_if, 0,              //while number != 0
-      Wasm.end,
-      
-      Wasm.end, //return next
-    ),
-    new PredefinedFunc(
-      new FuncSig(this.STRING, "from", this.STRING, [this.F64, "item"]),
-      2, 2, Wasm.types.i32, 1, Wasm.types.i64, //TODO actually implement this
-      Wasm.get_local, 0,
-      Wasm.i64_trunc_s_from_f64,
-      Wasm.set_local, 3,
-
-      Wasm.get_global, 0, //address = top of stack + 24
-      Wasm.i32_const, 24,
-      Wasm.i32_add,
-      Wasm.set_local, 1,
-
-      Wasm.get_local, 3,
-      Wasm.i64_const, 0,
-      Wasm.i64_lt_s,
-      Wasm.if, Wasm.types.void,     //if val < 0
-        Wasm.i32_const, 1,         //isNeg = true
-        Wasm.set_local, 2,
-        Wasm.i64_const, 0,         //val = -val
-        Wasm.get_local, 3,
-        Wasm.i64_sub,
-        Wasm.set_local, 3,
-      Wasm.end,
-  
-      Wasm.loop, Wasm.types.void, //do
-        Wasm.get_local, 1, //address
-  
-        Wasm.get_local, 3,
-        Wasm.i64_const, 10,
-        Wasm.i64_rem_u,
-        Wasm.i32_wrap_from_i64,
-        Wasm.i32_const, '0'.charCodeAt(),
-        Wasm.i32_add, //value = val % 10 + '0'
-  
-        Wasm.i32_store8, 0, 0, //store value at address
-  
-        Wasm.get_local, 1, //address--
-        Wasm.i32_const, 1,
-        Wasm.i32_sub,
-        Wasm.set_local, 1,
-  
-        Wasm.get_local, 3, //val /= 10
-        Wasm.i64_const, 10,
-        Wasm.i64_div_u,
-        Wasm.tee_local, 3,
-        Wasm.i64_const, 0,
-        Wasm.i64_gt_u,
-      Wasm.br_if, 0, //while val > 0
-      Wasm.end,
-
-      Wasm.get_local, 2, //if isNeg, store a minus sign
-      Wasm.if, Wasm.types.void,
-        Wasm.get_local, 1, //address
-        Wasm.i32_const, '-'.charCodeAt(), //value = '-'
-        Wasm.i32_store8, 0, 0, //store value at address
-
-        Wasm.get_local, 1, //address--
-        Wasm.i32_const, 1,
-        Wasm.i32_sub,
-        Wasm.set_local, 1,
-      Wasm.end,
-  
-      Wasm.get_local, 1, //address = string write position
-  
-      Wasm.i32_const, 24, //value = length = 24 - address + top of stack
-      Wasm.get_local, 1,
-      Wasm.i32_sub,
-      Wasm.get_global, 0,
-      Wasm.i32_add,
-  
-      Wasm.i32_store8, 0, 0, //store length of string at address
-      
-      Wasm.get_local, 1, //return the address of the first byte
-      Wasm.end,
-    ),
     new ImportedFunc(
       new FuncSig(this.SYSTEM, "input", this.BOOL),
       "System", "inputBool" //TODO

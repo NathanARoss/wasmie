@@ -186,7 +186,7 @@ class Script {
       || item === this.BuiltIns.END_EXPRESSION) {
         options.push({text: "", style: "delete-outline", action: () => {
           const [start, end] = this.getExpressionBounds(row, col);
-          this.spliceLine(row, end, 1);
+          this.spliceLine(row, end - 1, 1);
           this.spliceLine(row, start, 1);
           return {lineUpdated: true, selectedCol: col === start ? col : col - 2};
         }});
@@ -216,7 +216,7 @@ class Script {
       const wrapInParens = {
         text: "( )", action: () => {
         const [start, end] = this.getExpressionBounds(row, col);
-        this.spliceLine(row, end + 1, 0, this.BuiltIns.END_EXPRESSION);
+        this.spliceLine(row, end, 0, this.BuiltIns.END_EXPRESSION);
         this.spliceLine(row, start, 0, this.BuiltIns.BEGIN_EXPRESSION);
         return {lineUpdated: true, selectedCol: col + 1};
       }};
@@ -663,6 +663,7 @@ class Script {
       --start;
     }
 
+    ++end; //end is one past the last item
     return [start, end];
   }
 
@@ -885,13 +886,13 @@ class Script {
         if (this.getIndent(row) === 0 && row + 1 === this.lineCount) {
           return {lineDeleted: true};
         } else {
-          this.spliceLine(row, start, end - start + 1);
+          this.spliceLine(row, start, end - start);
         }
       } else {
         let paramIndex = 0;
         let func;
 
-        const nextItem = this.getItem(row, end + 1);
+        const nextItem = this.getItem(row, end);
         const prevItem = this.getItem(row, start - 1);
         if ((nextItem === this.BuiltIns.ARG_SEPARATOR || nextItem === this.BuiltIns.END_ARGS)
         && (prevItem === this.BuiltIns.ARG_SEPARATOR || prevItem === this.BuiltIns.BEGIN_ARGS)) {
@@ -920,13 +921,13 @@ class Script {
               return {lineUpdated: true};
             }
           }
-          this.spliceLine(row, start, end - start + 1, new ArgHint(func, paramIndex));
+          this.spliceLine(row, start, end - start, new ArgHint(func, paramIndex));
         } else {
-          if (end + 1 === this.getItemCount(row)) {
-            this.spliceLine(row, start, end - start + 1);
+          if (end === this.getItemCount(row)) {
+            this.spliceLine(row, start, end - start);
             return {lineUpdated: true, selectedCol: 0x7FFFFFFF};
           } else {
-            this.spliceLine(row, start, end - start + 1, this.BuiltIns.PLACEHOLDER);
+            this.spliceLine(row, start, end - start, this.BuiltIns.PLACEHOLDER);
           }
         }
       }
@@ -1071,21 +1072,7 @@ class Script {
     return options;
   }
 
-  runTypeInference(row) {
-    const itemCount = this.getItemCount(row);
-    if (itemCount < 2) {
-      return;
-    }
-
-    const item = this.getItem(row, 1);
-    if (item.constructor !== VarDef) {
-      return;
-    }
-
-    if (item.typeAnnotated === true) {
-      return;
-    }
-    
+  getExpressionType(row, start, end) {
     //TODO handle detecting non-primative types
     const promotions = [
       this.BuiltIns.U32, this.BuiltIns.I32, this.BuiltIns.U64,
@@ -1094,10 +1081,9 @@ class Script {
     
     let status = -1;
     
-    for (let col = 2; col < itemCount; ++col) {
-      const item = this.getItem(row, col);
-
-      if (item.isUnary && (col === itemCount - 1 || this.getItem(row, col + 1) === this.BuiltIns.PLACEHOLDER)) {
+    const items = this.lines[row].items.slice(start, end);
+    for (const item of items) {
+      if (item.isUnary) {
         status = Math.max(status, 1); //assume I32
       }
 
@@ -1112,11 +1098,29 @@ class Script {
     }
 
     //this makes the assumption that any expression with a bool op is a bool expression
-    if (this.lines[row].items.some(item => item.isBool)) {
+    if (items.some(item => item.isBool || item === this.BuiltIns.TRUE || item === this.BuiltIns.FALSE)) {
       rvalueType = this.BuiltIns.BOOL;
     }
 
-    item.type = rvalueType;
+    return rvalueType;
+  }
+
+  runTypeInference(row) {
+    const itemCount = this.getItemCount(row);
+    if (itemCount < 2) {
+      return;
+    }
+
+    const item = this.getItem(row, 1);
+    if (item.constructor !== VarDef) {
+      return;
+    }
+
+    if (item.typeAnnotated === true) {
+      return;
+    }
+
+    item.type = getExpressionType(row, 2, itemCount);
     this.saveLines([this.lines[row]]);
   }
 
@@ -1254,6 +1258,30 @@ class Script {
           console.log(type);
           console.trace();
           throw "cannot find Wasm type of " + type;
+      }
+    }
+
+    function getPrintImplementation(type) {
+      switch (type) {
+        case script.BuiltIns.STRING:
+          return script.BuiltIns.PRINT;
+        case script.BuiltIns.I32:
+          return script.BuiltIns.PRINT_I32;
+        case script.BuiltIns.I64:
+          return script.BuiltIns.PRINT_I64;
+        case script.BuiltIns.U32:
+          return script.BuiltIns.PRINT_U32;
+        case script.BuiltIns.U64:
+          return script.BuiltIns.PRINT_U64;
+        case script.BuiltIns.F32:
+          return script.BuiltIns.PRINT_F32;
+        case script.BuiltIns.F64:
+          return script.BuiltIns.PRINT_F64;
+        case script.BuiltIns.BOOL:
+          return script.BuiltIns.PRINT_BOOL;
+        default:
+          console.error("failed to find implementation to print type", argType);
+          throw "";
       }
     }
 
@@ -1448,40 +1476,83 @@ class Script {
         if (cast) {
           wasmCode.push(...cast.wasmCode);
         } else {
-          console.log("cast from", expressionType.text, "to", expectedType.text, "not found");
+          console.error("cast from", expressionType.text, "to", expectedType.text, "not found");
         }
       }
       
       return [expressionType, wasmCode];
     }
 
-    //keep track of which functions are used in this program
+    //identify every predefined and imported function before compiling begins
     const importedFuncs = [];
+    const predefinedFuncs = [];
 
-    //scan ahead for imported functions because they are listed first
-    for (const line of this.lines) {
-      for (const item of line.items) {
-        if (item.constructor === FuncRef && item.funcDef.constructor === ImportedFunc) {
-          let func = item.funcDef;
-          if (func === this.BuiltIns.PRINTLN) {
-            func = this.BuiltIns.PRINT;
-          }
-
-          if (!importedFuncs.includes(func)) {
-            importedFuncs.push(func);
-          }
-
-          //at the moment, I assume all uses of PRINT and PRINTLN will call PRINT_CHAR after compilation
-          if (func === this.BuiltIns.PRINT) {
-            if (!importedFuncs.includes(this.BuiltIns.PRINT_CHAR)) {
-              importedFuncs.push(this.BuiltIns.PRINT_CHAR);
+    function noticePredefinedFunc(func) {
+      if (!predefinedFuncs.includes(func)) {
+        predefinedFuncs.push(func);
+        
+        for (const dependency of func.dependencies) {
+          if (dependency.constructor === ImportedFunc) {
+            if (!importedFuncs.includes(dependency)) {
+              importedFuncs.push(dependency);
+            }
+          } else {
+            //this assumes that dependencies are not recursive
+            if (!predefinedFuncs.includes(dependency)) {
+              predefinedFuncs.push(dependency);
             }
           }
         }
       }
     }
 
-    const wasmFuncs = [];
+    for (let row = 0; row < this.lineCount; ++row) {
+      for (const item of this.lines[row].items) {
+        if (item.constructor === FuncRef) {
+          if (item.funcDef.constructor === ImportedFunc) {
+            let func = item.funcDef;
+            if (func === this.BuiltIns.PRINTLN) {
+              if (!importedFuncs.includes(this.BuiltIns.PRINT_CHAR)) {
+                importedFuncs.push(this.BuiltIns.PRINT_CHAR);
+              }
+              func = this.BuiltIns.PRINT;
+            }
+  
+            if (func !== this.BuiltIns.PRINT) {
+              if (!importedFuncs.includes(func)) {
+                importedFuncs.push(func);
+              }
+            } else {
+              //assume PRINT call appears as the first item in a line
+              const itemCount = this.getItemCount(row);
+              for (let col = 1; col < itemCount; ++col) {
+                const [start, end] = this.getExpressionBounds(row, col);
+                const argType = this.getExpressionType(row, start, end);
+                const implementation = getPrintImplementation(argType);
+
+                if (implementation.constructor === ImportedFunc) {
+                  if (!importedFuncs.includes(implementation)) {
+                    importedFuncs.push(implementation);
+                  }
+                } else {
+                  noticePredefinedFunc(implementation);
+                }
+
+                col = end;
+                if (this.getItem(row, col) === this.BuiltIns.ARG_SEPARATOR) {
+                  if (!importedFuncs.includes(this.BuiltIns.PRINT_CHAR)) {
+                    importedFuncs.push(this.BuiltIns.PRINT_CHAR);
+                  }
+                }
+              }
+            }
+          }
+          else if (item.funcDef.constructor === PredefinedFunc) {
+            noticePredefinedFunc(func);
+          }
+        }
+      }
+    }
 
     let mainFunc = [];
 
@@ -1518,9 +1589,8 @@ class Script {
       endOfLineInstructions.push(Wasm.br_if, 1);
     }
 
+    const topOfStack = 2**15;
     const initialData = [];
-    initialData.push(...Wasm.encodeString("false"), 0, 0); //address 0
-    initialData.push(...Wasm.encodeString("true"));        //address 8
 
     for (let row = 0, endRow = this.lineCount; row < endRow; ++row) {
       lvalueType = this.BuiltIns.VOID;
@@ -1564,7 +1634,7 @@ class Script {
             const param = item.funcDef.signature.parameters[item.argIndex];
             if (param.default) {
               if (param.type === this.BuiltIns.STRING || param.type === this.BuiltIns.ANY) {
-                expression.push(new InternalStringLiteral(initialData.length));
+                expression.push(new InternalStringLiteral(initialData.length + topOfStack));
                 initialData.push(...Wasm.encodeString(param.default));
               } else {
                 expression.push(new InternalNumericLiteral(param.default));
@@ -1609,11 +1679,11 @@ class Script {
                   if (funcCallDepth === 0) {
                     const func = this.getItem(row, j - 1).funcDef;
                     if (func === this.BuiltIns.PRINT || func === this.BuiltIns.PRINTLN) {
-                      argumentIndex = 0;
+                      expectedType = this.BuiltIns.ANY;
+                    } else {
+                      const argumentType = func.signature.parameters[argumentIndex].type;
+                      expectedType = argumentType;
                     }
-                    const argumentType = func.signature.parameters[argumentIndex].type;
-                    //console.log(expression, "is argument ", argumentIndex, "to ", func.signature.name, "argument type is", argumentType.text);
-                    expectedType = argumentType;
                     break;
                   }
                   
@@ -1630,49 +1700,17 @@ class Script {
             //println and print call system print function on each argument separately
             if (func === this.BuiltIns.PRINT || func === this.BuiltIns.PRINTLN) {
               if (item === this.BuiltIns.END_ARGS || item === this.BuiltIns.ARG_SEPARATOR) {
-                //if the argument is a primative, use specialized printing functions
-                if (expressionType === this.BuiltIns.I32) {
-                  wasmCode.push(Wasm.i64_extend_s_from_i32);
-                  expressionType = this.BuiltIns.I64;
-                }
-                if (expressionType === this.BuiltIns.U32) {
-                  wasmCode.push(Wasm.i64_extend_u_from_i32);
-                  expressionType = this.BuiltIns.U64;
-                }
-                if (expressionType === this.BuiltIns.F32) {
-                  wasmCode.push(Wasm.f64_promote_from_f32);
-                  expressionType = this.BuiltIns.F64;
-                }
-                
-                if (expressionType !== this.BuiltIns.STRING) {
-                  const func = script.BuiltIns.FUNCTIONS.find(func => {
-                    return func.signature.scope === expressionType
-                    && func.signature.name === "toString"
-                  });
-                  
-                  if (func) {
-                    if (func.constructor === PredefinedFunc) {
-                      let funcIndex = wasmFuncs.indexOf(func);
-                      if (funcIndex === -1) {
-                        funcIndex = wasmFuncs.length;
-                        wasmFuncs.push(func);
-                      }
-                      wasmCode.push(Wasm.call, ...Wasm.varuint(funcIndex + importedFuncs.length + 1));
-                    } else if (func.constructor === Macro) {
-                      wasmCode.push(...func.wasmCode);
-                    } else {
-                      console.log("invalid function type for converting", expressionType, "to string:", func);
-                      throw "unrecognized function type: " + func.constructor;
-                    }
-                  } else {
-                    console.log("failed to find toString() implementation for", expressionType);
-                    throw "failed to find toString() implementation for " + expressionType.text;
-                  }
+                //use specialized printing functions                
+                let funcIndex;
+                const implementation = getPrintImplementation(expressionType);
+
+                if (implementation.constructor === ImportedFunc) {
+                  funcIndex = importedFuncs.indexOf(implementation);
+                } else {
+                  funcIndex = predefinedFuncs.indexOf(implementation) + importedFuncs.length + 1;
                 }
 
-                mainFunc.push(
-                  Wasm.call, ...Wasm.varuint(importedFuncs.indexOf(this.BuiltIns.PRINT)),
-                );
+                mainFunc.push(Wasm.call, ...Wasm.varuint(funcIndex));
               }
               
               if (item === this.BuiltIns.ARG_SEPARATOR) {
@@ -1697,11 +1735,7 @@ class Script {
                 mainFunc.push(...func.wasmCode);
               }
               if (func.constructor === PredefinedFunc) {
-                let index = wasmFuncs.indexOf(func);
-                if (index === -1) {
-                  index = wasmFuncs.length;
-                  wasmFuncs.push(func);
-                }
+                const index = predefinedFuncs.indexOf(func);
                 mainFunc.push(Wasm.call, ...Wasm.varuint(index + importedFuncs.length + 1));
               }
               if (func.constructor === ImportedFunc) {
@@ -1824,7 +1858,7 @@ class Script {
           break;
           
           case StringLiteral:
-            expression.push(new InternalStringLiteral(initialData.length));
+            expression.push(new InternalStringLiteral(initialData.length + topOfStack));
 
             const stringLiteral = item.text.replace(/\\n/g, "\n");
             initialData.push(...Wasm.encodeString(stringLiteral));
@@ -1910,7 +1944,7 @@ class Script {
       parameterTypes: [],
     }];
 
-    for (const func of [...importedFuncs, ...wasmFuncs]) {
+    for (const func of [...importedFuncs, ...predefinedFuncs]) {
       const signature = {
         returnType: getWasmType(func.signature.returnType),
         parameterTypes: func.signature.parameters.map(p => p.type).map(getWasmType),
@@ -1992,11 +2026,11 @@ class Script {
     }
 
     let functionSection = [
-      ...Wasm.varuint(wasmFuncs.length + 1), //count of function bodies defined later
+      ...Wasm.varuint(predefinedFuncs.length + 1), //count of function bodies defined later
       ...Wasm.varuint(0), //type indicies (func signitures)
     ];
 
-    for (const func of wasmFuncs) {
+    for (const func of predefinedFuncs) {
       functionSection.push(getSignature(func)); 
     }
 
@@ -2009,36 +2043,42 @@ class Script {
     // ];
 
     let codeSection = [
-      ...Wasm.varuint(wasmFuncs.length + 1), //count of functions to define
+      ...Wasm.varuint(predefinedFuncs.length + 1), //count of functions to define
       ...Wasm.varuint(mainFunc.length),
       ...mainFunc,
     ];
 
-    for (const func of wasmFuncs) {
+    for (const func of predefinedFuncs) {
+      //replace references to dependencies with the index assigned to that function
+      const compiledCode = [];
+      for (const item of func.wasmCode) {
+        if (item.constructor === ImportedFunc) {
+          const funcIndex = importedFuncs.indexOf(item);
+          compiledCode.push(...Wasm.varuint(funcIndex));
+        }
+        else if (item.constructor === PredefinedFunc) {
+          const funcIndex = importedFuncs.length + 1 + predefinedFuncs.indexOf(item);
+          compiledCode.push(...Wasm.varuint(funcIndex));
+        }
+        else {
+          compiledCode.push(item);
+        }
+      }
       codeSection.push(
-        ...Wasm.varuint(func.wasmCode.length),
-        ...func.wasmCode
+        ...Wasm.varuint(compiledCode.length),
+        ...compiledCode
       );
     }
-
-    let dataSection = [
-      1, //1 data segment
-
-      0, //memory index 0
-      Wasm.i32_const, 0, Wasm.end, //fill memory starting at address 0
-      ...Wasm.varuint(initialData.length), //count of bytes to fill in
-      ...initialData,
-    ];
 
     const globalSection = [
       1, //1 global
       Wasm.types.i32, 1, //1 global of type i32
-      Wasm.i32_const, ...Wasm.varint(initialData.length), Wasm.end, //initialized to stop of stack
+      Wasm.i32_const, ...Wasm.varuint(topOfStack), Wasm.end, //initialized to stop of stack
     ];
 
-    let wasm = [
+    const wasm = [
       0x00, 0x61, 0x73, 0x6d, //magic numbers
-      0x01, 0x00, 0x00, 0x00, //binary version
+      0x01, 0x00, 0x00, 0x00, //wasm version
   
       Wasm.section.Type,
       ...Wasm.varuint(typeSection.length), //size in bytes of section
@@ -2067,11 +2107,24 @@ class Script {
       Wasm.section.Code,
       ...Wasm.varuint(codeSection.length),
       ...codeSection,
-
-      Wasm.section.Data,
-      ...Wasm.varuint(dataSection.length),
-      ...dataSection,
     ];
+
+    if (initialData.length > 0) {
+      const dataSection = [
+        1, //1 data segment
+  
+        0, //memory index 0
+        Wasm.i32_const, ...Wasm.varuint(topOfStack), Wasm.end, //fill memory after stack
+        ...Wasm.varuint(initialData.length), //count of bytes to fill in
+        ...initialData,
+      ];
+
+      wasm.push(
+        Wasm.section.Data,
+        ...Wasm.varuint(dataSection.length),
+        ...dataSection,
+      )
+    }
 
     return (new Uint8Array(wasm)).buffer;
   }

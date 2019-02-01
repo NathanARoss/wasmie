@@ -17,7 +17,7 @@ class Wasm {
   
   static *varuint(value) {
     do {
-      const byte = value & 0x7F;
+      let byte = value & 0x7F;
       value = Math.floor(value / 128);
 
       if (value !== 0) {/* more bytes to come */
