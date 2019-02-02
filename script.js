@@ -96,7 +96,7 @@ class Script {
     let count = 1;
     if (col < this.getItemCount(row)) {
       const [start, end] = this.getExpressionBounds(row, col);
-      count = end - start;
+      count = end - col;
       this.spliceLine(row, col, count, ...items);
     } else {
       this.pushItems(row, ...items);

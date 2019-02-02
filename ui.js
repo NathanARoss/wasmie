@@ -39,6 +39,11 @@ function getWasmBinary() {
   }
 }
 
+function closeFAB() {
+  fabMenu.classList.remove("expanded");
+  menuButton.toggled = false;
+}
+
 menuButton.addEventListener("click", function(event) {
   event.stopPropagation();
 
@@ -53,9 +58,7 @@ menuButton.addEventListener("click", function(event) {
 
 createButton.addEventListener("click", function(event) {
   event.stopPropagation();
-
-  fabMenu.classList.remove("expanded");
-  menuButton.toggled = false;
+  closeFAB();
   
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
   script = new Script();
@@ -64,9 +67,7 @@ createButton.addEventListener("click", function(event) {
 
 loadButton.addEventListener("click", function(event) {
   event.stopPropagation();
-
-  fabMenu.classList.remove("expanded");
-  menuButton.toggled = false;
+  closeFAB();
 
   history.pushState({action: "load"}, "TouchScript Project Manager");
   window.onpopstate();
@@ -74,9 +75,7 @@ loadButton.addEventListener("click", function(event) {
 
 viewCodeButton.addEventListener("click", function(event) {
   event.stopPropagation();
-  
-  fabMenu.classList.remove("expanded");
-  menuButton.toggled = false;
+  closeFAB();
 
   import("https://nathanross.me/small-wasm-disassembler/disassembler.min.mjs")
     .then(module => {
@@ -554,6 +553,7 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
       menuItem.onsubmit = () => {
         handleMenuItemResponse(option.onsubmit(menuItem.value, option.args || []));
       };
+      menuItem.onfocus = closeFAB;
       menuItem.oninput = option.oninput;
       menuItem.onkeydown = (event) => {
         event.stopPropagation();
