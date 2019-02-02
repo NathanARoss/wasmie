@@ -25,7 +25,7 @@ body {
   position: absolute;
   display: flex;
   /* higher lines occlude lower lines */
-  z-index: calc(10000000 - var(--position));
+  z-index: calc(10000000 - var(--y));
   background-color: #2B2B2B;
   overflow-x: auto;
   overflow-y: hidden;
@@ -36,7 +36,7 @@ body {
 #menu, #editor > div:nth-last-child(n+3) {
   height: 40px;
   width: 100%;
-  transform: translateY(calc(var(--position, -1) * 40px));
+  transform: translateY(calc(var(--y, -1) * 40px));
   transition: 0.25s transform;
   -webkit-overflow-scrolling: touch; /* use momentum scrolling on iOS Safari */
   scrollbar-width: none; /* hide scrollbar on firefox */
@@ -69,7 +69,7 @@ button {
   position: relative;
   z-index: -1;
   height: 40px;
-  width: calc(12px * var(--indent, 0));
+  width: calc(12px * var(--x, 0));
   background: repeating-linear-gradient(to right, transparent, transparent 8px,
                                     DarkSlateGray 8px, DarkSlateGray 12px);
   flex-shrink: 0;
@@ -78,20 +78,20 @@ button {
 
 #menu > .indentation {
   width: 0;
-  padding-right: calc(12px * var(--indent, 0));
-  margin-right: calc(-12px * var(--indent, 0));
+  padding-right: calc(12px * var(--x, 0));
+  margin-right: calc(-12px * var(--x, 0));
   opacity: 0.5;
 }
 
-.half-indent > .indentation {
-  width: calc(12px * var(--indent, 0) + 12px);
+.half-x > .indentation {
+  width: calc(12px * var(--x, 0) + 12px);
   clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
-             calc(12px * var(--indent, 0)) 70%, calc(12px * var(--indent, 0)) 0);
+             calc(12px * var(--x, 0)) 70%, calc(12px * var(--x, 0)) 0);
   -webkit-clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
-             calc(12px * var(--indent, 0)) 70%, calc(12px * var(--indent, 0)) 0);
+             calc(12px * var(--x, 0)) 70%, calc(12px * var(--x, 0)) 0);
 }
 
-.half-indent > .item:nth-child(3) {
+.half-x > .item:nth-child(3) {
   margin-left: -12px;
 }
 

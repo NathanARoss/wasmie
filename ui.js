@@ -457,7 +457,7 @@ function deleteLine(position) {
   for (let i = position; i < firstLoadedPosition + loadedCount - deletedCount; ++i) {
     const line = editor.childNodes[i % loadedCount];    
     line.position = i;
-    line.style.setProperty("--position", 1);
+    line.style.setProperty("--y", 1);
     line.childNodes[1].textContent = i;
   }
 
@@ -472,8 +472,8 @@ function loadLine(position, line, visualShift = 0) {
   }
 
   if (position >= script.lineCount) {
-    line.style.removeProperty("--indent");
-    line.classList.remove("half-indent");
+    line.style.removeProperty("--x");
+    line.classList.remove("half-x");
   } else {
     const itemCount = script.getItemCount(position);
 
@@ -485,17 +485,17 @@ function loadLine(position, line, visualShift = 0) {
     
     const indent = script.getIndent(position);
     if (indent > 0) {
-      line.style.setProperty("--indent", indent);
+      line.style.setProperty("--x", indent);
     } else {
-      line.style.removeProperty("--indent");
+      line.style.removeProperty("--x");
     }
-    line.classList.toggle("half-indent", script.isStartingScope(position));
+    line.classList.toggle("half-x", script.isStartingScope(position));
   }
 
   if (line.position !== position) {
     line.style.transition = "none";
     const isShiftedDown = selRow !== -1 && position > selRow;
-    line.style.setProperty("--position", position + visualShift + isShiftedDown|0);
+    line.style.setProperty("--y", position + visualShift + isShiftedDown|0);
     line.offsetHeight;
     line.style.transition = "";
     line.childNodes[1].textContent = position;
@@ -590,7 +590,7 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
     menu.style.transition = "none";
 
     const isShiftedUp = prevRow === -1 || selRow < prevRow;
-    menu.style.setProperty("--position", selRow + 1 - isShiftedUp|0);
+    menu.style.setProperty("--y", selRow + 1 - isShiftedUp|0);
   
     menu.offsetHeight;
     menu.style.transition = "";
@@ -600,8 +600,8 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
 
   menu.classList.toggle("delete-button-shown", selRow < script.lineCount);
   menu.classList.toggle("insert-button-shown", script.canInsert(insertPosition));
-  menu.style.setProperty("--position", selRow + 1);
-  menu.style.setProperty("--indent", script.getInsertIndent(selRow + 1));
+  menu.style.setProperty("--y", selRow + 1);
+  menu.style.setProperty("--x", script.getInsertIndent(selRow + 1));
   
   //make room for the menu to slot below the selected line
   if (prevRow === -1) {
@@ -609,17 +609,17 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
   }
   for (let i = Math.max(0, Math.min(selRow, prevRow) - 1); i < loadedCount + firstLoadedPosition; ++i) {
     const line = editor.childNodes[i % loadedCount];
-    line.style.setProperty("--position", line.position + (line.position > selRow)|0);
+    line.style.setProperty("--y", line.position + (line.position > selRow)|0);
   }
 }
 
 function closeMenu() {
-  menu.style.setProperty("--position", selRow);
+  menu.style.setProperty("--y", selRow);
   menu.classList.remove("revealed");
   if (selRow !== -1) {
     for (let i = selRow; i < loadedCount + firstLoadedPosition; ++i) {
       const line = editor.childNodes[i % loadedCount];
-      line.style.setProperty("--position", line.position);
+      line.style.setProperty("--y", line.position);
     }
     selRow = -1;
   }
