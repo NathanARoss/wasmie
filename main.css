@@ -181,6 +181,9 @@ button {
 #download-button {
   background-image: url(baseline-get_app-24px.svg);
 }
+#view-code-button {
+  background-image: url(baseline-code-24px.svg);
+}
 #load-button {
   background-image: url(baseline-folder-24px.svg);
 }

@@ -11,6 +11,7 @@ const menu = document.getElementById("menu");
 const menuButton = document.getElementById("menu-button");
 const createButton = document.getElementById("new-button");
 const loadButton = document.getElementById("load-button");
+const viewCodeButton = document.getElementById("view-code-button");
 const downloadButton = document.getElementById("download-button");
 const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
@@ -22,13 +23,21 @@ firstLoadedPosition = Math.max(0, Math.floor(window.scrollY / lineHeight) - buff
 
 const itemPool = [];
 let selectedItem;
+let selRow = -1;
+let selCol = -1;
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script = new Script();
 const runtimeEnvironment = new RuntimeEnvironment();
 
-let selRow = -1;
-let selCol = -1;
+function getWasmBinary() {
+  try {
+    return script.getWasm();
+  } catch (error) {
+    console.error(error);
+    print(error);
+  }
+}
 
 menuButton.addEventListener("click", function(event) {
   event.stopPropagation();
@@ -63,17 +72,35 @@ loadButton.addEventListener("click", function(event) {
   window.onpopstate();
 });
 
+viewCodeButton.addEventListener("click", function(event) {
+  event.stopPropagation();
+  
+  fabMenu.classList.remove("expanded");
+  menuButton.toggled = false;
+
+  import("https://nathanross.me/small-wasm-disassembler/disassembler.mjs")
+    .then(module => {
+      const wasm = getWasmBinary();
+      if (wasm !== undefined) {
+        print(module.default(wasm, 9))
+      }
+
+      history.pushState({action: "disassemble"}, "TouchScript Disassembly");
+      window.onpopstate();
+    });
+});
+
 downloadButton.addEventListener("click", function(event) {
   event.stopPropagation();
   
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
-  try {
-    function save(filename) {
-      const wasmBinary = script.getWasm();
+  function save(filename) {
+    const wasm = getWasmBinary();
+    if (wasm !== undefined) {
       var a = document.createElement('a');
-      a.href = window.URL.createObjectURL(new File([wasmBinary], filename));
+      a.href = window.URL.createObjectURL(new File([wasm], filename));
     
       document.body.appendChild(a);
       a.click();
@@ -81,25 +108,22 @@ downloadButton.addEventListener("click", function(event) {
   
       window.URL.revokeObjectURL(a.href);
     }
-
-    performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
-      const request = objStore.get(script.projectID);
-      request.onsuccess = (event) => {
-        if (event.target.result) {
-          save(event.target.result.name + ".wasm");
-        } else {
-          save("new.wasm");
-        }
-      };
-      request.onerror = (event) => {
-        console.log("Error getting project name: ", event.target.error);
-        save("temp.wasm")
-      };
-    });
-  } catch (error) {
-    console.log(error);
-    print(error);
   }
+
+  performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
+    const request = objStore.get(script.projectID);
+    request.onsuccess = (event) => {
+      if (event.target.result) {
+        save(event.target.result.name + ".wasm");
+      } else {
+        save("new.wasm");
+      }
+    };
+    request.onerror = (event) => {
+      console.log("Error getting project name: ", event.target.error);
+      save("temp.wasm")
+    };
+  });
 });
 
 menu.childNodes[1].onclick = function() {
@@ -170,20 +194,20 @@ window.onpopstate = function(event) {
   else if (event.state.action === "run") {
     document.title = "TouchScript Runtime";
 
-    let wasm;
-    try {
-      wasm = script.getWasm();
-    } catch (error) {
-      console.log(error);
-      print(error);
-    }
+    const wasm = getWasmBinary();
 
-    try {
-      WebAssembly.instantiate(wasm, runtimeEnvironment)
-    } catch (error) {
-      print(error);
+    if (wasm !== undefined) {
+      try {
+        WebAssembly.instantiate(wasm, runtimeEnvironment)
+      } catch (error) {
+        print(error);
+      }
     }
     
+    runtime.style.display = "";
+  }
+  else if (event.state.action === "disassemble") {
+    document.title = "TouchScript Disassembly";
     runtime.style.display = "";
   }
   else if (event.state.action === "load") {
