@@ -78,7 +78,7 @@ viewCodeButton.addEventListener("click", function(event) {
   fabMenu.classList.remove("expanded");
   menuButton.toggled = false;
 
-  import("https://nathanross.me/small-wasm-disassembler/disassembler.mjs")
+  import("https://nathanross.me/small-wasm-disassembler/disassembler.min.mjs")
     .then(module => {
       const wasm = getWasmBinary();
       if (wasm !== undefined) {
