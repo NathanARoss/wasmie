@@ -101,6 +101,7 @@ downloadButton.addEventListener("click", function(event) {
     if (wasm !== undefined) {
       var a = document.createElement('a');
       a.href = window.URL.createObjectURL(new File([wasm], filename));
+      a.download = filename;
     
       document.body.appendChild(a);
       a.click();
