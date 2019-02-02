@@ -1538,7 +1538,7 @@ class Script {
             } else {
               //assume PRINT call appears as the first item in a line
               const itemCount = this.getItemCount(row);
-              for (let col = 1; col < itemCount; ++col) {
+              for (let col = 2; col < itemCount; ++col) {
                 const [start, end] = this.getExpressionBounds(row, col);
                 const argType = this.getExpressionType(row, start, end);
                 const implementation = getPrintImplementation(argType);
