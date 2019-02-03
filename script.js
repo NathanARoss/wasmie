@@ -84,10 +84,10 @@ class Script {
     });
   }
 
-  insertFuncCall(row, col, func) {
-    const items = [new FuncRef(func, this.BuiltIns.VOID)];
-    for (let i = 0; i < func.signature.parameters.length; ++i) {
-      items.push(this.BuiltIns.ARG_SEPARATOR, new ArgHint(func, i));
+  insertFuncCall(row, col, funcDef) {
+    const items = [new FuncRef(funcDef, this.BuiltIns.VOID)];
+    for (let i = 0; i < funcDef.signature.parameters.length; ++i) {
+      items.push(this.BuiltIns.ARG_SEPARATOR, new ArgHint(funcDef, i));
     }
     items[1] = this.BuiltIns.BEGIN_ARGS;
     items.push(this.BuiltIns.END_ARGS);
@@ -216,10 +216,10 @@ class Script {
           } else if (item === this.BuiltIns.BEGIN_ARGS) {
             --depth;
             if (depth === -1) {
-              const func = this.getItem(row, i - 1).funcDef;
+              const funcDef = this.getItem(row, i - 1).funcDef;
               //TODO make sure function is actually variadic
               options.push({text: ",", action: insert,
-                args: [col + 1, this.BuiltIns.ARG_SEPARATOR, new ArgHint(func, 0)]
+                args: [col + 1, this.BuiltIns.ARG_SEPARATOR, new ArgHint(funcDef, 0)]
               });
             }
           }
@@ -934,7 +934,7 @@ class Script {
               return {lineUpdated: true};
             }
           }
-          this.spliceLine(row, start, end - start, new ArgHint(func, paramIndex));
+          this.spliceLine(row, start, end - start, new ArgHint(func.funcDef, paramIndex));
         } else {
           if (end === this.getItemCount(row)) {
             this.spliceLine(row, start, end - start);
