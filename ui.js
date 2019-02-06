@@ -1,5 +1,11 @@
 "use strict";
 
+//temporary code to remove old databases for anyone who visited while the old format was used
+indexedDB.deleteDatabase("TouchScript-project-list");
+for (let i = 0; i < 256; ++i) {
+  indexedDB.deleteDatabase("TouchScript-" + i)
+}
+
 const lineHeight = 40;
 const bufferCount = 10;
 const forwardBufferCount = 4;
@@ -27,7 +33,7 @@ let selRow = -1;
 let selCol = -1;
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
-let script = new Script();
+let script;
 const runtimeEnvironment = new RuntimeEnvironment();
 
 function getWasmBinary() {
@@ -61,7 +67,7 @@ createButton.addEventListener("click", function(event) {
   closeFAB();
   
   localStorage.removeItem(ACTIVE_PROJECT_KEY);
-  script = new Script();
+  dbAction("readonly", "date-created", createNewScript);
   closeMenu();
 });
 
@@ -77,16 +83,8 @@ viewCodeButton.addEventListener("click", function(event) {
   event.stopPropagation();
   closeFAB();
 
-  import("https://nathanross.me/small-wasm-disassembler/disassembler.min.mjs")
-    .then(module => {
-      const wasm = getWasmBinary();
-      if (wasm !== undefined) {
-        print(module.default(wasm, 9))
-      }
-
-      history.pushState({action: "disassemble"}, "TouchScript Disassembly");
-      window.onpopstate();
-    });
+  history.pushState({action: "disassemble"}, "TouchScript Disassembly");
+  window.onpopstate();
 });
 
 downloadButton.addEventListener("click", function(event) {
@@ -110,20 +108,20 @@ downloadButton.addEventListener("click", function(event) {
     }
   }
 
-  performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
-    const request = objStore.get(script.projectID);
+  dbAction("readonly", "name", function(id) {
+    const request = this.get(id);
     request.onsuccess = (event) => {
       if (event.target.result) {
-        save(event.target.result.name + ".wasm");
+        save(event.target.result + ".wasm");
       } else {
-        save("new.wasm");
+        save("Project " + id + ".wasm");
       }
     };
     request.onerror = (event) => {
       console.log("Error getting project name: ", event.target.error);
       save("temp.wasm")
     };
-  });
+  }, [script.id]);
 });
 
 menu.childNodes[1].onclick = function() {
@@ -208,50 +206,91 @@ window.onpopstate = function(event) {
   }
   else if (event.state.action === "disassemble") {
     document.title = "TouchScript Disassembly";
+    const wasm = getWasmBinary();
+    if (wasm !== undefined) {
+      import("https://nathanross.me/small-wasm-disassembler/disassembler.min.mjs")
+      .then(module => {
+        print(module.default(wasm, 9))
+      });
+    }
     runtime.style.display = "";
   }
   else if (event.state.action === "load") {
     document.title = "TouchScript Project Manager"
 
-    performActionOnProjectListDatabase("readonly", function(objStore, transaction) {
-      objStore.getAll().onsuccess = function(event) {
-        for (const project of event.target.result) {
-          const label = document.createElement("span");
-          label.textContent = "Project name: ";
+    function getDateString(date) {
+      return date.toLocaleDateString("en-US", {
+        year: "numeric", month: "numeric", day: "numeric",
+        hour: "numeric", minute: "2-digit"
+      });
+    }
 
-          const projectName = document.createElement("input");
-          projectName.type = "text";
-          projectName.value = project.name;
-          projectName.addEventListener("change", renameProject);
+    //read all the project metadata into RAM before building the DOM
+    const projectNames = new Map();
+    const projectLastModified = new Map();
+    const projectDateCreated = new Map();
 
-          const dateCreated = document.createElement("p");
-          dateCreated.textContent = "Created: " + getDateString(project.created);
+    function assembleProjectMetaData() {
+      for (const [id, dateCreated] of projectDateCreated.entries()) {
+        const label = document.createElement("span");
+        label.textContent = "Project name: ";
 
-          const lastModified = document.createElement("p");
-          lastModified.textContent = "Last Modified: " + getDateString(project.lastModified);
+        const projectNameNode = document.createElement("input");
+        projectNameNode.type = "text";
+        if (projectNames.has(id)) {
+          projectNameNode.value = projectNames.get(id);
+        } else {
+          projectNameNode.placeholder = "Project " + id;
+        }
+        projectNameNode.addEventListener("change", renameProject);
 
-          const deleteButton = document.createElement("button");
-          deleteButton.className = "delete delete-project-button";
-          deleteButton.addEventListener("click", deleteProject);
+        const dateCreatedNode = document.createElement("p");
+        dateCreatedNode.textContent = "Created: " + getDateString(dateCreated);
 
-          const entry = document.createElement("div");
-          entry.className = "project-list-entry";
-          entry.appendChild(deleteButton);
-          entry.appendChild(label);
-          entry.appendChild(projectName);
-          entry.appendChild(dateCreated);
-          entry.appendChild(lastModified);
-          entry.addEventListener("click", selectProject);
+        const lastModified = projectLastModified.get(id);
+        const lastModifiedNode = document.createElement("p");
+        lastModifiedNode.textContent = "Last Modified: " + getDateString(lastModified);
 
-          if (script.projectID === project.id) {
-            entry.classList.add("open");
+        const deleteButton = document.createElement("button");
+        deleteButton.className = "delete delete-project-button";
+        deleteButton.addEventListener("click", deleteProject);
+
+        const entry = document.createElement("div");
+        entry.className = "project-list-entry";
+        entry.appendChild(deleteButton);
+        entry.appendChild(label);
+        entry.appendChild(projectNameNode);
+        entry.appendChild(dateCreatedNode);
+        entry.appendChild(lastModifiedNode);
+        entry.addEventListener("click", selectProject);
+
+        if (script.id === id) {
+          entry.classList.add("open");
+        }
+
+        entry.projectId = id;
+        programList.appendChild(entry);
+      }
+    }
+
+    let remaining = 3;
+    function readKeysAndVals(map) {
+      this.openCursor().onsuccess = function(event) {
+        const cursor = event.target.result;
+        if (cursor) {
+          map.set(cursor.primaryKey, cursor.value);
+          cursor.continue();
+        } else {
+          if (--remaining === 0) {
+            assembleProjectMetaData()
           }
-
-          entry.projectId = project.id;
-          programList.appendChild(entry);
         }
       }
-    });
+    }
+
+    dbAction("readonly", "name", readKeysAndVals, [projectNames]);
+    dbAction("readonly", "last-modified", readKeysAndVals, [projectLastModified]);
+    dbAction("readonly", "date-created", readKeysAndVals, [projectDateCreated]);
 
     programList.style.display = "";
   }
@@ -293,7 +332,7 @@ function selectProject(event) {
     const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY)|0;
     if (projectID !== oldActiveProject) {
       localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
-      script = new Script();
+      script = new Script(projectID, true);
     }
     closeMenu();
     window.history.back();
@@ -303,75 +342,27 @@ function selectProject(event) {
 function deleteProject(event) {
   const entry = this.parentElement;
   const id = entry.projectId;
+
+  if (script.id === id) {
+    localStorage.removeItem(ACTIVE_PROJECT_KEY);
+    dbAction("readonly", "date-created", createNewScript);
+    closeMenu();
+  }
+  entry.parentElement.removeChild(entry);
   
-  performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
-    objStore.delete(id).onsuccess = function(event) {
-      console.log("Successfully deleted project ID " + id);
-      entry.parentElement.removeChild(entry);
+  dbAction("readwrite", "name", IDBObjectStore.prototype.delete, [id]);
+  dbAction("readwrite", "date-created", IDBObjectStore.prototype.delete, [id]);
+  dbAction("readwrite", "last-modified", IDBObjectStore.prototype.delete, [id]);
+  //performDBAction("readwrite", "save-data", IDBObjectStore.prototype.delete, [id]);
 
-      indexedDB.deleteDatabase("TouchScript-" + id);
-
-      if (script.projectID === id) {
-        localStorage.removeItem(ACTIVE_PROJECT_KEY);
-        script = new Script();
-        closeMenu();
-      }
-    }
-
-    objStore.count().onsuccess = function(event) {
-      if (event.target.result === 0) {
-        window.history.back();
-      }
-    }
-  });
+  const range = getLineKeyRangeForProject(id);
+  dbAction("readwrite", "lines", IDBObjectStore.prototype.delete, [range]);
 }
 
 function renameProject(event) {
   const id = this.parentElement.projectId;
-  const newName = this.value;
-
-  performActionOnProjectListDatabase("readwrite", function(objStore, transaction) {
-    objStore.get(id).onsuccess = function(event) {
-      let projectData = event.target.result;
-      projectData.name = newName;
-
-      objStore.put(projectData).onsuccess = function(event) {
-        console.log("Successfully saved modified project ID " + id);
-      }
-    }
-  });
-}
-
-function performActionOnProjectListDatabase(mode, action) {
-  let openRequest = indexedDB.open("TouchScript-project-list", 1);
-  
-  openRequest.onerror = function(event) {
-    alert("Failed to open project list database. Error code " + event.errorCode);
-  };
-  openRequest.onupgradeneeded = function(event) {
-    console.log("upgrading project list database");
-    let db = event.target.result;
-    db.createObjectStore("project-list", {keyPath: "id"});
-  };
-  openRequest.onsuccess = function(event) {
-    //console.log("Successfully opened project list database in " + mode + " mode");
-    let db = event.target.result;
-
-    db.onerror = function(event) {
-      console.log(event.target);
-    };
-
-    let transaction = db.transaction("project-list", mode);
-    let objStore = transaction.objectStore("project-list");
-    action(objStore, transaction);
-  };
-}
-
-function getDateString(date) {
-  return date.toLocaleDateString("en-US", {
-    year: "numeric", month: "numeric", day: "numeric",
-    hour: "numeric", minute: "2-digit"
-  });
+  const name = this.value;
+  dbAction("readwrite", "name", IDBObjectStore.prototype.put, [name, id]);
 }
 
 
@@ -756,4 +747,80 @@ function print(value) {
   } else {
     consoleOutput.lastChild.nodeValue += value;
   }
+}
+
+let db;
+{
+  const openRequest = indexedDB.open("TouchScript", 1);
+  openRequest.onerror = (event) => alert("Error opening database: " + event.message);
+  openRequest.onupgradeneeded = function(event) {
+    console.log("upgrading database");
+    db = event.target.result;
+    db.createObjectStore("name");
+    db.createObjectStore("last-modified");
+    db.createObjectStore("date-created");
+    db.createObjectStore("lines");
+    db.createObjectStore("save-data");
+  };
+  openRequest.onsuccess = function(event) {
+    db = event.target.result;
+    db.onerror = event => console.dir(event.target.error);
+
+    const transaction = db.transaction("date-created", "readonly");
+    const objStore = transaction.objectStore("date-created");
+
+    const activeProjectId = localStorage.getItem(ACTIVE_PROJECT_KEY);
+    if (activeProjectId !== null) {
+      objStore.get(activeProjectId|0).onsuccess = function(event) {
+        if (event.target.result !== undefined) {
+          script = new Script(activeProjectId|0, true);
+        } else {
+          console.log("Project " + activeProjectId + " no longer exists");
+          localStorage.removeItem(ACTIVE_PROJECT_KEY);
+          createNewScript.apply(objStore);
+        }
+      }
+    } else {
+      createNewScript.apply(objStore);
+    }
+  };
+}
+
+/**
+ * assumes the objectstore "date-created" is bound to this
+ */
+function createNewScript() {
+  this.getAllKeys().onsuccess = function(event) {
+    //find a gap in the IDs, or grab the one after last
+    const projectIds = event.target.result;
+    let id = projectIds.findIndex((id, index) => id !== index);
+    if (id === -1) {
+      id = projectIds.length;
+    }
+    script = new Script(id, false);
+  };
+}
+
+function dbAction(mode, store, action, args) {
+  const transaction = db.transaction(store, mode);
+  const objStore = transaction.objectStore(store);
+  action.apply(objStore, args);
+}
+
+/**
+ * @param {Function} action callback that expects object store bound to this and optional arguments
+ * @param {} args arguments that are passed to the callback
+ */
+function commitScriptEdit(id, action, ...args) {
+  dbAction("readwrite", "last-modified", IDBObjectStore.prototype.put, [new Date(), id]);
+  dbAction("readwrite", "lines", action, args);
+}
+
+function commitDateCreated(id) {
+  localStorage.setItem(ACTIVE_PROJECT_KEY, id);
+  dbAction("readwrite", "date-created", IDBObjectStore.prototype.add, [new Date(), id]);
+}
+
+function getLineKeyRangeForProject(id) {
+  return IDBKeyRange.bound(Uint8Array.of(id), Uint8Array.of(id + 1), false, true);
 }

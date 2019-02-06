@@ -1,87 +1,82 @@
 class Script {
-  constructor() {
-    this.projectID = localStorage.getItem(ACTIVE_PROJECT_KEY)|0;
-    this.queuedTransations = [];
+  constructor(id, isSaved) {
+    this.id = id;
+    this.isSaved = isSaved;
 
     this.BuiltIns = new BuiltIns();
 
     this.lines = [];
 
     function decodeData(script) {
-      this.getAll().onsuccess = function(event) {
-        const scriptData = event.target.result;
-        const varDefs = new Map();
-        let highestVarId = -1;
-        
-        for (const lineData of scriptData) {
-          const items = [];
+      const varDefs = new Map();
+      let highestVarId = -1;
 
-          for (const data of lineData.items || []) {
-            if ("type" in data) {
-              const type = script.BuiltIns.TYPES.find(type => type.id === data.type);
-              const scope = script.BuiltIns.VOID;
-              const id = data.id;
-              highestVarId = Math.max(id, highestVarId);
-              const typeAnnotated = data.typeAnnotated;
-              const varDef = new VarDef(data.name, type, {scope, id, typeAnnotated});
-              items.push(varDef);
-              varDefs.set(data.id, varDef);
-            } else if ("varDef" in data) {
-              const varDef = varDefs.get(data.varDef);
-              if (varDef) {
-                const currentscope = script.BuiltIns.VOID;
-                items.push(new VarRef(varDef, currentscope));
-              } else {
-                items.push(script.BuiltIns.PLACEHOLDER);
-              }
-            } else if ("argIndex" in data) {
-              const funcDef = script.BuiltIns.FUNCTIONS[-1 - data.funcDef];
-              items.push(new ArgHint(funcDef, data.argIndex));
-            } else if ("funcDef" in data) {
-              const funcDef = script.BuiltIns.FUNCTIONS[-1 - data.funcDef];
-              const currentscope = script.BuiltIns.VOID;
-              items.push(new FuncRef(funcDef, currentscope));
-            } else if ("symbol" in data) {
-              items.push(script.BuiltIns.SYMBOLS[data.symbol]);
-            } else if ("keyword" in data) {
-              items.push(script.BuiltIns.KEYWORDS[data.keyword]);
-            } else if ("numLit" in data) {
-              items.push(new NumericLiteral(data.numLit));
-            } else if ("boolLit" in data) {
-              items.push(data.boolLit ? script.BuiltIns.TRUE : script.BuiltIns.FALSE);
-            } else if ("strLit" in data) {
-              items.push(new StringLiteral(data.strLit));
-            } else if ("loopLayers" in data) {
-              items.push(new LoopLabel(data.loopLayers));
-            } else {
-              console.log(data, "not recognized during loading")
-            }
-          }
-
-          script.lines.push({
-            key: lineData.key,
-            indent: lineData.indent|0,
-            items,
-          });
+      const range = getLineKeyRangeForProject(id);
+      this.openCursor(range).onsuccess = function(event) {
+        const cursor = event.target.result;
+        if (!cursor) {
+          VarDef.nextId = highestVarId + 1;
+          scriptLoaded();
+          return;
         }
 
-        VarDef.nextId = highestVarId + 1;
+        const lineKey = cursor.primaryKey;
+        const lineData = cursor.value;
+        const items = [];
 
-        scriptLoaded();
+        for (const data of lineData.items || []) {
+          if ("type" in data) {
+            const type = script.BuiltIns.TYPES.find(type => type.id === data.type);
+            const scope = script.BuiltIns.VOID;
+            const id = data.id;
+            highestVarId = Math.max(id, highestVarId);
+            const typeAnnotated = data.typeAnnotated;
+            const varDef = new VarDef(data.name, type, {scope, id, typeAnnotated});
+            items.push(varDef);
+            varDefs.set(data.id, varDef);
+          } else if ("varDef" in data) {
+            const varDef = varDefs.get(data.varDef);
+            if (varDef) {
+              const currentscope = script.BuiltIns.VOID;
+              items.push(new VarRef(varDef, currentscope));
+            } else {
+              items.push(script.BuiltIns.PLACEHOLDER);
+            }
+          } else if ("argIndex" in data) {
+            const funcDef = script.BuiltIns.FUNCTIONS[-1 - data.funcDef];
+            items.push(new ArgHint(funcDef, data.argIndex));
+          } else if ("funcDef" in data) {
+            const funcDef = script.BuiltIns.FUNCTIONS[-1 - data.funcDef];
+            const currentscope = script.BuiltIns.VOID;
+            items.push(new FuncRef(funcDef, currentscope));
+          } else if ("symbol" in data) {
+            items.push(script.BuiltIns.SYMBOLS[data.symbol]);
+          } else if ("keyword" in data) {
+            items.push(script.BuiltIns.KEYWORDS[data.keyword]);
+          } else if ("numLit" in data) {
+            items.push(new NumericLiteral(data.numLit));
+          } else if ("boolLit" in data) {
+            items.push(data.boolLit ? script.BuiltIns.TRUE : script.BuiltIns.FALSE);
+          } else if ("strLit" in data) {
+            items.push(new StringLiteral(data.strLit));
+          } else if ("loopLayers" in data) {
+            items.push(new LoopLabel(data.loopLayers));
+          } else {
+            console.log(data, "not recognized during loading")
+          }
+        }
+
+        script.lines.push({
+          key: lineKey,
+          indent: lineData.indent|0,
+          items,
+        });
+
+        cursor.continue();
       }
     }
 
-    performActionOnProjectListDatabase("readonly", (objStore, transaction) => {
-      objStore.get(this.projectID).onsuccess = (event) => {
-        if (!event.target.result) {
-          console.log("The previously opened project no longer exists");
-          localStorage.removeItem(ACTIVE_PROJECT_KEY);
-          scriptLoaded();
-        } else {
-          this.performTransactions("readonly", [{func: decodeData, args: [this]}]);
-        }
-      }
-    });
+    dbAction("readonly", "lines", decodeData, [this]);
   }
 
   insertFuncCall(row, col, funcDef) {
@@ -680,10 +675,56 @@ class Script {
     return [start, end];
   }
 
+   /**
+   * gets shortest key that sorts immediately after a key
+   * @param {Uint8Array} key
+   * @returns {Uint8Array} succeeding key
+   */
+  static getNextKey(key) {
+    for (let i = 1; i < key.length; ++i) {
+      if (key[i] < 255) {
+        const newKey = key.slice(0, i + 1);
+        ++newKey[i];
+        return newKey;
+      }
+    }
+
+    return Uint8Array.of(...key, 1);
+  }
+
+  /**
+   * gets the shortest key that sorts between two keys
+   * if lowKey and highKey are identical, returns a clone of lowKey
+   * @param {Uint8Array} lowKey
+   * @param {Uint8Array} highKey
+   * @return {Uint8Array} rounded average key
+   */
+  static getAvgKey(lowKey, highKey) {
+    let diff = 0;
+    for (let i = 1; i < Math.max(lowKey.length, highKey.length) + 1; ++i) {
+      diff = diff * 256 + (highKey[i]|0) - (lowKey[i]|0);
+  
+      if (diff > 1) {
+        const newKey = new Uint8Array(i + 1);
+        newKey.set(lowKey.slice(0, i + 1));
+        newKey[i] = (lowKey[i]|0) + (diff >>> 1);
+        return newKey;
+      }
+    }
+
+    return lowKey.slice();
+  }
+
   appendLinesUpTo(row) {
     let oldLength = this.lineCount;
 
-    let key = new Uint8Array((oldLength > 0) ? this.lines[oldLength - 1].key : 1);
+    let key;
+    if (oldLength > 0) {
+      key = this.lines[oldLength - 1].key;
+    } else {
+      key = Uint8Array.of(this.id, 0);
+    }
+
     while (row >= this.lineCount) {
       key = Script.getNextKey(key);
       this.lines.push({
@@ -821,8 +862,12 @@ class Script {
     }
 
     if (count > 0) {
+      if (!this.isSaved) {
+        commitDateCreated(this.id);
+        this.isSaved = true;
+      }
       const keyRange = IDBKeyRange.bound(this.lines[startRow].key, this.lines[startRow + count - 1].key);
-      this.queueTransation(IDBObjectStore.prototype.delete, keyRange);
+      commitScriptEdit(this.id, IDBObjectStore.prototype.delete, keyRange);
   
       this.lines.splice(startRow, count);
     }
@@ -952,58 +997,22 @@ class Script {
   }
 
   saveLines(lines) {
-    this.queueTransation(function(lines) {
+    if (!this.isSaved) {
+      commitDateCreated(this.id);
+      this.isSaved = true;
+    }
+    commitScriptEdit(this.id, function(lines) {
       for (const line of lines) {
-        const serialized = {key: line.key};
+        const serialized = {};
         if (line.items.length > 0) {
           serialized.items = line.items.map(item => item.serialize());
         }
         if (line.indent) {
           serialized.indent = line.indent;
         }
-        this.put(serialized);
+        this.put(serialized, line.key);
       }
     }, lines);
-  }
-
-  /**
-   * gets shortest key that sorts immediately after a key
-   * @param {Uint8Array} key
-   * @returns {Uint8Array} succeeding key
-   */
-  static getNextKey(key) {
-    for (let i = 0; i < key.length; ++i) {
-      if (key[i] < 255) {
-        const newKey = key.slice(0, i + 1);
-        ++newKey[i];
-        return newKey;
-      }
-    }
-
-    return Uint8Array.of(...key, 1);
-  }
-
-  /**
-   * gets the shortest key that sorts between two keys
-   * if lowKey and highKey are identical, returns a clone of lowKey
-   * @param {Uint8Array} lowKey
-   * @param {Uint8Array} highKey
-   * @return {Uint8Array} rounded average key
-   */
-  static getAvgKey(lowKey, highKey) {
-    let diff = 0;
-    for (let i = 0; i < Math.max(lowKey.length, highKey.length) + 1; ++i) {
-      diff = diff * 256 + (highKey[i]|0) - (lowKey[i]|0);
-  
-      if (diff > 1) {
-        const newKey = new Uint8Array(i + 1);
-        newKey.set(lowKey.slice(0, i + 1));
-        newKey[i] = (lowKey[i]|0) + (diff >>> 1);
-        return newKey;
-      }
-    }
-
-    return lowKey.slice();
   }
   
   getSizedTypes(action, ...args) {
@@ -1173,73 +1182,6 @@ class Script {
       this.BuiltIns.IF, this.BuiltIns.ELSE, this.BuiltIns.WHILE,
       this.BuiltIns.DO_WHILE, this.BuiltIns.FOR, this.BuiltIns.FUNC
     ].includes(this.lines[row].items[0]);
-  }
-
-  performTransactions(mode, actions) {
-    const openRequest = indexedDB.open("TouchScript-" + this.projectID, 2);
-  
-    openRequest.onerror = (event) => alert("Open request error: " + event.errorCode);
-    openRequest.onupgradeneeded = function(event) {
-      console.log("upgrading database");
-      const db = event.target.result;
-      db.createObjectStore("lines", {keyPath: "key"});
-      db.createObjectStore("save-data");
-    };
-    openRequest.onsuccess = function(event) {
-      const db = event.target.result;
-      db.onerror = e => alert("Database error: " + e.target.error);
-
-      const transaction = db.transaction("lines", mode);
-      const linesStore = transaction.objectStore("lines");
-      
-      for (const action of actions) {
-        action.func.apply(linesStore, action.args);
-      }
-      actions.length = 0;
-    };
-  }
-
-  /**
-   * Opens a transaction and performs the action on it.  If the project did not already exist, creates it.
-   * @param {Function} func func that expects object store bound to this and additional arguments
-   * @param {*[]} args remainder of arguments that are sent to the action function
-   */
-  queueTransation(func, ...args) {
-    this.queuedTransations.push({func, args});
-
-    if (this.queuedTransations.length === 1) {
-      performActionOnProjectListDatabase("readwrite", (objStore, transaction) => {
-        objStore.get(this.projectID).onsuccess = (event) => {
-          if (event.target.result) {
-            //console.log("Updating edit date of project " + this.projectID);
-            const projectListing = event.target.result;
-            projectListing.lastModified = new Date();
-            objStore.put(projectListing);
-            this.performTransactions("readwrite", this.queuedTransations);
-          } else {
-            objStore.getAllKeys().onsuccess = (event) => {
-              let id = event.target.result.findIndex((el, i) => el !== i+1);
-              if (id === -1) {
-                id = event.target.result.length + 1
-              }
-
-              const now = new Date();
-              const newProject = {id, name: "Project " + id, created: now, lastModified: now};
-        
-              objStore.put(newProject).onsuccess = (event) => {
-                this.projectID = event.target.result;
-                localStorage.setItem(ACTIVE_PROJECT_KEY, this.projectID);
-                console.log("Successfully created new project.  ID is", this.projectID);
-
-                this.queuedTransations.length = 0;
-                this.saveLines(this.lines);
-                this.performTransactions("readwrite", this.queuedTransations);
-              }
-            }
-          }
-        }
-      });
-    }
   }
 
   /*
