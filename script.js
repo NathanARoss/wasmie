@@ -262,11 +262,7 @@ class Script {
           return {lineUpdated: true};
         }
         
-        if (this.getItemCount(row) > 2
-        && (
-          this.getItem(row, col + 1).isAssignment)
-          || this.getItem(row, col + 1) === this.BuiltIns.IN
-        ) {
+        if (nextItem.isAssignment || nextItem === this.BuiltIns.IN) {
           options.push({text: "auto", style: "comment",
             action: setType, args: [this.BuiltIns.ANY, item]
           });
@@ -720,7 +716,7 @@ class Script {
 
     let key;
     if (oldLength > 0) {
-      key = this.lines[oldLength - 1].key;
+      key = new Uint8Array(this.lines[oldLength - 1].key);
     } else {
       key = Uint8Array.of(this.id, 0);
     }
