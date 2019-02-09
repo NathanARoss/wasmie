@@ -392,7 +392,6 @@ function createLine() {
 
 
 function insertLine(position) {
-  script.insertLine(position);
   editor.style.height = getLineCount() * lineHeight + "px";
 
   if (position < firstLoadedPosition + loadedCount) {
@@ -421,31 +420,28 @@ function insertLine(position) {
   }
 }
 
-function deleteLine(position) {
-  const deletedCount = Math.min(
-    script.deleteLine(position),
-    loadedCount - (position - firstLoadedPosition)
-  );
-
+function removeLines(position, count) {
   const selectedIndex = position % loadedCount;
   const lastLineIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
+  const moveLastToTop = lastLineIndex < selectedIndex;
+  const bottomPosition = firstLoadedPosition + loadedCount - count;
   
-  for (let i = 0; i < deletedCount; ++i) {
+  for (let i = 0; i < count; ++i) {
     const selectedLine = editor.childNodes[selectedIndex];
     const lastLine = editor.childNodes[lastLineIndex];
 
     editor.insertBefore(selectedLine, lastLine.nextSibling);
 
-    if (lastLineIndex < selectedIndex) {
+    if (moveLastToTop) {
       editor.insertBefore(editor.firstChild, editor.childNodes[loadedCount]);
     }
 
-    const newPosition = firstLoadedPosition + loadedCount - deletedCount + i;
+    const newPosition = bottomPosition + i;
     loadLine(newPosition, selectedLine);
   }
 
   //shift the remaining lines down
-  for (let i = position; i < firstLoadedPosition + loadedCount - deletedCount; ++i) {
+  for (let i = position; i < bottomPosition; ++i) {
     const line = editor.childNodes[i % loadedCount];    
     line.position = i;
     line.style.setProperty("--y", 1);
@@ -640,26 +636,35 @@ document.onkeydown = function(event) {
 
   if (selRow !== -1) {
     if (event.key === "Delete") {
-      deleteLine(selRow);
+      const response = script.deleteLine(selRow);
+      handleMenuItemResponse(response);
       itemClicked(selRow, -1);
 
       event.preventDefault();
     }
 
     if (event.key === "Backspace") {
-      handleMenuItemResponse(script.deleteItem(selRow, selCol));
+      const response = script.deleteItem(selRow, selCol);
+      response.moveUpwardIfLineRemoved = true;
+      handleMenuItemResponse(response);
       event.preventDefault();
     }
 
     if (event.key === "Enter") {
+      let response = {};
       if (selCol === 0 || selRow === script.lineCount) {
         ++selRow;
-        insertLine(selRow - 1);
+        response = script.insertLine(selRow - 1);
       } else {
         selCol = -1;
         ++selRow;
-        insertLine(selRow);
+        response = script.insertLine(selRow);
       }
+      
+      if ("lineInserted" in response) {
+        script.saveLines(response.lineInserted|0);
+      }
+      handleMenuItemResponse(response);
       itemClicked(selRow, selCol);
       event.preventDefault();
     }
@@ -667,25 +672,25 @@ document.onkeydown = function(event) {
 };
 
 function handleMenuItemResponse(response) {
+  // console.log("handle response:", ...Object.keys(response));
+  if ("removeLinesPosition" in response) {
+    const position = response.removeLinesPosition|0;
+    const count = response.removeLinesCount|0;
+    removeLines(position, count);
+    selCol = -1;
+  }
+
   if ("lineUpdated" in response) {
     loadLine(selRow, editor.childNodes[selRow % loadedCount]);
     editor.style.height = getLineCount() * lineHeight + "px";
   }
 
   if ("lineInserted" in response) {
-    insertLine(selRow + 1);
+    insertLine(response.lineInserted|0);
   }
 
   if ("selectedCol" in response) {
     selCol = response.selectedCol;
-  }
-
-  if ("lineDeleted" in response) {
-    deleteLine(selRow);
-    if (selRow > 0) {
-      selRow = selRow - 1;
-    }
-    selCol = -1;
   }
 
   if ("scriptChanged" in response) {
@@ -695,6 +700,10 @@ function handleMenuItemResponse(response) {
 
   if (selCol >= script.getItemCount(selRow)) {
     selCol = -1;
+  }
+
+  if (selRow > 0 && response.removeLinesCount > 0 && response.moveUpwardIfLineRemoved) {
+    selRow -= 1;
   }
 
   //move selected item into view
