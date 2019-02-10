@@ -806,7 +806,14 @@ function createNewScript() {
     if (id === -1) {
       id = projectIds.length;
     }
-    script = new Script(id, false);
+    //project IDs must fit within an unsigned byte because the first byte of every
+    //line key is the project ID
+    if (id > 255) {
+      //load project 255 rather than creatng a new project
+      script = new Script(255, true);
+    } else {
+      script = new Script(id, false);
+    }
   };
 }
 
