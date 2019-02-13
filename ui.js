@@ -24,6 +24,9 @@ const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
 
+const UTF8Encoder = new TextEncoder("utf-8");
+const UTF8Decoder = new TextDecoder("utf-8");
+
 editor.style.height = "10000000px";
 firstLoadedPosition = Math.max(0, Math.floor(window.scrollY / lineHeight) - bufferCount);
 
@@ -175,9 +178,9 @@ window.onpopstate = function(event) {
     event = {state: history.state};
   }
   
-  editor.style.display = "none";
-  runtime.style.display = "none";
-  programList.style.display = "none";
+  editor.style.display = "";
+  runtime.style.display = "";
+  programList.style.display = "";
   
   if (!event.state) {
     document.title = "TouchScript"
@@ -187,7 +190,7 @@ window.onpopstate = function(event) {
     }
 
     consoleOutput.innerHTML = "";
-    editor.style.display = "";
+    editor.style.display = "initial";
   }
   else if (event.state.action === "run") {
     document.title = "TouchScript Runtime";
@@ -202,7 +205,7 @@ window.onpopstate = function(event) {
       }
     }
     
-    runtime.style.display = "";
+    runtime.style.display = "initial";
   }
   else if (event.state.action === "disassemble") {
     document.title = "TouchScript Disassembly";
@@ -213,7 +216,7 @@ window.onpopstate = function(event) {
         print(module.default(wasm, 9))
       });
     }
-    runtime.style.display = "";
+    runtime.style.display = "initial";
   }
   else if (event.state.action === "load") {
     document.title = "TouchScript Project Manager"
@@ -292,7 +295,7 @@ window.onpopstate = function(event) {
     dbAction("readonly", "last-modified", readKeysAndVals, [projectLastModified]);
     dbAction("readonly", "date-created", readKeysAndVals, [projectDateCreated]);
 
-    programList.style.display = "";
+    programList.style.display = "initial";
   }
 }
 

@@ -27,52 +27,9 @@ class Wasm {
       yield byte;
     } while (value !== 0);
   }
-
-  static decodeVaruint(bytes, offset) {
-    let result = 0;
-    let shift = 0;
-    let bytesRead = 0;
-
-    while(true) {
-      const byte = bytes[offset + bytesRead];
-      result |= (byte & 0x7F) << shift;
-      ++bytesRead;
-
-      if ((byte & 0x80) == 0) {
-        break;
-      }
-
-      shift += 7;
-    }
-
-    return [result, bytesRead];
-  }
-
-  //converts a string into an array of UTF-8 bytes
-  //the array is prepended by the size of the coded string encoded as a varuint
-  //TODO support full UTF-8 rather than just ASCII
-  static encodeString(string) {
-    const encoding = Wasm.UTF8Encoder.encode(string);
-    return [...Wasm.varuint(encoding.length), ...encoding];
-  }
-
-  static decodeString(ubytes, offset) {
-    const [size, bytesRead] = Wasm.decodeVaruint(ubytes, offset);
-    const data = ubytes.subarray(offset + bytesRead, offset + bytesRead + size);
-    return Wasm.UTF8Decoder.decode(data);
-  }
-
-  static encodeF32(num) {
-    return new Uint8Array(Float32Array.of(num).buffer);
-  }
-
-  static encodeF64(num) {
-    return new Uint8Array(Float64Array.of(num).buffer);
-  }
 }
 
-Wasm.UTF8Encoder = new TextEncoder("utf-8");
-Wasm.UTF8Decoder = new TextDecoder("utf-8");
+
 
 Wasm.section = {
   Type: 1,

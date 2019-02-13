@@ -17,6 +17,10 @@ body {
   background-color: #2B2B2B;
 }
 
+#runtime, #program-list {
+  display: none;
+}
+
 #editor {
   background-color: #3B3B3B;
 }
@@ -202,7 +206,7 @@ button {
   height: 100%;
   margin-bottom: 30px;
 }
-#console-input {
+/* #console-input {
   position: fixed;
   left: 0;
   bottom: 0;
@@ -212,7 +216,7 @@ button {
   border: none;
   color: white;
   box-sizing: border-box;
-}
+} */
 
 .project-list-entry {
   position: relative;

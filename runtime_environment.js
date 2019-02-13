@@ -4,8 +4,9 @@ class RuntimeEnvironment {
     const memoryUbytes = new Uint8Array(wasmMemory.buffer);
     this.env = {
       memory: wasmMemory,
-      puts(address) {
-        const message = Wasm.decodeString(memoryUbytes, address);
+      puts(address, size) {
+        const data = memoryUbytes.subarray(address, address + size);
+        const message = UTF8Decoder.decode(data);
         print(message);
       },
       put(char) {
