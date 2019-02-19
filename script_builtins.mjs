@@ -365,9 +365,9 @@ const BuiltIns = new (function BuiltIns() {
 			Wasm.i64_const, 10,
 			Wasm.i64_div_u,
 			Wasm.tee_local, 0,
-			Wasm.i64_const, 0,
-			Wasm.i64_gt_u,
-		Wasm.br_if, 0, //while val > 0
+			Wasm.i64_eqz,
+			Wasm.i32_eqz,
+		Wasm.br_if, 0, //while val != 0
 		Wasm.end,
 
 		Wasm.get_local, 1, //address
