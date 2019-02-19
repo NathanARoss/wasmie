@@ -347,7 +347,10 @@ const BuiltIns = new (function BuiltIns() {
 		Wasm.set_local, 1,
 
 		Wasm.loop, WasmTypes.void, //do
-			Wasm.get_local, 1, //address
+			Wasm.get_local, 1, //--address
+			Wasm.i32_const, ...varint(-1),
+			Wasm.i32_add,
+			Wasm.tee_local, 1,
 
 			Wasm.get_local, 0,
 			Wasm.i64_const, 10,
@@ -358,11 +361,6 @@ const BuiltIns = new (function BuiltIns() {
 
 			Wasm.i32_store8, 0, 0, //store value at address
 
-			Wasm.get_local, 1, //address--
-			Wasm.i32_const, ...varint(-1),
-			Wasm.i32_add,
-			Wasm.set_local, 1,
-
 			Wasm.get_local, 0, //val /= 10
 			Wasm.i64_const, 10,
 			Wasm.i64_div_u,
@@ -372,19 +370,13 @@ const BuiltIns = new (function BuiltIns() {
 		Wasm.br_if, 0, //while val > 0
 		Wasm.end,
 
-		//this wasm func assumes that the length of the string does not exceed 63 bytes,
-		//so the length can safely be encoded in one byte
-		Wasm.get_local, 1, //address = string write position
+		Wasm.get_local, 1, //address
 
-		Wasm.get_global, 0, //value = top of stack - address
+		Wasm.get_global, 0, //size = top of stack - address
 		Wasm.get_local, 1,
 		Wasm.i32_sub,
-		
-		Wasm.i32_store8, 0, 0, //store length of string at address
 
-		Wasm.get_local, 1,
-		Wasm.call, this.PRINT,
-		
+		Wasm.call, this.PRINT, //puts(address, size)
 		Wasm.end,
 	);
 
