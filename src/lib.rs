@@ -47,7 +47,16 @@ fn log(message: &str) {
 }
 
 #[no_mangle]
-pub extern "C" fn start() {
-    let message = "Hello World!\n";
+pub extern "C" fn get_string(choice: i32) -> &'static str {
+    if choice == 0 {
+        return "Zero\n";
+    } else {
+        return "Else branch\n";
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn start(choice: i32) {
+    let message = get_string(choice);
     log(message);
 }

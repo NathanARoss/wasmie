@@ -1,315 +1,315 @@
 /* Chrome, Safari, Edge, Opera */
 ::-webkit-scrollbar {
-    display: none;
+		display: none;
 }
 
 button {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
 }
 
 body {
-  margin: 0px;
-  font-size: 16px;
-  color: white;
-  background-color: #2B2B2B;
+	margin: 0px;
+	font-size: 16px;
+	color: white;
+	background-color: #2B2B2B;
 }
 
-#runtime, #program-list {
-  display: none;
+#editor, #runtime, #program-list {
+	display: none;
 }
 
 #editor {
-  background-color: #3B3B3B;
+	background-color: #3B3B3B;
 }
 
 #editor > div:nth-last-child(n+3) {
-  position: absolute;
-  display: flex;
-  /* higher lines occlude lower lines */
-  z-index: calc(10000000 - var(--y));
-  background-color: #2B2B2B;
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
-  vertical-align: top;
+	position: absolute;
+	display: flex;
+	/* higher lines occlude lower lines */
+	z-index: calc(10000000 - var(--y));
+	background-color: #2B2B2B;
+	overflow-x: auto;
+	overflow-y: hidden;
+	white-space: nowrap;
+	vertical-align: top;
 }
 
 #menu, #editor > div:nth-last-child(n+3) {
-  height: 40px;
-  width: 100%;
-  transform: translateY(calc(var(--y, -1) * 40px));
-  transition: 0.25s transform;
-  -webkit-overflow-scrolling: touch; /* use momentum scrolling on iOS Safari */
-  scrollbar-width: none; /* hide scrollbar on firefox */
+	height: 40px;
+	width: 100%;
+	transform: translateY(calc(var(--y, -1) * 40px));
+	transition: 0.25s transform;
+	-webkit-overflow-scrolling: touch; /* use momentum scrolling on iOS Safari */
+	scrollbar-width: none; /* hide scrollbar on firefox */
 }
 
 button {
-  flex-shrink: 0;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  height: 40px;
+	flex-shrink: 0;
+	background: transparent;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	height: 40px;
 }
 
 /* The append button has a minimum size, but grows to fill remaining space. */
 /* line numbers are displayed inside the append button and hide when it does */
 .append {
-  order: 1;
-  flex-grow: 1;
-  min-width: 40px;
-  text-align: right;
-  padding: 0 0.5em;
-  box-sizing: border-box;
-  line-height: 40px;
-  color: #808080;
-  font-family: monospace;
+	order: 1;
+	flex-grow: 1;
+	min-width: 40px;
+	text-align: right;
+	padding: 0 0.5em;
+	box-sizing: border-box;
+	line-height: 40px;
+	color: #808080;
+	font-family: monospace;
 }
 
 .indentation {
-  position: relative;
-  z-index: -1;
-  height: 40px;
-  width: calc(12px * var(--x, 0));
-  background: repeating-linear-gradient(to right, transparent, transparent 8px,
-                                    DarkSlateGray 8px, DarkSlateGray 12px);
-  flex-shrink: 0;
-  vertical-align: bottom;
+	position: relative;
+	z-index: -1;
+	height: 40px;
+	width: calc(12px * var(--x, 0));
+	background: repeating-linear-gradient(to right, transparent, transparent 8px,
+																		DarkSlateGray 8px, DarkSlateGray 12px);
+	flex-shrink: 0;
+	vertical-align: bottom;
 }
 
 #menu > .indentation {
-  width: 0;
-  padding-right: calc(12px * var(--x, 0));
-  margin-right: calc(-12px * var(--x, 0));
-  opacity: 0.5;
+	width: 0;
+	padding-right: calc(12px * var(--x, 0));
+	margin-right: calc(-12px * var(--x, 0));
+	opacity: 0.5;
 }
 
 .half-x > .indentation {
-  width: calc(12px * var(--x, 0) + 12px);
-  clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
-             calc(12px * var(--x, 0)) 70%, calc(12px * var(--x, 0)) 0);
-  -webkit-clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
-             calc(12px * var(--x, 0)) 70%, calc(12px * var(--x, 0)) 0);
+	width: calc(12px * var(--x, 0) + 12px);
+	clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
+						 calc(12px * var(--x, 0)) 70%, calc(12px * var(--x, 0)) 0);
+	-webkit-clip-path: polygon(0 0, 0 100%, 100% 100%, 100% 70%,
+						 calc(12px * var(--x, 0)) 70%, calc(12px * var(--x, 0)) 0);
 }
 
 .half-x > .item:nth-child(3) {
-  margin-left: -12px;
+	margin-left: -12px;
 }
 
 .item {
-  padding: 0 4px;
-  white-space: pre;
-  color: white;
+	padding: 0 4px;
+	white-space: pre;
+	color: white;
 }
 
 .item.selected, .append.selected, .item:focus, .append:focus {
-  background-color: #2D3333;
-  border: none;
-  outline: none;
+	background-color: #2D3333;
+	border: none;
+	outline: none;
 }
 
 .text-input {
-  background: url(baseline-keyboard-24px.svg) no-repeat center;
-  background-origin: content-box;
+	background: url(baseline-keyboard-24px.svg) no-repeat center;
+	background-origin: content-box;
 }
 .rename {
-  background: url(rename-box.svg) no-repeat center;
-  background-origin: content-box;
+	background: url(rename-box.svg) no-repeat center;
+	background-origin: content-box;
 }
 .delete {
-  background: url(ic_delete_white_24px.svg) no-repeat center;
-  background-origin: content-box;
+	background: url(ic_delete_white_24px.svg) no-repeat center;
+	background-origin: content-box;
 }
 .delete-outline {
-  background: url(baseline-delete_outline-24px.svg) no-repeat center;
-  background-origin: content-box;
+	background: url(baseline-delete_outline-24px.svg) no-repeat center;
+	background-origin: content-box;
 }
 .insert-line {
-  background: url(baseline-keyboard_return-24px.svg) no-repeat right;
-  background-origin: content-box;
+	background: url(baseline-keyboard_return-24px.svg) no-repeat right;
+	background-origin: content-box;
 }
 #menu > .insert-line, #menu > .delete {
-  display: none;
+	display: none;
 }
 #menu.insert-button-shown > .insert-line,
 #menu.delete-button-shown > .delete {
-  display: initial;
+	display: initial;
 }
 
 
 
 #FAB-menu {
-  display: flex;
-  flex-direction: column-reverse;
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  width: 50px;
-  height: 50px;
-  transition-property: height bottom;
-  transition-duration: 0.25s;
-  overflow: hidden;
-  z-index: 10000000000000;
+	display: flex;
+	flex-direction: column-reverse;
+	position: fixed;
+	right: 20px;
+	bottom: 20px;
+	width: 50px;
+	height: 50px;
+	transition-property: height bottom;
+	transition-duration: 0.25s;
+	overflow: hidden;
+	z-index: 10000000000000;
 }
 
 #FAB-menu.expanded {
-  height: 255px;
+	height: 255px;
 }
 
 .FAB {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background-color: DarkSlateGray;
-  background-repeat: no-repeat;
-  background-position: center;
+	width: 50px;
+	height: 50px;
+	border-radius: 50%;
+	background-color: DarkSlateGray;
+	background-repeat: no-repeat;
+	background-position: center;
 }
 
 .FAB-small {
-  width: 40px;
-  height: 40px;
-  background-color: #3B3B3B;
-  margin: 5px;
+	width: 40px;
+	height: 40px;
+	background-color: #3B3B3B;
+	margin: 5px;
 }
 
 #menu-button {
-  margin-top: 5px;
-  background-image: url(baseline-more_vert-24px.svg);
+	margin-top: 5px;
+	background-image: url(baseline-more_vert-24px.svg);
 }
 #FAB-menu.expanded > #menu-button {
-  background-image: url(baseline-play_arrow-24px.svg);
+	background-image: url(baseline-play_arrow-24px.svg);
 }
 #download-button {
-  background-image: url(baseline-get_app-24px.svg);
+	background-image: url(baseline-get_app-24px.svg);
 }
 #view-code-button {
-  background-image: url(baseline-code-24px.svg);
+	background-image: url(baseline-code-24px.svg);
 }
 #load-button {
-  background-image: url(baseline-folder-24px.svg);
+	background-image: url(baseline-folder-24px.svg);
 }
 #new-button {
-  background-image: url(baseline-add-24px.svg);
+	background-image: url(baseline-add-24px.svg);
 }
 
 #console-output {
-  white-space: pre;
-  font-family: monospace;
-  color: white;
-  margin: 0px;
-  padding: 8px;
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  margin-bottom: 30px;
+	white-space: pre;
+	font-family: monospace;
+	color: white;
+	margin: 0px;
+	padding: 8px;
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	margin-bottom: 30px;
 }
 /* #console-input {
-  position: fixed;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  padding: 0.5em;
-  background-color: rgba(59, 59, 59, 0.5);
-  border: none;
-  color: white;
-  box-sizing: border-box;
+	position: fixed;
+	left: 0;
+	bottom: 0;
+	width: 100%;
+	padding: 0.5em;
+	background-color: rgba(59, 59, 59, 0.5);
+	border: none;
+	color: white;
+	box-sizing: border-box;
 } */
 
 .project-list-entry {
-  position: relative;
-  padding: 2em 0.5em;
+	position: relative;
+	padding: 2em 0.5em;
 }
 
 .project-list-entry:hover {
-  background-color: #2D3333;
+	background-color: #2D3333;
 }
 
 .project-list-entry p {
-  margin: 8px 0 0 0;
+	margin: 8px 0 0 0;
 }
 
 .project-list-entry.open::after {
-  content: "ACTIVE";
-  display: block;
-  text-align: right;
-  color: goldenrod;
-  font-weight: bold;
+	content: "ACTIVE";
+	display: block;
+	text-align: right;
+	color: goldenrod;
+	font-weight: bold;
 }
 
 #no-projects-message {
-  display: none;
+	display: none;
 }
 
 #no-projects-message:first-child:last-child {
-  display: block;
-  text-align: center;
+	display: block;
+	text-align: center;
 }
 
 .delete-project-button {
-  width: 40px;
-  float: right;
+	width: 40px;
+	float: right;
 }
 
 #menu {
-  position: absolute;
-  overflow-x: auto;
-  white-space: nowrap;
-  background-color: #3B3B3B;
-  /* z-index: 10; */
+	position: absolute;
+	overflow-x: auto;
+	white-space: nowrap;
+	background-color: #3B3B3B;
+	/* z-index: 10; */
 }
 
 .menu-item {
-  padding: 0.5em;
-  color: white;
-  overflow-wrap: break-word;
-  vertical-align: bottom;
-  height: 100%;
-  min-width: 3.5em;
+	padding: 0.5em;
+	color: white;
+	overflow-wrap: break-word;
+	vertical-align: bottom;
+	height: 100%;
+	min-width: 3.5em;
 }
 
 .menu-input {
-  padding: 0.25em;
-  box-sizing: border-box;
-  transition: width 0.5s ease-in-out;
-  background: #2B2B2B;
-  border: thick solid #3B3B3B;
-  color: white;
-  width: 6em;
-  height: 100%;
-  flex-shrink: 0;
+	padding: 0.25em;
+	box-sizing: border-box;
+	transition: width 0.5s ease-in-out;
+	background: #2B2B2B;
+	border: thick solid #3B3B3B;
+	color: white;
+	width: 6em;
+	height: 100%;
+	flex-shrink: 0;
 }
 
 .menu-input:focus {
-  width: 100%;
+	width: 100%;
 }
 
 .keyword, .keyword::first-line {
-  color: #CC7832;
+	color: #CC7832;
 }
 .class, .call {
-  color: #A9B7C6;
+	color: #A9B7C6;
 }
 .number {
-  color: #6897BB;
+	color: #6897BB;
 }
 .string {
-  color: #A5C25C;
+	color: #A5C25C;
 }
 .literal {
-  font-family: monospace;
+	font-family: monospace;
 }
 .comment {
-  color: #808080;
+	color: #808080;
 }
 .funcdef {
-  color: #FFC66D;
+	color: #FFC66D;
 }
 .vardef {
-  color: #ccbda6;
+	color: #ccbda6;
 }
 .error {
-  color: red;
+	color: red;
 }
