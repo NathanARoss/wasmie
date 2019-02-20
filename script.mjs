@@ -1849,7 +1849,7 @@ export default class Script {
 	}
 }
 
-	/**
+/**
  * gets shortest key that sorts immediately after a key
  * @param {Uint8Array} key
  * @returns {Uint8Array} succeeding key
@@ -1950,14 +1950,14 @@ class InternalNumericLiteral {
 	
 	performUnaryOp(unaryOp) {
 		switch (unaryOp) {
-		case "!":
-			this.value = ~this.value;
-			break;
-		case "-":
-			this.value = -this.value;
-			break;
-		default:
-			throw "unrecognized unary operator " + unaryOp;
+			case "!":
+				this.value = ~this.value;
+				break;
+			case "-":
+				this.value = -this.value;
+				break;
+			default:
+				throw "unrecognized unary operator " + unaryOp;
 		}
 	}
 	
@@ -2025,15 +2025,11 @@ class InternalNumericLiteral {
 
 	getType(expectedType = BuiltIns.ANY) {
 		if ([BuiltIns.I32, BuiltIns.I64, BuiltIns.U32, BuiltIns.U64,
-		BuiltIns.F32, BuiltIns.F64].includes(expectedType)) {
+			BuiltIns.F32, BuiltIns.F64].includes(expectedType)) {
 			return expectedType;
 		}
 
-		if (this.isFloat) {
-			return BuiltIns.F32;
-		} else {
-			return BuiltIns.I32;
-		}
+		return this.isFloat ? BuiltIns.F32 : BuiltIns.I32;
 	}
 }
 
