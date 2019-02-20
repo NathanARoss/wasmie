@@ -7,6 +7,7 @@ import Wasm, {
 	types as WasmTypes,
 	varuint, varint,
 	encodeString, encodePrefixedString,
+	encodeF32, encodeF64,
 	section, externalKind
 } from "./wasm_definitions.mjs";
 
@@ -727,46 +728,6 @@ export default class Script {
 		return [start, end];
 	}
 
-	 /**
-	 * gets shortest key that sorts immediately after a key
-	 * @param {Uint8Array} key
-	 * @returns {Uint8Array} succeeding key
-	 */
-	static getNextKey(key) {
-		for (let i = 1; i < key.length; ++i) {
-			if (key[i] < 255) {
-				const newKey = key.slice(0, i + 1);
-				++newKey[i];
-				return newKey;
-			}
-		}
-
-		return Uint8Array.of(...key, 1);
-	}
-
-	/**
-	 * gets the shortest key that sorts between two keys
-	 * if lowKey and highKey are identical, returns a clone of lowKey
-	 * @param {Uint8Array} lowKey
-	 * @param {Uint8Array} highKey
-	 * @return {Uint8Array} rounded average key
-	 */
-	static getAvgKey(lowKey, highKey) {
-		let diff = 0;
-		for (let i = 1; i < Math.max(lowKey.length, highKey.length) + 1; ++i) {
-			diff = diff * 256 + (highKey[i]|0) - (lowKey[i]|0);
-	
-			if (diff > 1) {
-				const newKey = new Uint8Array(i + 1);
-				newKey.set(lowKey.slice(0, i + 1));
-				newKey[i] = (lowKey[i]|0) + (diff >>> 1);
-				return newKey;
-			}
-		}
-
-		return lowKey.slice();
-	}
-
 	getInsertIndent(row) {
 		let indent = 0;
 		if (row > 0 && row <= this.lineCount) {
@@ -802,7 +763,7 @@ export default class Script {
 				}
 
 				const lowKey = new Uint8Array(this.lines[end - 1].key);
-				key = Script.getNextKey(lowKey);
+				key = getNextKey(lowKey);
 				row = end;
 				break;
 			}
@@ -819,7 +780,7 @@ export default class Script {
 				for (let i = begin; i <= end; ++i) {
 					const lowKey = new Uint8Array((i > 0) ? this.lines[i - 1].key : 1);
 					const highKey = new Uint8Array(this.lines[i].key);
-					const avgKey = Script.getAvgKey(lowKey, highKey);
+					const avgKey = getAvgKey(lowKey, highKey);
 					const last = avgKey.length - 1;
 					const score = last * 256 + (lowKey[last] || 0) - avgKey[last];
 	
@@ -1211,7 +1172,7 @@ export default class Script {
 		}
 
 		while (row >= this.lineCount) {
-			key = Script.getNextKey(key);
+			key = getNextKey(key);
 			this.lines.push({
 				items: [],
 				key: key.buffer,
@@ -1235,268 +1196,6 @@ export default class Script {
 	Generates a Wasm binary from the script contents
 	*/
 	getWasm() {
-		function getWasmTypes(type) {
-			switch (type) {
-				case BuiltIns.I32:
-				case BuiltIns.U32:
-				case BuiltIns.BOOL:
-					return [WasmTypes.i32];
-
-				case BuiltIns.STRING:
-					return [WasmTypes.i32, WasmTypes.i32]
-
-				case BuiltIns.I64:
-				case BuiltIns.U64:
-					return [WasmTypes.i64];
-
-				case BuiltIns.F32:
-					return [WasmTypes.f32];
-
-				case BuiltIns.F64:
-					return [WasmTypes.f64];
-				
-				case BuiltIns.VOID:
-					return [WasmTypes.void];
-
-				default:
-					console.error(type);
-					throw "cannot find Wasm type of " + type;
-			}
-		}
-
-
-		function getPrintImplementation(type) {
-			switch (type) {
-				case BuiltIns.STRING:
-					return BuiltIns.PRINT;
-				case BuiltIns.I32:
-					return BuiltIns.PRINT_I32;
-				case BuiltIns.I64:
-					return BuiltIns.PRINT_I64;
-				case BuiltIns.U32:
-					return BuiltIns.PRINT_U32;
-				case BuiltIns.U64:
-					return BuiltIns.PRINT_U64;
-				case BuiltIns.F32:
-					return BuiltIns.PRINT_F32;
-				case BuiltIns.F64:
-					return BuiltIns.PRINT_F64;
-				case BuiltIns.BOOL:
-					return BuiltIns.PRINT_BOOL;
-				default:
-					console.error("failed to find implementation to print type", type);
-					throw "";
-			}
-		}
-
-		class InternalNumericLiteral {
-			constructor(rawString) {
-				this.value = +rawString;
-				this.isFloat = /[\.e]/i.test(rawString);
-			}
-			
-			performUnaryOp(unaryOp) {
-				switch (unaryOp) {
-				case "!":
-					this.value = ~this.value;
-					break;
-				case "-":
-					this.value = -this.value;
-					break;
-				default:
-					throw "unrecognized unary operator " + unaryOp;
-				}
-			}
-			
-			performBinaryOp(binOp, operand) {
-				switch (binOp) {
-					case "+":
-						this.value += operand.value;
-						break;
-					case "-":
-						this.value -= operand.value;
-						break;
-					case "*":
-						this.value *= operand.value;
-						break;
-					case "/":
-						this.value /= operand.value;
-						break;
-					case "%":
-						this.value %= operand.value;
-						break;
-					case "|":
-						this.value |= operand.value;
-						break;
-					case "^":
-						this.value ^= operand.value;
-						break;
-					case "&":
-						this.value &= operand.value;
-						break;
-					case "<<":
-						this.value <<= operand.value;
-						break;
-					case ">>":
-						this.value >>= operand.value;
-						break;
-					default:
-						throw "unrecognized binary operator: " + binOp;
-				}
-				
-				this.isFloat = this.isFloat || operand.hasDecimalPoint;
-				if (!this.isFloat) {
-					this.value = Math.trunc(this.value);
-				}
-			}
-			
-			getWasmCode(expectedType) {
-				const outputType = this.getType(expectedType);
-				switch (outputType) {
-					case BuiltIns.I32:
-					case BuiltIns.U32:
-					case BuiltIns.BOOL:
-						return [Wasm.i32_const, ...varint(this.value)];
-
-						case BuiltIns.I64:
-						case BuiltIns.U64:
-						return [Wasm.i64_const, ...varint(this.value)];
-
-					case WasmTypes.f32:
-						return [Wasm.f32_const, ...Wasm.encodeF32(this.value)];
-
-					case WasmTypes.f64:
-						return [Wasm.f64_const, ...Wasm.encodeF64(this.value)];
-				}
-			}
-
-			getType(expectedType = BuiltIns.ANY) {
-				if ([BuiltIns.I32, BuiltIns.I64, BuiltIns.U32, BuiltIns.U64,
-				BuiltIns.F32, BuiltIns.F64].includes(expectedType)) {
-					return expectedType;
-				}
-
-				if (this.isFloat) {
-					return BuiltIns.F32;
-				} else {
-					return BuiltIns.I32;
-				}
-			}
-		}
-		
-		class InternalStringLiteral {
-			constructor(address, size) {
-				this.address = address;
-				this.size = size;
-			}
-			
-			getType() {
-				return BuiltIns.STRING;
-			}
-			
-			getWasmCode() {
-				return [
-					Wasm.i32_const, ...varint(this.address),
-					Wasm.i32_const, ...varint(this.size)
-				];
-			}
-		}
-		
-		class LocalVarReference {
-			constructor(index, variable) {
-				this.index = index;
-				this.variable = variable;
-			}
-			
-			getType() {
-				return this.variable.type;
-			}
-			
-			getWasmCode() {
-				return [Wasm.get_local, ...varuint(this.index)];
-			}
-		}
-		
-		class Placeholder {
-			constructor(type, ...wasmCode) {
-				this.type = type;
-				this.wasmCode = wasmCode;
-			}
-			
-			getType() {
-				return this.type;
-			}
-			
-			getWasmCode() {
-				return this.wasmCode;
-			}
-		}
-		
-		function compileExpression(expression, expectedType) {
-			const operators = [];
-			const operands = [];
-
-			expression.push(new Symbol("term", -1, -1000, {isFoldable: false})); //terminate expression
-			for (let i = 0; i < expression.length; ++i) {
-				const item = expression[i];
-				if (item.constructor === Symbol) {
-					if (item.direction !== 1) {
-						//check if the previous operators have a higher precedence than the one that is about to be pushed
-						while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
-							const operator = operators.pop();
-							const rightOperand = operands.pop();
-							if (operator.isUnary) {
-								if (rightOperand.constructor === InternalNumericLiteral) {
-									rightOperand.performUnaryOp(operator.appearance);
-									operands.push(rightOperand);
-								} else {
-									const {resultType, wasmCode} = operator.uses.get(rightOperand.getType());
-									operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
-								}
-							} else {
-								const leftOperand = operands.pop();
-								if (operator.isFoldable && leftOperand.constructor === InternalNumericLiteral
-								&& rightOperand.constructor === InternalNumericLiteral) {
-									leftOperand.performBinaryOp(operator.appearance, rightOperand);
-									operands.push(leftOperand);
-								} else {
-									let type = rightOperand.getType(leftOperand.getType());
-									if (operator.isRange) {
-										type = expectedType;
-									}
-									const {resultType, wasmCode} = operator.uses.get(type);
-									operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
-								}
-							}
-						}
-					}
-
-					if (item.direction === -1) {
-						operators.pop();
-					} else {
-						operators.push(item);
-					}
-				} else {
-					operands.push(item);
-				}
-			}
-			
-			//console.log("remaining operands", ...operands, "remaining operators", ...operators.slice(0, -1));
-			const expressionType = operands[0].getType(expectedType);
-			const wasmCode = operands[0].getWasmCode(expectedType);
-
-			if (expectedType !== BuiltIns.ANY && expressionType !== expectedType) {
-				const cast = expectedType.casts && expectedType.casts.get(expressionType);
-				if (cast) {
-					wasmCode.push(...cast.wasmCode);
-				} else {
-					console.error("cast from", expressionType.text, "to", expectedType.text, "not found");
-				}
-			}
-			
-			return [expressionType, wasmCode];
-		}
-
 		//identify every predefined and imported function before compiling begins
 		const importedFuncs = [];
 		const predefinedFuncs = [];
@@ -2148,4 +1847,305 @@ export default class Script {
 
 		return (new Uint8Array(wasmModule)).buffer;
 	}
+}
+
+	/**
+ * gets shortest key that sorts immediately after a key
+ * @param {Uint8Array} key
+ * @returns {Uint8Array} succeeding key
+ */
+function getNextKey(key) {
+	for (let i = 1; i < key.length; ++i) {
+		if (key[i] < 255) {
+			const newKey = key.slice(0, i + 1);
+			++newKey[i];
+			return newKey;
+		}
+	}
+
+	return Uint8Array.of(...key, 1);
+}
+
+/**
+ * gets the shortest key that sorts between two keys
+ * if lowKey and highKey are identical, returns a clone of lowKey
+ * @param {Uint8Array} lowKey
+ * @param {Uint8Array} highKey
+ * @return {Uint8Array} rounded average key
+ */
+function getAvgKey(lowKey, highKey) {
+	let diff = 0;
+	for (let i = 1; i < Math.max(lowKey.length, highKey.length) + 1; ++i) {
+		diff = diff * 256 + (highKey[i]|0) - (lowKey[i]|0);
+
+		if (diff > 1) {
+			const newKey = new Uint8Array(i + 1);
+			newKey.set(lowKey.slice(0, i + 1));
+			newKey[i] = (lowKey[i]|0) + (diff >>> 1);
+			return newKey;
+		}
+	}
+
+	return lowKey.slice();
+}
+
+function getWasmTypes(type) {
+	switch (type) {
+		case BuiltIns.I32:
+		case BuiltIns.U32:
+		case BuiltIns.BOOL:
+			return [WasmTypes.i32];
+
+		case BuiltIns.STRING:
+			return [WasmTypes.i32, WasmTypes.i32]
+
+		case BuiltIns.I64:
+		case BuiltIns.U64:
+			return [WasmTypes.i64];
+
+		case BuiltIns.F32:
+			return [WasmTypes.f32];
+
+		case BuiltIns.F64:
+			return [WasmTypes.f64];
+		
+		case BuiltIns.VOID:
+			return [WasmTypes.void];
+
+		default:
+			console.error(type);
+			throw "cannot find Wasm type of " + type;
+	}
+}
+
+function getPrintImplementation(type) {
+	switch (type) {
+		case BuiltIns.STRING:
+			return BuiltIns.PRINT;
+		case BuiltIns.I32:
+			return BuiltIns.PRINT_I32;
+		case BuiltIns.I64:
+			return BuiltIns.PRINT_I64;
+		case BuiltIns.U32:
+			return BuiltIns.PRINT_U32;
+		case BuiltIns.U64:
+			return BuiltIns.PRINT_U64;
+		case BuiltIns.F32:
+			return BuiltIns.PRINT_F32;
+		case BuiltIns.F64:
+			return BuiltIns.PRINT_F64;
+		case BuiltIns.BOOL:
+			return BuiltIns.PRINT_BOOL;
+		default:
+			console.error("failed to find implementation to print type", type);
+			throw "";
+	}
+}
+
+class InternalNumericLiteral {
+	constructor(rawString) {
+		this.value = +rawString;
+		this.isFloat = /[\.e]/i.test(rawString);
+	}
+	
+	performUnaryOp(unaryOp) {
+		switch (unaryOp) {
+		case "!":
+			this.value = ~this.value;
+			break;
+		case "-":
+			this.value = -this.value;
+			break;
+		default:
+			throw "unrecognized unary operator " + unaryOp;
+		}
+	}
+	
+	performBinaryOp(binOp, operand) {
+		switch (binOp) {
+			case "+":
+				this.value += operand.value;
+				break;
+			case "-":
+				this.value -= operand.value;
+				break;
+			case "*":
+				this.value *= operand.value;
+				break;
+			case "/":
+				this.value /= operand.value;
+				break;
+			case "%":
+				this.value %= operand.value;
+				break;
+			case "|":
+				this.value |= operand.value;
+				break;
+			case "^":
+				this.value ^= operand.value;
+				break;
+			case "&":
+				this.value &= operand.value;
+				break;
+			case "<<":
+				this.value <<= operand.value;
+				break;
+			case ">>":
+				this.value >>= operand.value;
+				break;
+			default:
+				throw "unrecognized binary operator: " + binOp;
+		}
+		
+		this.isFloat = this.isFloat || operand.hasDecimalPoint;
+		if (!this.isFloat) {
+			this.value = Math.trunc(this.value);
+		}
+	}
+	
+	getWasmCode(expectedType) {
+		const outputType = this.getType(expectedType);
+		switch (outputType) {
+			case BuiltIns.I32:
+			case BuiltIns.U32:
+			case BuiltIns.BOOL:
+				return [Wasm.i32_const, ...varint(this.value)];
+
+				case BuiltIns.I64:
+				case BuiltIns.U64:
+				return [Wasm.i64_const, ...varint(this.value)];
+
+			case BuiltIns.F32:
+				return [Wasm.f32_const, ...encodeF32(this.value)];
+
+			case BuiltIns.F64:
+				return [Wasm.f64_const, ...encodeF64(this.value)];
+		}
+	}
+
+	getType(expectedType = BuiltIns.ANY) {
+		if ([BuiltIns.I32, BuiltIns.I64, BuiltIns.U32, BuiltIns.U64,
+		BuiltIns.F32, BuiltIns.F64].includes(expectedType)) {
+			return expectedType;
+		}
+
+		if (this.isFloat) {
+			return BuiltIns.F32;
+		} else {
+			return BuiltIns.I32;
+		}
+	}
+}
+
+class InternalStringLiteral {
+	constructor(address, size) {
+		this.address = address;
+		this.size = size;
+	}
+	
+	getType() {
+		return BuiltIns.STRING;
+	}
+	
+	getWasmCode() {
+		return [
+			Wasm.i32_const, ...varint(this.address),
+			Wasm.i32_const, ...varint(this.size)
+		];
+	}
+}
+
+class LocalVarReference {
+	constructor(index, variable) {
+		this.index = index;
+		this.variable = variable;
+	}
+	
+	getType() {
+		return this.variable.type;
+	}
+	
+	getWasmCode() {
+		return [Wasm.get_local, ...varuint(this.index)];
+	}
+}
+
+class Placeholder {
+	constructor(type, ...wasmCode) {
+		this.type = type;
+		this.wasmCode = wasmCode;
+	}
+	
+	getType() {
+		return this.type;
+	}
+	
+	getWasmCode() {
+		return this.wasmCode;
+	}
+}
+
+function compileExpression(expression, expectedType) {
+	const operators = [];
+	const operands = [];
+
+	expression.push(new Symbol("term", -1, -1000, {isFoldable: false})); //terminate expression
+	for (let i = 0; i < expression.length; ++i) {
+		const item = expression[i];
+		if (item.constructor === Symbol) {
+			if (item.direction !== 1) {
+				//check if the previous operators have a higher precedence than the one that is about to be pushed
+				while (operators.length > 0 && operators[operators.length - 1].precedence >= item.precedence) {
+					const operator = operators.pop();
+					const rightOperand = operands.pop();
+					if (operator.isUnary) {
+						if (rightOperand.constructor === InternalNumericLiteral) {
+							rightOperand.performUnaryOp(operator.appearance);
+							operands.push(rightOperand);
+						} else {
+							const {resultType, wasmCode} = operator.uses.get(rightOperand.getType());
+							operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
+						}
+					} else {
+						const leftOperand = operands.pop();
+						if (operator.isFoldable && leftOperand.constructor === InternalNumericLiteral
+						&& rightOperand.constructor === InternalNumericLiteral) {
+							leftOperand.performBinaryOp(operator.appearance, rightOperand);
+							operands.push(leftOperand);
+						} else {
+							let type = rightOperand.getType(leftOperand.getType());
+							if (operator.isRange) {
+								type = expectedType;
+							}
+							const {resultType, wasmCode} = operator.uses.get(type);
+							operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
+						}
+					}
+				}
+			}
+
+			if (item.direction === -1) {
+				operators.pop();
+			} else {
+				operators.push(item);
+			}
+		} else {
+			operands.push(item);
+		}
+	}
+	
+	//console.log("remaining operands", ...operands, "remaining operators", ...operators.slice(0, -1));
+	const expressionType = operands[0].getType(expectedType);
+	const wasmCode = operands[0].getWasmCode(expectedType);
+
+	if (expectedType !== BuiltIns.ANY && expressionType !== expectedType) {
+		const cast = expectedType.casts && expectedType.casts.get(expressionType);
+		if (cast) {
+			wasmCode.push(...cast.wasmCode);
+		} else {
+			console.error("cast from", expressionType.text, "to", expectedType.text, "not found");
+		}
+	}
+	
+	return [expressionType, wasmCode];
 }

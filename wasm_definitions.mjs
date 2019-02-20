@@ -42,6 +42,14 @@ export function encodePrefixedString(str) {
 	return [...varuint(str.length), ...encodeString(str)];
 }
 
+export function encodeF32(num) {
+	return new Uint8Array(Float32Array.of(num).buffer);
+}
+
+export function encodeF64(num) {
+	return new Uint8Array(Float64Array.of(num).buffer);
+}
+
 export const section = {
 	Type: 1,
 	Import: 2,
