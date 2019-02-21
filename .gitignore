@@ -1,2 +1,5 @@
+target/
+Cargo.lock
+wasm-opt
 .vscode
 .zedstate
