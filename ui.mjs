@@ -40,6 +40,8 @@ function getWasmBinary() {
 	}
 }
 
+document.getElementById("spacer").addEventListener("touchstart", function(e) {e.preventDefault()});
+
 function closeActionMenu() {
 	actionMenu.scrollTop = 0;
 }

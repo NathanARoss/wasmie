@@ -158,7 +158,6 @@ button {
 #action-menu > #spacer {
 	width: 50px;
 	min-height: calc(100% - 75px); /* height of menu minus height of handle */
-	touch-action: none;
 }
 
 #action-menu > button {
