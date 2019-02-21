@@ -9,12 +9,12 @@ let firstLoadedPosition = 0;
 
 const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
-const menuButton = document.getElementById("menu-button");
+const actionMenu = document.getElementById("action-menu");
+const playButton = document.getElementById("play-button");
 const viewCodeButton = document.getElementById("view-code-button");
 const downloadButton = document.getElementById("download-button");
 const loadButton = document.getElementById("load-button");
 const newButton = document.getElementById("new-button");
-const fabMenu = document.getElementById("FAB-menu");
 const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
@@ -40,26 +40,22 @@ function getWasmBinary() {
 	}
 }
 
-function closeFAB() {
-	fabMenu.classList.remove("expanded");
-	menuButton.toggled = false;
+function closeActionMenu() {
+	actionMenu.scrollTop = 0;
 }
+closeActionMenu();
 
-menuButton.addEventListener("click", function(event) {
+playButton.addEventListener("click", function(event) {
 	event.stopPropagation();
+	closeActionMenu();
 
-	if (menuButton.toggled) {
-		history.pushState({action: "run"}, "TouchScript Runtime");
-		window.onpopstate();
-	}
-
-	fabMenu.classList.toggle("expanded");
-	menuButton.toggled = !menuButton.toggled;
+	history.pushState({action: "run"}, "TouchScript Runtime");
+	window.onpopstate();
 });
 
 newButton.addEventListener("click", function(event) {
 	event.stopPropagation();
-	closeFAB();
+	closeActionMenu();
 	
 	localStorage.removeItem(ACTIVE_PROJECT_KEY);
 	dbAction("readonly", "date-created", createNewScript);
@@ -68,7 +64,7 @@ newButton.addEventListener("click", function(event) {
 
 loadButton.addEventListener("click", function(event) {
 	event.stopPropagation();
-	closeFAB();
+	closeActionMenu();
 
 	history.pushState({action: "load"}, "TouchScript Project Manager");
 	window.onpopstate();
@@ -76,7 +72,7 @@ loadButton.addEventListener("click", function(event) {
 
 viewCodeButton.addEventListener("click", function(event) {
 	event.stopPropagation();
-	closeFAB();
+	closeActionMenu();
 
 	history.pushState({action: "disassemble"}, "TouchScript Disassembly");
 	window.onpopstate();
@@ -84,9 +80,7 @@ viewCodeButton.addEventListener("click", function(event) {
 
 downloadButton.addEventListener("click", function(event) {
 	event.stopPropagation();
-	
-	fabMenu.classList.remove("expanded");
-	menuButton.toggled = false;
+	closeActionMenu();
 
 	function save(filename) {
 		const wasm = getWasmBinary();
@@ -522,7 +516,7 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
 			menuItem.onsubmit = () => {
 				handleMenuItemResponse(option.onsubmit(menuItem.value, option.args || []));
 			};
-			menuItem.onfocus = closeFAB;
+			menuItem.onfocus = closeActionMenu;
 			menuItem.oninput = option.oninput;
 			menuItem.onkeydown = (event) => {
 				event.stopPropagation();
@@ -600,8 +594,7 @@ function closeMenu() {
 		selectedItem = undefined;
 	}
 
-	fabMenu.classList.remove("expanded");
-	menuButton.toggled = false;
+	closeActionMenu();
 }
 
 
@@ -699,10 +692,11 @@ function handleMenuItemResponse(response) {
 }
 
 function lineClickHandler(event) {
-	if (menuButton.toggled) {
-		menuButton.toggled = false;
-		fabMenu.classList.remove("expanded");
-	} else if (event.target.nodeName === "BUTTON") {
+	if (actionMenu.scrollTop > 0) {
+		closeActionMenu();
+	}
+	
+	if (event.target.nodeName === "BUTTON") {
 		const row = this.position|0;
 		const col = event.target.position|0;
 		if (row === selRow && col === selCol) {

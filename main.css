@@ -141,46 +141,38 @@ button {
 
 
 
-#FAB-menu {
+#action-menu {
 	display: flex;
-	flex-direction: column-reverse;
+	flex-direction: column;
+	
 	position: fixed;
-	right: 20px;
-	bottom: 20px;
+	right: 30px;
+	bottom: 0;
 	width: 50px;
-	height: 50px;
-	transition-property: height bottom;
-	transition-duration: 0.25s;
-	overflow: hidden;
-	z-index: 10000000000000;
+	height: 100%;
+	overflow: scroll;
+	z-index: 9999999999;
+	/* outline: solid yellow thin; */
 }
 
-#FAB-menu.expanded {
-	height: 255px;
+#action-menu > #spacer {
+	width: 50px;
+	min-height: calc(100% - 75px); /* height of menu minus height of handle */
+	touch-action: none;
 }
 
-.FAB {
+#action-menu > button {
 	width: 50px;
 	height: 50px;
-	border-radius: 50%;
-	background-color: DarkSlateGray;
 	background-repeat: no-repeat;
 	background-position: center;
-}
-
-.FAB-small {
-	width: 40px;
-	height: 40px;
 	background-color: #3B3B3B;
-	margin: 5px;
 }
 
-#menu-button {
-	margin-top: 5px;
-	background-image: url(baseline-more_vert-24px.svg);
-}
-#FAB-menu.expanded > #menu-button {
-	background-image: url(baseline-play_arrow-24px.svg);
+#action-menu > #play-button {
+	background-image: url(baseline-drag_indicator_and_play-24px.svg);
+	background-color: DarkSlateGray;
+	height: 75px;
 }
 #download-button {
 	background-image: url(baseline-get_app-24px.svg);
