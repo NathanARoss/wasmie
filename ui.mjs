@@ -10,11 +10,6 @@ let firstLoadedPosition = 0;
 const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
 const actionMenu = document.getElementById("action-menu");
-const playButton = document.getElementById("play-button");
-const viewCodeButton = document.getElementById("view-code-button");
-const downloadButton = document.getElementById("download-button");
-const loadButton = document.getElementById("load-button");
-const newButton = document.getElementById("new-button");
 const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
@@ -47,7 +42,7 @@ function closeActionMenu() {
 }
 closeActionMenu();
 
-playButton.addEventListener("click", function(event) {
+document.getElementById("play-button").addEventListener("click", function(event) {
 	event.stopPropagation();
 	closeActionMenu();
 
@@ -55,7 +50,7 @@ playButton.addEventListener("click", function(event) {
 	window.onpopstate();
 });
 
-newButton.addEventListener("click", function(event) {
+document.getElementById("new-button").addEventListener("click", function(event) {
 	event.stopPropagation();
 	closeActionMenu();
 	
@@ -64,7 +59,7 @@ newButton.addEventListener("click", function(event) {
 	closeMenu();
 });
 
-loadButton.addEventListener("click", function(event) {
+document.getElementById("load-button").addEventListener("click", function(event) {
 	event.stopPropagation();
 	closeActionMenu();
 
@@ -72,7 +67,7 @@ loadButton.addEventListener("click", function(event) {
 	window.onpopstate();
 });
 
-viewCodeButton.addEventListener("click", function(event) {
+document.getElementById("view-code-button").addEventListener("click", function(event) {
 	event.stopPropagation();
 	closeActionMenu();
 
@@ -80,7 +75,7 @@ viewCodeButton.addEventListener("click", function(event) {
 	window.onpopstate();
 });
 
-downloadButton.addEventListener("click", function(event) {
+document.getElementById("download-button").addEventListener("click", function(event) {
 	event.stopPropagation();
 	closeActionMenu();
 
