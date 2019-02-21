@@ -515,7 +515,7 @@ export default class Script {
 				//   const func = new FuncSig(BuiltIns.VOID, "myFunc", BuiltIns.VOID);
 				//   this.appendRowsUpTo(row);
 				//   this.pushItems(row, BuiltIns.FUNC, func);
-				//   return {lineUpdated: true, lineInserted: row, selectedCol: 1};
+				//   return {lineUpdated: true, lineInserted: row+1, selectedCol: 1};
 				// }},
 
 				{
@@ -527,7 +527,7 @@ export default class Script {
 				},
 
 				{text: "if", style: "keyword", action: this.appendPushAndSave,
-				args: [row, [BuiltIns.IF], {lineInserted: row}]},
+				args: [row, [BuiltIns.IF], {lineInserted: row+1}]},
 			];
 
 			//scan backward looking for an if block at the same indent level
@@ -548,7 +548,7 @@ export default class Script {
 									return [
 										{text: "else if", style: "keyword", action: this.appendClicked,
 										args: [
-											[BuiltIns.ELSE, BuiltIns.IF], {lineInserted: row}
+											[BuiltIns.ELSE, BuiltIns.IF], {lineInserted: row+1}
 										]}
 									];
 								}
@@ -558,7 +558,7 @@ export default class Script {
 						//if no succeeding else block is found, allow the user to create one
 						options.push(
 							{text: "else", style: "keyword", action: this.appendPushAndSave,
-							args: [row, [BuiltIns.ELSE], {lineInserted: row}]}
+							args: [row, [BuiltIns.ELSE], {lineInserted: row+1}]}
 						);
 						break;
 					} else if (this.getItemCount(r) !== 0) {
@@ -577,11 +577,11 @@ export default class Script {
 						BuiltIns.HALF_OPEN_RANGE
 					];
 
-					return this.appendPushAndSave(row, items, {lineInserted: row});
+					return this.appendPushAndSave(row, items, {lineInserted: row+1});
 				}, args: [row]},
 
 				{text: "while", style: "keyword", action: this.appendPushAndSave,
-				args: [row, [BuiltIns.WHILE], {lineInserted: row}]},
+				args: [row, [BuiltIns.WHILE], {lineInserted: row+1}]},
 			);
 
 			for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
@@ -800,6 +800,7 @@ export default class Script {
 			indent
 		};
 		this.lines.splice(row, 0, line);
+		this.writeCallback(this.id, row, 1);
 		return response;
 	}
 
