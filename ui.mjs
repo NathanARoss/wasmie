@@ -135,32 +135,19 @@ menu.childNodes[2].oncontextmenu = function(event) {
 };
 
 document.body.onresize = function () {
-	const newLoadedCount = Math.ceil(window.innerHeight / lineHeight) + bufferCount;
-	const diff = newLoadedCount - loadedCount;
-	if (diff === 0) {
-		return;
-	}
+	const potentialLoadedCount = Math.ceil(window.innerHeight / lineHeight) + bufferCount;
 
-	for (let i = 0; i < diff; ++i) {
-		const newLine = createLine();
-		editor.insertBefore(newLine, editor.firstChild);
-	}
-	
-	for (let i = diff; i < 0; ++i) {
-		const toRemove = editor.firstChild;
-
-		while (toRemove.childNodes.length > 2) {
-			itemPool.push(toRemove.removeChild(toRemove.lastChild));
+	if (potentialLoadedCount > loadedCount) {
+		for (; loadedCount < potentialLoadedCount; ++loadedCount) {
+			const newLine = createLine();
+			editor.insertBefore(newLine, editor.firstChild);
 		}
 
-		editor.removeChild(editor.firstChild);
+		reloadAllLines();
+		
+		//allow the viewport to scroll past the currently loaded lines
+		editor.style.height = getLineCount() * lineHeight + "px";
 	}
-
-	loadedCount = newLoadedCount;
-	reloadAllLines();
-	
-	//allow the viewport to scroll past the currently loaded lines
-	editor.style.height = getLineCount() * lineHeight + "px";
 };
 
 

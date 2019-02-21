@@ -2011,8 +2011,8 @@ class InternalNumericLiteral {
 			case BuiltIns.BOOL:
 				return [Wasm.i32_const, ...varint(this.value)];
 
-				case BuiltIns.I64:
-				case BuiltIns.U64:
+			case BuiltIns.I64:
+			case BuiltIns.U64:
 				return [Wasm.i64_const, ...varint(this.value)];
 
 			case BuiltIns.F32:
