@@ -5,7 +5,6 @@ const lineHeight = 40;
 const bufferCount = 10;
 const forwardBufferCount = 4;
 let loadedCount = 0;
-let firstLoadedPosition = 0;
 
 const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
@@ -15,7 +14,7 @@ const consoleOutput = document.getElementById("console-output");
 const programList = document.getElementById("program-list");
 
 editor.style.height = "10000000px";
-firstLoadedPosition = Math.max(0, Math.floor(window.scrollY / lineHeight) - bufferCount);
+let firstLoadedPosition = Math.max(0, Math.floor(window.scrollY / lineHeight) - bufferCount);
 
 const itemPool = [];
 let selectedItem;
@@ -35,47 +34,47 @@ function getWasmBinary() {
 	}
 }
 
-document.getElementById("spacer").addEventListener("touchstart", function(e) {e.preventDefault()});
+document.getElementById("spacer").addEventListener("touchstart", function (e) { e.preventDefault() });
 
 function closeActionMenu() {
 	actionMenu.scrollTop = 0;
 }
 closeActionMenu();
 
-document.getElementById("play-button").addEventListener("click", function(event) {
+document.getElementById("play-button").addEventListener("click", function (event) {
 	event.stopPropagation();
 	closeActionMenu();
 
-	history.pushState({action: "run"}, "TouchScript Runtime");
+	history.pushState({ action: "run" }, "TouchScript Runtime");
 	window.onpopstate();
 });
 
-document.getElementById("new-button").addEventListener("click", function(event) {
+document.getElementById("new-button").addEventListener("click", function (event) {
 	event.stopPropagation();
 	closeActionMenu();
-	
+
 	localStorage.removeItem(ACTIVE_PROJECT_KEY);
 	dbAction("readonly", "date-created", createNewScript);
 	closeMenu();
 });
 
-document.getElementById("load-button").addEventListener("click", function(event) {
+document.getElementById("load-button").addEventListener("click", function (event) {
 	event.stopPropagation();
 	closeActionMenu();
 
-	history.pushState({action: "load"}, "TouchScript Project Manager");
+	history.pushState({ action: "load" }, "TouchScript Project Manager");
 	window.onpopstate();
 });
 
-document.getElementById("view-code-button").addEventListener("click", function(event) {
+document.getElementById("view-code-button").addEventListener("click", function (event) {
 	event.stopPropagation();
 	closeActionMenu();
 
-	history.pushState({action: "disassemble"}, "TouchScript Disassembly");
+	history.pushState({ action: "disassemble" }, "TouchScript Disassembly");
 	window.onpopstate();
 });
 
-document.getElementById("download-button").addEventListener("click", function(event) {
+document.getElementById("download-button").addEventListener("click", function (event) {
 	event.stopPropagation();
 	closeActionMenu();
 
@@ -85,16 +84,16 @@ document.getElementById("download-button").addEventListener("click", function(ev
 			var a = document.createElement('a');
 			a.href = window.URL.createObjectURL(new File([wasm], filename));
 			a.download = filename;
-		
+
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
-	
+
 			window.URL.revokeObjectURL(a.href);
 		}
 	}
 
-	dbAction("readonly", "name", function(id) {
+	dbAction("readonly", "name", function (id) {
 		const request = this.get(id);
 		request.onsuccess = (event) => {
 			if (event.target.result) {
@@ -110,16 +109,16 @@ document.getElementById("download-button").addEventListener("click", function(ev
 	}, [script.id]);
 });
 
-menu.childNodes[1].onclick = function() {
-	document.onkeydown({key: "Enter", preventDefault: () => {}});
+menu.childNodes[1].onclick = function () {
+	document.onkeydown({ key: "Enter", preventDefault: () => { } });
 };
 
-menu.childNodes[2].onclick = function() {
-	document.onkeydown({key: "Backspace", preventDefault: () => {}});
+menu.childNodes[2].onclick = function () {
+	document.onkeydown({ key: "Backspace", preventDefault: () => { } });
 };
 
-menu.childNodes[2].oncontextmenu = function(event) {
-	document.onkeydown({key: "Delete", preventDefault: () => {}});
+menu.childNodes[2].oncontextmenu = function (event) {
+	document.onkeydown({ key: "Delete", preventDefault: () => { } });
 
 	event.preventDefault();
 	event.stopPropagation();
@@ -135,7 +134,7 @@ document.body.onresize = function () {
 		}
 
 		reloadAllLines();
-		
+
 		//allow the viewport to scroll past the currently loaded lines
 		editor.style.height = getLineCount() * lineHeight + "px";
 	}
@@ -143,18 +142,18 @@ document.body.onresize = function () {
 
 
 
-window.onpopstate = function(event) {
+window.onpopstate = function (event) {
 	if (!event) {
-		event = {state: history.state};
+		event = { state: history.state };
 	}
-	
+
 	editor.style.display = "";
 	runtime.style.display = "";
 	programList.style.display = "";
-	
+
 	if (!event.state) {
 		document.title = "TouchScript"
-		
+
 		while (programList.childNodes.length > 1) {
 			programList.removeChild(programList.lastChild);
 		}
@@ -174,7 +173,7 @@ window.onpopstate = function(event) {
 				print(error);
 			}
 		}
-		
+
 		runtime.style.display = "initial";
 	}
 	else if (event.state.action === "disassemble") {
@@ -182,9 +181,9 @@ window.onpopstate = function(event) {
 		const wasm = getWasmBinary();
 		if (wasm !== undefined) {
 			import("https://nathanross.me/small-wasm-disassembler/disassembler.min.mjs")
-			.then(module => {
-				print(module.default(wasm, 9))
-			});
+				.then(module => {
+					print(module.default(wasm, 9))
+				});
 		}
 		runtime.style.display = "initial";
 	}
@@ -248,7 +247,7 @@ window.onpopstate = function(event) {
 
 		let remaining = 3;
 		function readKeysAndVals(map) {
-			this.openCursor().onsuccess = function(event) {
+			this.openCursor().onsuccess = function (event) {
 				const cursor = event.target.result;
 				if (cursor) {
 					map.set(cursor.primaryKey, cursor.value);
@@ -276,20 +275,20 @@ function scriptLoaded() {
 
 	//detect when items need to be loaded in the direction of scroll
 	//take nodes from the back to add to the front
-	window.onscroll = function() {
+	window.onscroll = function () {
 		const firstVisiblePosition = Math.floor(window.scrollY / lineHeight);
-		
+
 		//keep a number of lines prepared for both direction
 		while ((firstVisiblePosition - bufferCount + forwardBufferCount > firstLoadedPosition)
-		&& (firstLoadedPosition + loadedCount < getLineCount())) {
+			&& (firstLoadedPosition + loadedCount < getLineCount())) {
 			const position = firstLoadedPosition + loadedCount;
 			const line = editor.childNodes[position % loadedCount];
 			loadLine(position, line);
 			++firstLoadedPosition;
 		}
-		
+
 		while ((firstVisiblePosition - forwardBufferCount < firstLoadedPosition)
-		&& (firstLoadedPosition > 0)) {
+			&& (firstLoadedPosition > 0)) {
 			const position = firstLoadedPosition - 1;
 			const line = editor.childNodes[position % loadedCount];
 			loadLine(position, line);
@@ -302,7 +301,7 @@ function scriptLoaded() {
 function selectProject(event) {
 	if (event.target.nodeName !== "BUTTON" && event.target.nodeName !== "INPUT") {
 		const projectID = event.currentTarget.projectId;
-		const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY)|0;
+		const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
 		if (projectID !== oldActiveProject) {
 			localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
 			script = new Script(projectID, true, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
@@ -322,7 +321,7 @@ function deleteProject(event) {
 		closeMenu();
 	}
 	entry.parentElement.removeChild(entry);
-	
+
 	dbAction("readwrite", "name", IDBObjectStore.prototype.delete, [id]);
 	dbAction("readwrite", "date-created", IDBObjectStore.prototype.delete, [id]);
 	dbAction("readwrite", "last-modified", IDBObjectStore.prototype.delete, [id]);
@@ -352,12 +351,12 @@ function createLine() {
 
 	const indentation = document.createElement("div");
 	indentation.classList.add("indentation");
-	
+
 	const lineDiv = document.createElement("div");
-	lineDiv.addEventListener("click", lineClickHandler, {passive: true});
+	lineDiv.addEventListener("click", lineClickHandler, { passive: true });
 	lineDiv.appendChild(indentation);
 	lineDiv.appendChild(append);
-	
+
 	return lineDiv;
 }
 
@@ -398,7 +397,7 @@ function removeLines(position, count) {
 	const lastLineIndex = (firstLoadedPosition + loadedCount - 1) % loadedCount;
 	const moveLastToTop = lastLineIndex < selectedIndex;
 	const bottomPosition = firstLoadedPosition + loadedCount - count;
-	
+
 	for (let i = 0; i < count; ++i) {
 		const selectedLine = editor.childNodes[selectedIndex];
 		const lastLine = editor.childNodes[lastLineIndex];
@@ -415,7 +414,7 @@ function removeLines(position, count) {
 
 	//shift the remaining lines down
 	for (let i = position; i < bottomPosition; ++i) {
-		const line = editor.childNodes[i % loadedCount];    
+		const line = editor.childNodes[i % loadedCount];
 		line.position = i;
 		line.style.setProperty("--y", 1);
 		line.childNodes[1].textContent = i;
@@ -442,7 +441,7 @@ function loadLine(position, line, visualShift = 0) {
 			const node = getItem(text, "item " + style, col);
 			line.appendChild(node);
 		}
-		
+
 		const indent = script.getIndent(position);
 		if (indent > 0) {
 			line.style.setProperty("--x", indent);
@@ -455,12 +454,12 @@ function loadLine(position, line, visualShift = 0) {
 	if (line.position !== position) {
 		line.style.transition = "none";
 		const isShiftedDown = selRow !== -1 && position > selRow;
-		line.style.setProperty("--y", position + visualShift + isShiftedDown|0);
+		line.style.setProperty("--y", position + visualShift + isShiftedDown | 0);
 		line.offsetHeight;
 		line.style.transition = "";
 		line.childNodes[1].textContent = position;
 		line.position = position;
-	
+
 		if (selRow === position) {
 			const button = line.childNodes[2 + selCol];
 			button.classList.add("selected");
@@ -523,11 +522,11 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
 				}
 			};
 		} else {
-			const {text, style = ""} = option;
+			const { text, style = "" } = option;
 			menuItem = getItem(text, "menu-item " + style);
-			menuItem.onclick = function(event) {
+			menuItem.onclick = function (event) {
 				const response = option.action.apply(script, option.args || []);
-		
+
 				if (Array.isArray(response) && response.length > 0) {
 					configureMenu(response);
 				} else {
@@ -535,7 +534,7 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
 				}
 			};
 		}
-		
+
 		menu.appendChild(menuItem);
 	}
 
@@ -550,26 +549,26 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
 		menu.style.transition = "none";
 
 		const isShiftedUp = prevRow === -1 || selRow < prevRow;
-		menu.style.setProperty("--y", selRow + 1 - isShiftedUp|0);
-	
+		menu.style.setProperty("--y", selRow + 1 - isShiftedUp | 0);
+
 		menu.offsetHeight;
 		menu.style.transition = "";
 	}
 
-	const insertPosition = selRow + (selCol !== 0 && selRow !== script.lineCount)|0;
+	const insertPosition = selRow + (selCol !== 0 && selRow !== script.lineCount) | 0;
 
 	menu.classList.toggle("delete-button-shown", selRow < script.lineCount);
 	menu.classList.toggle("insert-button-shown", script.canInsert(insertPosition));
 	menu.style.setProperty("--y", selRow + 1);
 	menu.style.setProperty("--x", script.getInsertIndent(selRow + 1));
-	
+
 	//make room for the menu to slot below the selected line
 	if (prevRow === -1) {
 		prevRow = selRow;
 	}
 	for (let i = Math.max(0, Math.min(selRow, prevRow) - 1); i < loadedCount + firstLoadedPosition; ++i) {
 		const line = editor.childNodes[i % loadedCount];
-		line.style.setProperty("--y", line.position + (line.position > selRow)|0);
+		line.style.setProperty("--y", line.position + (line.position > selRow) | 0);
 	}
 }
 
@@ -596,7 +595,7 @@ function closeMenu() {
 
 
 
-document.onkeydown = function(event) {
+document.onkeydown = function (event) {
 	if (history.state) {
 		//ignore keyboard commands unless the editor is open
 		return;
@@ -632,9 +631,9 @@ document.onkeydown = function(event) {
 				++selRow;
 				response = script.insertLine(selRow);
 			}
-			
+
 			if ("lineInserted" in response) {
-				script.saveLines(response.lineInserted|0);
+				script.saveLines(response.lineInserted | 0);
 			}
 			handleMenuItemResponse(response);
 			itemClicked(selRow, selCol);
@@ -646,8 +645,8 @@ document.onkeydown = function(event) {
 function handleMenuItemResponse(response) {
 	// console.log("handle response:", ...Object.keys(response));
 	if ("removeLinesPosition" in response) {
-		const position = response.removeLinesPosition|0;
-		const count = response.removeLinesCount|0;
+		const position = response.removeLinesPosition | 0;
+		const count = response.removeLinesCount | 0;
 		removeLines(position, count);
 		selCol = -1;
 	}
@@ -658,7 +657,7 @@ function handleMenuItemResponse(response) {
 	}
 
 	if ("lineInserted" in response) {
-		insertLine(response.lineInserted|0);
+		insertLine(response.lineInserted | 0);
 	}
 
 	if ("selectedCol" in response) {
@@ -692,10 +691,10 @@ function lineClickHandler(event) {
 	if (actionMenu.scrollTop > 0) {
 		closeActionMenu();
 	}
-	
+
 	if (event.target.nodeName === "BUTTON") {
-		const row = this.position|0;
-		const col = event.target.position|0;
+		const row = this.position | 0;
+		const col = event.target.position | 0;
 		if (row === selRow && col === selCol) {
 			closeMenu();
 		} else {
@@ -713,11 +712,11 @@ function itemClicked(row, col, teleport = false) {
 		selectedItem.classList.add("selected");
 		selectedItem.focus();
 	}
-	
+
 	const prevRow = selRow;
 	selRow = row;
 	selCol = col;
-	
+
 	const options = script.itemClicked(row, col);
 	configureMenu(options, prevRow, teleport);
 }
@@ -735,7 +734,7 @@ let db;
 {
 	const openRequest = indexedDB.open("TouchScript", 1);
 	openRequest.onerror = (event) => alert("Error opening database: " + event.message);
-	openRequest.onupgradeneeded = function(event) {
+	openRequest.onupgradeneeded = function (event) {
 		console.log("upgrading database");
 		db = event.target.result;
 		db.createObjectStore("name");
@@ -744,7 +743,7 @@ let db;
 		db.createObjectStore("lines");
 		db.createObjectStore("save-data");
 	};
-	openRequest.onsuccess = function(event) {
+	openRequest.onsuccess = function (event) {
 		db = event.target.result;
 		db.onerror = event => console.dir(event.target.error);
 
@@ -753,9 +752,9 @@ let db;
 
 		const activeProjectId = localStorage.getItem(ACTIVE_PROJECT_KEY);
 		if (activeProjectId !== null) {
-			objStore.get(activeProjectId|0).onsuccess = function(event) {
+			objStore.get(activeProjectId | 0).onsuccess = function (event) {
 				if (event.target.result !== undefined) {
-					script = new Script(activeProjectId|0, true, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
+					script = new Script(activeProjectId | 0, true, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
 				} else {
 					console.log("Project " + activeProjectId + " no longer exists");
 					localStorage.removeItem(ACTIVE_PROJECT_KEY);
@@ -772,7 +771,7 @@ let db;
  * assumes the objectstore "date-created" is bound to this
  */
 function createNewScript() {
-	this.getAllKeys().onsuccess = function(event) {
+	this.getAllKeys().onsuccess = function (event) {
 		//find a gap in the IDs, or grab the one after last
 		const projectIds = event.target.result;
 		let id = projectIds.findIndex((id, index) => id !== index);
@@ -805,7 +804,7 @@ function dbAction(mode, store, action, args) {
 function writeLinesInDB(id, row, count) {
 	dbAction("readwrite", "last-modified", IDBObjectStore.prototype.put, [new Date(), id]);
 
-	dbAction("readwrite", "lines", function(lines) {
+	dbAction("readwrite", "lines", function (lines) {
 		for (const line of lines) {
 			const serialized = {};
 			if (line.items.length > 0) {
