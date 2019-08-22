@@ -1,34 +1,37 @@
 <!DOCTYPE html>
 <html lang=en-US>
-	<head>
-		<title>TouchScript</title>
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-		<link rel="stylesheet" type="text/css" href="main.css">
-		<script type="module" src="ui.mjs"></script>
-		<!-- <script type="module" src="main.mjs"></script> -->
-	</head>
-	
-	<body>
-		<div id="runtime">
-			<p id="console-output"></p>
-			<!-- <input id="console-input"> -->
-		</div>
 
-		
-		<div id="editor">
-			<div id="menu"><button class="indentation"></button><button class="insert-line menu-item"></button><button class="delete menu-item"></button></div>
-			
-			<div id="action-menu">
-				<div id="spacer"></div>
-				<button id="play-button"></button>
-				<button id="view-code-button"></button>
-				<button id="download-button"></button>
-				<button id="load-button"></button>
-				<button id="new-button"></button>
+<head>
+	<title>TouchScript</title>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+	<link rel="stylesheet" type="text/css" href="main.css">
+	<script type="module" src="ui.mjs"></script>
+	<!-- <script type="module" src="main.mjs"></script> -->
+</head>
+
+<body>
+	<div id="runtime">
+		<p id="console-output"></p>
+		<!-- <input id="console-input"> -->
+	</div>
+
+
+	<div id="editor">
+		<div id="menu"><button class="indentation"></button><button class="insert-line menu-item"></button><button
+				class="delete menu-item"></button></div>
+
+		<div id="drag-menu-container">
+			<button id="play-button"></button>
+			<div id="play-button-anchor"></div>
+			<div id="drag-menu">
+				<div id="drag-menu-actions">
+					<button id="new-project">New Project</button>
+					<button id="view-code">View .wasm</button>
+				</div>
 			</div>
 		</div>
+	</div>
+</body>
 
-		<div id="program-list"><h3 id="no-projects-message">No projects found</h3></div>
-	</body>
 </html>

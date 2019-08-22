@@ -1,9 +1,9 @@
 /* Chrome, Safari, Edge, Opera */
 ::-webkit-scrollbar {
-		display: none;
+	display: none;
 }
 
-button {
+button, div {
 	-webkit-user-select: none;
 	-moz-user-select: none;
 	-ms-user-select: none;
@@ -141,49 +141,105 @@ button {
 
 
 
-#action-menu {
-	display: flex;
-	flex-direction: column;
-	
+
+#drag-menu-container {
 	position: fixed;
-	right: 30px;
-	bottom: 0;
-	width: 50px;
-	height: 100%;
-	overflow: scroll;
-	z-index: 9999999999;
-	/* outline: solid yellow thin; */
+	width: 100%;
+	height: calc(100% + 25px);
+	bottom: calc(-100%);
+	z-index: 10000001;
 }
 
-#action-menu > #spacer {
-	width: 50px;
-	min-height: calc(100% - 75px); /* height of menu minus height of handle */
+#drag-menu-container.smooth-slide {
+	transition: bottom 0.5s;
 }
 
-#action-menu > button {
+#play-button {
+	position: absolute;
+	top: -50px;
+	right: 25px;
+	background-image: url(baseline-drag_indicator_and_play-24px.svg);
+	background-color: DarkSlateGray;
 	width: 50px;
 	height: 50px;
+	border-radius: 50%;
 	background-repeat: no-repeat;
 	background-position: center;
+}
+
+#play-button-anchor {
+	position: absolute;
+	top: 0;
+	right: 25px;
+	width: 50px;
+	height: 25px;
+	background-image: url(baseline-drag_handle-24px.svg);
+	background-repeat: no-repeat;
+	background-position: center;
+	cursor: pointer;
+}
+
+#drag-menu {
+	position: absolute;
+	top: 25px;
+	width: 100vw;
+	height: 100vh;
+	/* border-top: thick solid black; */
+	backdrop-filter: blur(10px);
+}
+
+/* Firefox doesn't support backdrop-filter, so apply a solid background */
+@-moz-document url-prefix() { 
+	#drag-menu {
+		background-color: rgba(43, 43, 43, 0.8);
+	}
+} 
+
+#view-code, #new-project {
+	background-position: right;
+	background-repeat: no-repeat;
+	color: white;
+	padding: 0 30px 0 1em;
+	border-radius: 50px;
 	background-color: #3B3B3B;
 }
 
-#action-menu > #play-button {
-	background-image: url(baseline-drag_indicator_and_play-24px.svg);
-	background-color: DarkSlateGray;
-	height: 75px;
-}
 #download-button {
 	background-image: url(baseline-get_app-24px.svg);
 }
-#view-code-button {
+#view-code {
 	background-image: url(baseline-code-24px.svg);
 }
 #load-button {
 	background-image: url(baseline-folder-24px.svg);
 }
-#new-button {
+#new-project {
 	background-image: url(baseline-add-24px.svg);
+}
+
+#drag-menu-actions, .project-list-entry {
+	display: flex;
+	align-items: center;
+	border-radius: 50px;
+	margin: 1em;
+}
+
+#drag-menu-actions > button:not(:first-child) {
+	margin-left: 1em;
+}
+
+.project-list-entry {
+	padding: 0 1em;
+	justify-content: space-between;
+	background-color: #3B3B3B;
+}
+
+.project-list-entry.open {
+	background-color: darkslategray;
+}
+
+.delete-project-button {
+	width: 40px;
 }
 
 #console-output {
@@ -208,41 +264,6 @@ button {
 	color: white;
 	box-sizing: border-box;
 } */
-
-.project-list-entry {
-	position: relative;
-	padding: 2em 0.5em;
-}
-
-.project-list-entry:hover {
-	background-color: #2D3333;
-}
-
-.project-list-entry p {
-	margin: 8px 0 0 0;
-}
-
-.project-list-entry.open::after {
-	content: "ACTIVE";
-	display: block;
-	text-align: right;
-	color: goldenrod;
-	font-weight: bold;
-}
-
-#no-projects-message {
-	display: none;
-}
-
-#no-projects-message:first-child:last-child {
-	display: block;
-	text-align: center;
-}
-
-.delete-project-button {
-	width: 40px;
-	float: right;
-}
 
 #menu {
 	position: absolute;

@@ -8,10 +8,82 @@ let loadedCount = 0;
 
 const editor = document.getElementById("editor");
 const menu = document.getElementById("menu");
-const actionMenu = document.getElementById("action-menu");
 const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
-const programList = document.getElementById("program-list");
+const playButton = document.getElementById("play-button");
+const playButtonAnchor = document.getElementById("play-button-anchor");
+const dragMenuContainer = document.getElementById("drag-menu-container");
+const dragMenu = document.getElementById("drag-menu");
+const viewCodeButton = document.getElementById("view-code");
+
+dragMenuContainer.classList.add("smooth-slide");
+
+const firstTouch = {
+	identifier: null,
+	initialY: 0,
+	moved: false,
+}
+
+playButton.addEventListener("touchstart", function (event) {
+	event.stopPropagation();
+	event.preventDefault();
+
+	const touch = event.changedTouches[0];
+	if (firstTouch.identifier === null) {
+		firstTouch.identifier = touch.identifier;
+		firstTouch.initialY = touch.pageY;
+		firstTouch.moved = false;
+		dragMenuContainer.classList.remove("smooth-slide");
+	}
+});
+
+function existingTouchHandler(event) {
+	event.stopPropagation();
+	event.preventDefault();
+
+	for (const touch of event.changedTouches) {
+		if (touch.identifier === firstTouch.identifier) {
+			const delta = firstTouch.initialY - touch.pageY;
+			switch (event.type) {
+				case "touchmove":
+					firstTouch.moved = true;
+					if (delta < 0) {
+						firstTouch.initialY = touch.pageY;
+					} else {
+						dragMenuContainer.style.bottom = `calc(-100% + ${delta}px )`;
+					}
+					break;
+
+				case "touchend":
+				case "touchcancel":
+					if (delta > 10) {
+						//open menu if the user drags upward and releases
+						openActionMenu();
+					} else if (delta < 10) {
+						//close menu if the user drags downward and releases
+						closeActionMenu();
+					}
+
+					dragMenuContainer.classList.add("smooth-slide");
+
+					firstTouch.identifier = null;
+					if (!firstTouch.moved) {
+						event.target.onclick();
+					}
+					break;
+			}
+		}
+	}
+}
+
+playButton.addEventListener("touchmove", existingTouchHandler);
+playButton.addEventListener("touchend", existingTouchHandler);
+playButton.addEventListener("touchcancel", existingTouchHandler);
+
+playButtonAnchor.onclick = function (event) {
+	openActionMenu();
+};
+
 
 editor.style.height = "10000000px";
 let firstLoadedPosition = Math.max(0, Math.floor(window.scrollY / lineHeight) - bufferCount);
@@ -25,6 +97,40 @@ const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script;
 const runtimeEnvironment = new RuntimeEnvironment(print);
 
+function longTapHandler(event) {
+	event.target.longTapTimer = undefined;
+	event.target.oncontextmenu(event);
+}
+
+function startLongTapTimer(event) {
+	event.preventDefault();
+
+	//forward the touchstart event to the right click handler
+	//it has a preventDefault() and a target property
+	this.longTapTimer = setTimeout(longTapHandler, 500, event);
+}
+
+function StopLongTapTimer(event) {
+	event.preventDefault();
+
+	if (this.longTapTimer !== undefined) {
+		clearTimeout(this.longTapTimer);
+		this.longTapTimer = undefined;
+
+		//forward the touchstart event to the right click handler
+		//it has a preventDefault() and a target property
+		this.onclick(event);
+	}
+}
+
+function enrollElementInLongTapListening(element) {
+	element.addEventListener("touchstart", startLongTapTimer);
+	element.addEventListener("touchmove", StopLongTapTimer);
+	element.addEventListener("touchend", StopLongTapTimer);
+	element.addEventListener("touchcancel", StopLongTapTimer);
+}
+
+
 function getWasmBinary() {
 	try {
 		return script.getWasm();
@@ -34,80 +140,57 @@ function getWasmBinary() {
 	}
 }
 
-document.getElementById("spacer").addEventListener("touchstart", function (e) { e.preventDefault() });
+function openActionMenu() {
+	dragMenuContainer.style.bottom = "0";
+}
 
 function closeActionMenu() {
-	actionMenu.scrollTop = 0;
+	dragMenuContainer.style.bottom = "";
 }
 closeActionMenu();
 
-document.getElementById("play-button").addEventListener("click", function (event) {
+function deSelectActiveProject() {
+	const activeProject = document.querySelector(".project-list-entry.open");
+	if (activeProject) {
+		activeProject.classList.remove("open");
+	}
+}
+
+playButton.onclick = function (event) {
 	event.stopPropagation();
 	closeActionMenu();
 
 	history.pushState({ action: "run" }, "TouchScript Runtime");
 	window.onpopstate();
-});
+};
 
-document.getElementById("new-button").addEventListener("click", function (event) {
+document.getElementById("new-project").onclick = function (event) {
 	event.stopPropagation();
+	deSelectActiveProject();
 	closeActionMenu();
 
 	localStorage.removeItem(ACTIVE_PROJECT_KEY);
 	dbAction("readonly", "date-created", createNewScript);
 	closeMenu();
-});
+};
 
-document.getElementById("load-button").addEventListener("click", function (event) {
-	event.stopPropagation();
-	closeActionMenu();
-
-	history.pushState({ action: "load" }, "TouchScript Project Manager");
-	window.onpopstate();
-});
-
-document.getElementById("view-code-button").addEventListener("click", function (event) {
+viewCodeButton.onclick = function (event) {
 	event.stopPropagation();
 	closeActionMenu();
 
 	history.pushState({ action: "disassemble" }, "TouchScript Disassembly");
 	window.onpopstate();
-});
+};
 
-document.getElementById("download-button").addEventListener("click", function (event) {
-	event.stopPropagation();
+viewCodeButton.oncontextmenu = function (event) {
+	event.preventDefault();
+	// saveActiveScriptAsWasm();
 	closeActionMenu();
+	return false;
+};
 
-	function save(filename) {
-		const wasm = getWasmBinary();
-		if (wasm !== undefined) {
-			var a = document.createElement('a');
-			a.href = window.URL.createObjectURL(new File([wasm], filename));
-			a.download = filename;
+enrollElementInLongTapListening(viewCodeButton);
 
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-
-			window.URL.revokeObjectURL(a.href);
-		}
-	}
-
-	dbAction("readonly", "name", function (id) {
-		const request = this.get(id);
-		request.onsuccess = (event) => {
-			if (event.target.result) {
-				save(event.target.result + ".wasm");
-			} else {
-				save("Project " + id + ".wasm");
-			}
-		};
-		request.onerror = (event) => {
-			console.log("Error getting project name: ", event.target.error);
-			save("temp.wasm")
-		};
-	}, [script.id]);
-});
 
 menu.childNodes[1].onclick = function () {
 	document.onkeydown({ key: "Enter", preventDefault: () => { } });
@@ -149,14 +232,9 @@ window.onpopstate = function (event) {
 
 	editor.style.display = "";
 	runtime.style.display = "";
-	programList.style.display = "";
 
 	if (!event.state) {
 		document.title = "TouchScript"
-
-		while (programList.childNodes.length > 1) {
-			programList.removeChild(programList.lastChild);
-		}
 
 		consoleOutput.innerHTML = "";
 		editor.style.display = "initial";
@@ -186,85 +264,6 @@ window.onpopstate = function (event) {
 				});
 		}
 		runtime.style.display = "initial";
-	}
-	else if (event.state.action === "load") {
-		document.title = "TouchScript Project Manager"
-
-		function getDateString(date) {
-			return date.toLocaleDateString("en-US", {
-				year: "numeric", month: "numeric", day: "numeric",
-				hour: "numeric", minute: "2-digit"
-			});
-		}
-
-		//read all the project metadata into RAM before building the DOM
-		const projectNames = new Map();
-		const projectLastModified = new Map();
-		const projectDateCreated = new Map();
-
-		function assembleProjectMetaData() {
-			for (const [id, dateCreated] of projectDateCreated.entries()) {
-				const label = document.createElement("span");
-				label.textContent = "Project name: ";
-
-				const projectNameNode = document.createElement("input");
-				projectNameNode.type = "text";
-				if (projectNames.has(id)) {
-					projectNameNode.value = projectNames.get(id);
-				} else {
-					projectNameNode.placeholder = "Project " + id;
-				}
-				projectNameNode.addEventListener("change", renameProject);
-
-				const dateCreatedNode = document.createElement("p");
-				dateCreatedNode.textContent = "Created: " + getDateString(dateCreated);
-
-				const lastModified = projectLastModified.get(id);
-				const lastModifiedNode = document.createElement("p");
-				lastModifiedNode.textContent = "Last Modified: " + getDateString(lastModified);
-
-				const deleteButton = document.createElement("button");
-				deleteButton.className = "delete delete-project-button";
-				deleteButton.addEventListener("click", deleteProject);
-
-				const entry = document.createElement("div");
-				entry.className = "project-list-entry";
-				entry.appendChild(deleteButton);
-				entry.appendChild(label);
-				entry.appendChild(projectNameNode);
-				entry.appendChild(dateCreatedNode);
-				entry.appendChild(lastModifiedNode);
-				entry.addEventListener("click", selectProject);
-
-				if (script.id === id) {
-					entry.classList.add("open");
-				}
-
-				entry.projectId = id;
-				programList.appendChild(entry);
-			}
-		}
-
-		let remaining = 3;
-		function readKeysAndVals(map) {
-			this.openCursor().onsuccess = function (event) {
-				const cursor = event.target.result;
-				if (cursor) {
-					map.set(cursor.primaryKey, cursor.value);
-					cursor.continue();
-				} else {
-					if (--remaining === 0) {
-						assembleProjectMetaData()
-					}
-				}
-			}
-		}
-
-		dbAction("readonly", "name", readKeysAndVals, [projectNames]);
-		dbAction("readonly", "last-modified", readKeysAndVals, [projectLastModified]);
-		dbAction("readonly", "date-created", readKeysAndVals, [projectDateCreated]);
-
-		programList.style.display = "initial";
 	}
 }
 
@@ -301,13 +300,16 @@ function scriptLoaded() {
 function selectProject(event) {
 	if (event.target.nodeName !== "BUTTON" && event.target.nodeName !== "INPUT") {
 		const projectID = event.currentTarget.projectId;
-		const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY) | 0;
+		const oldActiveProject = localStorage.getItem(ACTIVE_PROJECT_KEY);
+
 		if (projectID !== oldActiveProject) {
+			deSelectActiveProject();
+			event.target.classList.add("open");
+
 			localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
 			script = new Script(projectID, true, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
 		}
 		closeMenu();
-		window.history.back();
 	}
 }
 
@@ -353,7 +355,7 @@ function createLine() {
 	indentation.classList.add("indentation");
 
 	const lineDiv = document.createElement("div");
-	lineDiv.addEventListener("click", lineClickHandler, { passive: true });
+	lineDiv.onclick = lineClickHandler;
 	lineDiv.appendChild(indentation);
 	lineDiv.appendChild(append);
 
@@ -439,6 +441,7 @@ function loadLine(position, line, visualShift = 0) {
 		for (let col = 0; col < itemCount; ++col) {
 			const [text, style] = script.getItem(position, col).getDisplay();
 			const node = getItem(text, "item " + style, col);
+
 			line.appendChild(node);
 		}
 
@@ -485,6 +488,7 @@ function getItem(text, className, position) {
 	node.textContent = text;
 	node.className = className;
 	node.position = position;
+
 	return node;
 }
 
@@ -688,9 +692,9 @@ function handleMenuItemResponse(response) {
 }
 
 function lineClickHandler(event) {
-	if (actionMenu.scrollTop > 0) {
-		closeActionMenu();
-	}
+	// if (actionMenu.scrollTop > 0) {
+	closeActionMenu();
+	// }
 
 	if (event.target.nodeName === "BUTTON") {
 		const row = this.position | 0;
@@ -764,6 +768,8 @@ let db;
 		} else {
 			createNewScript.apply(objStore);
 		}
+
+		loadExistingProjectsIntoMenu();
 	};
 }
 
@@ -789,6 +795,38 @@ function createNewScript() {
 
 		script = new Script(id, isEixstingProject, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
 	};
+}
+
+function saveActiveScriptAsWasm() {
+	function save(filename) {
+		const wasm = getWasmBinary();
+		if (wasm !== undefined) {
+			var a = document.createElement('a');
+			a.href = window.URL.createObjectURL(new File([wasm], filename));
+			a.download = filename;
+
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+
+			window.URL.revokeObjectURL(a.href);
+		}
+	}
+
+	dbAction("readonly", "name", function (id) {
+		const request = this.get(id);
+		request.onsuccess = (event) => {
+			if (event.target.result) {
+				save(event.target.result + ".wasm");
+			} else {
+				save("Project " + id + ".wasm");
+			}
+		};
+		request.onerror = (event) => {
+			console.log("Error getting project name: ", event.target.error);
+			save("temp.wasm")
+		};
+	}, [script.id]);
 }
 
 function dbAction(mode, store, action, args) {
@@ -828,8 +866,77 @@ function deleteLinesFromDB(id, lowKey, highKey) {
 function commitDateCreated(id) {
 	localStorage.setItem(ACTIVE_PROJECT_KEY, id);
 	dbAction("readwrite", "date-created", IDBObjectStore.prototype.add, [new Date(), id]);
+	insertProjectListing(id, "Project" + id, true);
 }
 
 function getLineKeyRangeForProject(id) {
 	return IDBKeyRange.bound(Uint8Array.of(id), Uint8Array.of(id + 1), false, true);
+}
+
+function insertProjectListing(id, name, isSelected) {
+	const label = document.createElement("p");
+	label.textContent = name;
+
+	const deleteButton = document.createElement("button");
+	deleteButton.className = "delete delete-project-button";
+	deleteButton.onclick = deleteProject;
+
+	const entry = document.createElement("div");
+	entry.className = "project-list-entry";
+	entry.appendChild(label);
+	entry.appendChild(deleteButton);
+	entry.onclick = selectProject;
+
+	if (isSelected) {
+		entry.classList.add("open");
+	}
+
+	entry.projectId = id;
+	dragMenu.appendChild(entry);
+}
+
+function loadExistingProjectsIntoMenu() {
+	function getDateString(date) {
+		return date.toLocaleDateString("en-US", {
+			year: "numeric", month: "numeric", day: "numeric",
+			hour: "numeric", minute: "2-digit"
+		});
+	}
+
+	//read all the project metadata into RAM before building the DOM
+	const projectNames = new Map();
+	const projectDateCreated = new Map();
+
+	function assembleProjectMetaData() {
+		for (const id of projectDateCreated.keys()) {
+			let name;
+			const isSelected = (script.id === id);
+
+			if (projectNames.has(id)) {
+				name = projectNames.get(id);
+			} else {
+				name = "Project " + id;
+			}
+
+			insertProjectListing(id, name, isSelected);
+		}
+	}
+
+	let remaining = 2;
+	function readKeysAndVals(map) {
+		this.openCursor().onsuccess = function (event) {
+			const cursor = event.target.result;
+			if (cursor) {
+				map.set(cursor.primaryKey, cursor.value);
+				cursor.continue();
+			} else {
+				if (--remaining === 0) {
+					assembleProjectMetaData()
+				}
+			}
+		}
+	}
+
+	dbAction("readonly", "name", readKeysAndVals, [projectNames]);
+	dbAction("readonly", "date-created", readKeysAndVals, [projectDateCreated]);
 }
