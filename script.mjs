@@ -598,6 +598,11 @@ export default class Script {
 								this.saveLines(row);
 								return {lineUpdated: true};
 							}},
+							{text: "continue", style: "keyword", action: () => {
+								this.pushItems(row, BuiltIns.CONTINUE);
+								this.saveLines(row);
+								return {lineUpdated: true};
+							}},
 						);
 						break;
 					}
@@ -1416,7 +1421,7 @@ export default class Script {
 						//println and print call system print function on each argument separately
 						if (func === BuiltIns.PRINT || func === BuiltIns.PRINTLN) {
 							if (item === BuiltIns.END_ARGS || item === BuiltIns.ARG_SEPARATOR) {
-								//use specialized printing functions                
+								//use specialized printing functions
 								let funcIndex;
 								const implementation = getPrintImplementation(expressionType);
 
@@ -1461,7 +1466,7 @@ export default class Script {
 							if (func.signature.returnType !== BuiltIns.VOID) {
 								expression.push(new Placeholder(func.signature.returnType)); //TODO place wasm code of function call as 2nd argument
 							}
-						} 
+						}
 
 						if (item === BuiltIns.END_ARGS) {
 							callStack.pop()
@@ -1751,7 +1756,7 @@ export default class Script {
 		];
 
 		for (const func of predefinedFuncs) {
-			functionSection.push(getTypeIndex(func)); 
+			functionSection.push(getTypeIndex(func));
 		}
 
 		// let exportSection = [

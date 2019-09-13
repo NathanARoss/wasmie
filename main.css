@@ -158,7 +158,7 @@ button {
 	position: absolute;
 	top: -50px;
 	right: 25px;
-	background-image: url(baseline-drag_indicator_and_play-24px.svg);
+	color: white;
 	background-color: DarkSlateGray;
 	width: 50px;
 	height: 50px;
@@ -189,32 +189,19 @@ button {
 }
 
 /* Firefox doesn't support backdrop-filter, so apply a solid background */
-@-moz-document url-prefix() { 
+@-moz-document url-prefix() {
 	#drag-menu {
 		background-color: rgba(43, 43, 43, 0.8);
 	}
-} 
+}
 
 #view-code, #new-project {
 	background-position: right;
 	background-repeat: no-repeat;
 	color: white;
-	padding: 0 30px 0 1em;
+	padding: 0 1em;
 	border-radius: 50px;
 	background-color: #3B3B3B;
-}
-
-#download-button {
-	background-image: url(baseline-get_app-24px.svg);
-}
-#view-code {
-	background-image: url(baseline-code-24px.svg);
-}
-#load-button {
-	background-image: url(baseline-folder-24px.svg);
-}
-#new-project {
-	background-image: url(baseline-add-24px.svg);
 }
 
 #drag-menu-actions, .project-list-entry {
