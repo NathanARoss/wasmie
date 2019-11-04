@@ -83,7 +83,8 @@ export default class Script {
 				const parsedProgram = JSON.parse(sampleProgram);
 
 				for (const key in parsedProgram) {
-					decodeLine(key, parsedProgram[key]);
+					const arrayBufferKey = Uint8Array.from([id, ...key.split(",")]).buffer;
+					decodeLine(arrayBufferKey, parsedProgram[key]);
 				}
 
 				VarDef.nextId = highestVarId + 1;
@@ -830,7 +831,13 @@ export default class Script {
 
 				let bestScore = 0x7FFFFFFF;
 				for (let i = begin; i <= end; ++i) {
-					const lowKey = new Uint8Array((i > 0) ? this.lines[i - 1].key : 1);
+					let lowKey;
+					if (i > 0) {
+						lowKey = new Uint8Array(this.lines[i - 1].key);
+					} else {
+						lowKey = Uint8Array.of(this.id);
+					}
+
 					const highKey = new Uint8Array(this.lines[i].key);
 					const avgKey = getAvgKey(lowKey, highKey);
 					const last = avgKey.length - 1;

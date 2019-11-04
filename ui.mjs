@@ -215,13 +215,13 @@ document.getElementById("new-project").onclick = function (event) {
     event.stopPropagation();
     deSelectActiveProject();
     closeActionMenu();
+    closeMenu();
 
     if (db) {
         dbAction("readonly", "date-created", createNewScript);
     } else {
         script = new Script(0, doNothing, doNothing, doNothing, scriptLoaded, "{}");
     }
-    closeMenu();
 };
 
 viewCodeButton.onclick = function (event) {
@@ -264,7 +264,7 @@ exportButton.onclick = function (event) {
             serialized.indent = line.indent;
         }
 
-        const key = new Uint8Array(line.key);
+        const key = new Uint8Array(line.key.slice(1));
         serializedLines[key] = serialized;
     }
 
@@ -278,7 +278,11 @@ exportButton.onclick = function (event) {
 }
 
 importButton.addEventListener("change", function () {
+    deSelectActiveProject();
+    closeActionMenu();
+    closeMenu();
     const input = this.files[0];
+    this.value = null;
 
     var reader = new FileReader();
     reader.onload = function () {
@@ -291,7 +295,6 @@ importButton.addEventListener("change", function () {
         }
     };
     reader.readAsText(input);
-    closeActionMenu();
 }, false);
 
 
@@ -907,7 +910,7 @@ function createNewScript(options) {
         }
 
         let sampleProgram = null;
-        if (!scriptHasPreviousSaveData && options.requestedSampleProgram && (
+        if (!scriptHasPreviousSaveData && options && options.requestedSampleProgram && (
             options.isInitialPageLoad && projectIds.length === 0 || options.forceSampleProgram
         )) {
             //give new users a sample program to edit.
