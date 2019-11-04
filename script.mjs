@@ -12,15 +12,12 @@ import Wasm, {
 } from "./wasm_definitions.mjs";
 
 export default class Script {
-	constructor(id, isSaved,
-		firstWriteCallback, writeCallback, deleteCallback,
+	constructor(id, writeCallback, deleteCallback,
 		genericDBActionCallback, scriptLoadedCallback
 	) {
 		this.id = id;
-		this.isSaved = isSaved;
 		this.writeCallback = writeCallback;
 		this.deleteCallback = deleteCallback;
-		this.firstWriteCallback = firstWriteCallback;
 
 		this.lines = [];
 
@@ -29,7 +26,7 @@ export default class Script {
 			let highestVarId = -1;
 
 			const range = IDBKeyRange.bound(Uint8Array.of(id), Uint8Array.of(id + 1), false, true);
-			this.openCursor(range).onsuccess = function(event) {
+			this.openCursor(range).onsuccess = function (event) {
 				const cursor = event.target.result;
 				if (!cursor) {
 					VarDef.nextId = highestVarId + 1;
@@ -48,7 +45,7 @@ export default class Script {
 						const id = data.id;
 						highestVarId = Math.max(id, highestVarId);
 						const typeAnnotated = data.typeAnnotated;
-						const varDef = new VarDef(data.name, type, {scope, id, typeAnnotated});
+						const varDef = new VarDef(data.name, type, { scope, id, typeAnnotated });
 						items.push(varDef);
 						varDefs.set(data.id, varDef);
 					} else if ("varDef" in data) {
@@ -85,7 +82,7 @@ export default class Script {
 
 				script.lines.push({
 					key: lineKey,
-					indent: lineData.indent|0,
+					indent: lineData.indent | 0,
 					items,
 				});
 
@@ -103,7 +100,7 @@ export default class Script {
 		this.pushItems(row, ...items);
 
 		if ("lineInserted" in response) {
-			this.insertLine(response.lineInserted|0);
+			this.insertLine(response.lineInserted | 0);
 		}
 
 		if (oldLength !== this.lineCount) {
@@ -134,7 +131,7 @@ export default class Script {
 			this.appendLinesUpTo(row);
 			this.pushItems(row, ...items);
 		}
-		
+
 		this.runTypeInference(row);
 
 		if (oldLength !== this.lineCount) {
@@ -142,7 +139,7 @@ export default class Script {
 		} else {
 			this.saveLines(row);
 		}
-		return {lineUpdated: true, selectedCol: col + 2};
+		return { lineUpdated: true, selectedCol: col + 2 };
 	}
 
 	itemClicked(row, col) {
@@ -163,14 +160,14 @@ export default class Script {
 			this.setItem(row, col, item);
 			this.runTypeInference(row);
 			this.saveLines(row);
-			return {lineUpdated: true};
+			return { lineUpdated: true };
 		};
 
 		const insert = (col, ...items) => {
 			this.spliceLine(row, col, 0, ...items);
 			this.runTypeInference(row);
 			this.saveLines(row);
-			return {lineUpdated: true, selectedCol: col + 1};
+			return { lineUpdated: true, selectedCol: col + 1 };
 		};
 
 		const setVarRef = (varDef) => {
@@ -181,31 +178,31 @@ export default class Script {
 			const isAssignment = this.getItemCount(row) > 2 && this.getItem(row, 2).isAssignment;
 			if (item !== BuiltIns.VAR || isAssignment) {
 				const [text, style] = item.suggestion.getDisplay();
-				options.push({text, style, action: replace, args: [col, item.suggestion]});
+				options.push({ text, style, action: replace, args: [col, item.suggestion] });
 			}
 		}
 
 		if (col === 1 && item.isAssignment) {
 			for (const op of BuiltIns.SYMBOLS.filter(sym => sym.isAssignment)) {
 				const [text, style] = op.getDisplay();
-				options.push({text, style, action: replace, args: [col, op]});
+				options.push({ text, style, action: replace, args: [col, op] });
 			}
 		}
 
 		if (item.isRange) {
 			for (const op of BuiltIns.SYMBOLS.filter(sym => sym.isRange)) {
 				const [text, style] = op.getDisplay();
-				options.push({text, style, action: replace, args: [col, op]});
+				options.push({ text, style, action: replace, args: [col, op] });
 			}
 			return options;
 		}
-		
+
 		if (item.constructor === FuncSig || item.constructor === VarDef) {
 			const style = (item.constructor === FuncSig) ? "funcdef" : "vardef";
 			options.push({
 				text: item.name, style, isInput: true, onsubmit: (text) => {
 					item.name = text;
-					return {scriptChanged: true};
+					return { scriptChanged: true };
 				}
 			});
 		}
@@ -218,7 +215,7 @@ export default class Script {
 				const style = "keyword";
 				const action = this.getVisibleFuncs;
 				for (const scope of scopes) {
-					options.push({text: scope.text, style, action, args: [row, 0, scope, BuiltIns.ANY]});
+					options.push({ text: scope.text, style, action, args: [row, 0, scope, BuiltIns.ANY] });
 				}
 			} else if (item === BuiltIns.IF) {
 				const indent = this.getIndent(row);
@@ -227,8 +224,9 @@ export default class Script {
 						break;
 
 					if (this.getItem(r, 0) === BuiltIns.IF
-					|| this.getItem(r, 1) === BuiltIns.IF) {
-						options.push({text: "else", style: "keyword",
+						|| this.getItem(r, 1) === BuiltIns.IF) {
+						options.push({
+							text: "else", style: "keyword",
 							action: insert, args: [col, BuiltIns.ELSE]
 						});
 						break;
@@ -237,14 +235,16 @@ export default class Script {
 			}
 		} else {
 			if (item === BuiltIns.BEGIN_EXPRESSION
-			|| item === BuiltIns.END_EXPRESSION) {
-				options.push({text: "", style: "delete-outline", action: () => {
-					const [start, end] = this.getExpressionBounds(row, col);
-					this.spliceLine(row, end - 1, 1);
-					this.spliceLine(row, start, 1);
-					this.saveLines(row);
-					return {lineUpdated: true, selectedCol: col === start ? col : col - 2};
-				}});
+				|| item === BuiltIns.END_EXPRESSION) {
+				options.push({
+					text: "", style: "delete-outline", action: () => {
+						const [start, end] = this.getExpressionBounds(row, col);
+						this.spliceLine(row, end - 1, 1);
+						this.spliceLine(row, start, 1);
+						this.saveLines(row);
+						return { lineUpdated: true, selectedCol: col === start ? col : col - 2 };
+					}
+				});
 			}
 
 			//allow the user to enter additional arguments for variadic functions
@@ -260,39 +260,42 @@ export default class Script {
 						if (depth === -1) {
 							const funcDef = this.getItem(row, i - 1).funcDef;
 							//TODO make sure function is actually variadic
-							options.push({text: ",", action: insert,
+							options.push({
+								text: ",", action: insert,
 								args: [col + 1, BuiltIns.ARG_SEPARATOR, new ArgHint(funcDef, 0)]
 							});
 						}
 					}
 				}
 			}
-			
+
 			const wrapInParens = {
 				text: "( )", action: () => {
-				const [start, end] = this.getExpressionBounds(row, col);
-				this.spliceLine(row, end, 0, BuiltIns.END_EXPRESSION);
-				this.spliceLine(row, start, 0, BuiltIns.BEGIN_EXPRESSION);
-				this.saveLines(row);
-				return {lineUpdated: true, selectedCol: col + 1};
-			}};
+					const [start, end] = this.getExpressionBounds(row, col);
+					this.spliceLine(row, end, 0, BuiltIns.END_EXPRESSION);
+					this.spliceLine(row, start, 0, BuiltIns.BEGIN_EXPRESSION);
+					this.saveLines(row);
+					return { lineUpdated: true, selectedCol: col + 1 };
+				}
+			};
 
 			if (item.constructor === FuncRef
-			|| item.direction === 1) {
+				|| item.direction === 1) {
 				options.push(wrapInParens);
 			}
-			
+
 			if (item.constructor === FuncSig) {
 				const setReturnType = (type, item) => {
 					item.returnType = type;
 					this.saveLines(row);
-					return {lineUpdated: true};
+					return { lineUpdated: true };
 				};
-				
-				options.push({text: "void", style: "comment",
+
+				options.push({
+					text: "void", style: "comment",
 					action: setReturnType, args: [item, BuiltIns.ANY]
 				});
-				
+
 				options.push(...this.getSizedTypes(setReturnType, item));
 			}
 
@@ -306,12 +309,13 @@ export default class Script {
 						item.type = type;
 					}
 					this.saveLines(row);
-					
-					return {lineUpdated: true};
+
+					return { lineUpdated: true };
 				}
-				
+
 				if (nextItem.isAssignment || nextItem === BuiltIns.IN) {
-					options.push({text: "auto", style: "comment",
+					options.push({
+						text: "auto", style: "comment",
 						action: setType, args: [BuiltIns.ANY, item]
 					});
 				}
@@ -326,7 +330,7 @@ export default class Script {
 			}
 
 			const prevItem = this.getItem(row, col - 1);
-			
+
 			if (prevItem === BuiltIns.CONTINUE || prevItem === BuiltIns.BREAK) {
 				//count the number of nested loops this statement is inside
 				let loopStructureCount = 0;
@@ -338,8 +342,8 @@ export default class Script {
 						indent = lineIndent;
 						const firstItem = this.getItem(r, 0);
 						if (firstItem === BuiltIns.WHILE
-						|| firstItem === BuiltIns.DO_WHILE
-						|| firstItem === BuiltIns.FOR) {
+							|| firstItem === BuiltIns.DO_WHILE
+							|| firstItem === BuiltIns.FOR) {
 							++loopStructureCount;
 						}
 					}
@@ -348,7 +352,8 @@ export default class Script {
 				for (let layer = 2; layer <= loopStructureCount; ++layer) {
 					const item = new LoopLabel(layer);
 					const [text, style] = item.getDisplay();
-					options.push({text, style,
+					options.push({
+						text, style,
 						action: replace, args: [col, item]
 					});
 				}
@@ -369,7 +374,7 @@ export default class Script {
 			}
 
 			if (prevItem.preceedsExpression
-			|| prevItem === BuiltIns.RETURN && this.getReturnType(row)) {
+				|| prevItem === BuiltIns.RETURN && this.getReturnType(row)) {
 				if (!item.isUnary) {
 					let text = "";
 					let style = "";
@@ -383,46 +388,48 @@ export default class Script {
 						}
 					}
 					options.push(
-						{text, isInput: true, style, hint: "literal", onsubmit: (text) => {
-							let newItem;
+						{
+							text, isInput: true, style, hint: "literal", onsubmit: (text) => {
+								let newItem;
 
-							if (text.toLowerCase() === "true") {
-								newItem = BuiltIns.TRUE;
-							} else if (text.toLowerCase() === "false") {
-								newItem = BuiltIns.FALSE;
-							} else if (text.trim().length !== 0 && !isNaN(text)) {
-								newItem = new NumericLiteral(text.trim());
-							} else {
-								if (text.startsWith('"'))
-									text = text.substring(1);
-								
-								if (text.endsWith('"'))
-									text = text.substring(0, text.length - 1);
+								if (text.toLowerCase() === "true") {
+									newItem = BuiltIns.TRUE;
+								} else if (text.toLowerCase() === "false") {
+									newItem = BuiltIns.FALSE;
+								} else if (text.trim().length !== 0 && !isNaN(text)) {
+									newItem = new NumericLiteral(text.trim());
+								} else {
+									if (text.startsWith('"'))
+										text = text.substring(1);
 
-								newItem = new StringLiteral(text);
+									if (text.endsWith('"'))
+										text = text.substring(0, text.length - 1);
+
+									newItem = new StringLiteral(text);
+								}
+
+								return replace(col, newItem);
+							}, oninput: (event) => {
+								const inputNode = event.target;
+								inputNode.classList.remove("keyword", "number", "string");
+								let style;
+								if (/^(true|false)$/i.test(inputNode.value)) {
+									style = "keyword";
+								} else if (!isNaN(inputNode.value)) {
+									style = "number";
+								} else {
+									style = "string"
+								}
+								inputNode.classList.add(style);
 							}
-
-							return replace(col, newItem);
-						}, oninput: (event) => {
-							const inputNode = event.target;
-							inputNode.classList.remove("keyword", "number", "string");
-							let style;
-							if (/^(true|false)$/i.test(inputNode.value)) {
-								style = "keyword";
-							} else if (!isNaN(inputNode.value)) {
-								style = "number";
-							} else {
-								style = "string"
-							}
-							inputNode.classList.add(style);
-						}},
+						},
 					);
 				}
 
 				if (!prevItem.isUnary) {
 					const action = (item.constructor === Symbol && item !== BuiltIns.PLACEHOLDER) ? replace : insert;
 					for (const op of BuiltIns.SYMBOLS.filter(sym => sym.isUnary)) {
-						options.push({text: op.text + " ___", action, args: [col, op]});
+						options.push({ text: op.text + " ___", action, args: [col, op] });
 					}
 				}
 
@@ -439,30 +446,30 @@ export default class Script {
 				if (type !== BuiltIns.ANY) {
 					funcs = funcs.filter(func => {
 						return func.signature.returnType === type
-						|| type.casts && type.casts.get(func.signature.returnType);
+							|| type.casts && type.casts.get(func.signature.returnType);
 					});
 				}
 				const scopes = new Set(funcs.map(func => func.signature.scope));
-					
+
 				const style = "keyword";
 				const action = this.getVisibleFuncs;
 
 				for (const scope of scopes) {
-					options.push({text: scope.text, style, action, args: [row, col, scope, type]});
+					options.push({ text: scope.text, style, action, args: [row, col, scope, type] });
 				}
 			}
 
 			let binOps = BuiltIns.SYMBOLS.filter(sym => sym.isBinary);
 			if (secondItem === BuiltIns.IF
-			|| [BuiltIns.IF, BuiltIns.WHILE, BuiltIns.DO_WHILE].includes(firstItem)) {
+				|| [BuiltIns.IF, BuiltIns.WHILE, BuiltIns.DO_WHILE].includes(firstItem)) {
 				//TODO generalize this to when a boolean return type, argument, or variable type is expected
 				binOps = [...binOps.filter(op => op.isBool), ...binOps.filter(op => !op.isBool)];
 			}
-			
+
 			if (item.constructor === VarRef
-			|| item.constructor === NumericLiteral
-			|| item === BuiltIns.END_EXPRESSION
-			|| item === BuiltIns.END_ARGS) {
+				|| item.constructor === NumericLiteral
+				|| item === BuiltIns.END_EXPRESSION
+				|| item === BuiltIns.END_ARGS) {
 				options.push(wrapInParens);
 				const isAppending = (col === this.getItemCount(row) - 1);
 
@@ -472,25 +479,27 @@ export default class Script {
 						args.push(BuiltIns.PLACEHOLDER);
 					}
 
-					options.push({text: op.text, action: insert, args});
+					options.push({ text: op.text, action: insert, args });
 				};
 			}
-			
+
 			if (prevItem.constructor === VarRef
-			|| prevItem.constructor === NumericLiteral
-			|| prevItem === BuiltIns.END_EXPRESSION
-			|| prevItem === BuiltIns.END_ARGS) {
+				|| prevItem.constructor === NumericLiteral
+				|| prevItem === BuiltIns.END_EXPRESSION
+				|| prevItem === BuiltIns.END_ARGS) {
 				for (const op of binOps) {
-					options.push({text: op.text, action: replace, args: [col, op]});
+					options.push({ text: op.text, action: replace, args: [col, op] });
 				}
 			}
 
 			if (item !== BuiltIns.IF && prevItem === BuiltIns.ELSE) {
-				options.push({text: "if", style: "keyword", action: () => {
-					this.pushItems(row, BuiltIns.IF);
-					this.saveLines(row);
-					return {lineUpdated: true};
-				}});
+				options.push({
+					text: "if", style: "keyword", action: () => {
+						this.pushItems(row, BuiltIns.IF);
+						this.saveLines(row);
+						return { lineUpdated: true };
+					}
+				});
 			}
 		}
 
@@ -519,15 +528,17 @@ export default class Script {
 				// }},
 
 				{
-					text: "var", style: "keyword", action: function(row, response) {
+					text: "var", style: "keyword", action: function (row, response) {
 						const items = [BuiltIns.VAR, new VarDef(null, BuiltIns.ANY), BuiltIns.ASSIGN];
 						return this.appendPushAndSave(row, items, response);
 					},
-					args: [row, {selectedCol: 1}]
+					args: [row, { selectedCol: 1 }]
 				},
 
-				{text: "if", style: "keyword", action: this.appendPushAndSave,
-				args: [row, [BuiltIns.IF], {lineInserted: row+1}]},
+				{
+					text: "if", style: "keyword", action: this.appendPushAndSave,
+					args: [row, [BuiltIns.IF], { lineInserted: row + 1 }]
+				},
 			];
 
 			//scan backward looking for an if block at the same indent level
@@ -537,7 +548,7 @@ export default class Script {
 
 				if (this.getIndent(r) === indent) {
 					if (this.getItem(r, 0) === BuiltIns.IF
-					|| this.getItem(r, 1) === BuiltIns.IF) {
+						|| this.getItem(r, 1) === BuiltIns.IF) {
 						//scan forward for an else block at the same indent
 						for (let r = row + 1; r < rowCount; ++r) {
 							if (this.getIndent(r) < indent)
@@ -546,10 +557,12 @@ export default class Script {
 							if (this.getIndent(r) === indent) {
 								if (this.getItem(r, 0) === BuiltIns.ELSE) {
 									return [
-										{text: "else if", style: "keyword", action: this.appendClicked,
-										args: [
-											[BuiltIns.ELSE, BuiltIns.IF], {lineInserted: row+1}
-										]}
+										{
+											text: "else if", style: "keyword", action: this.appendClicked,
+											args: [
+												[BuiltIns.ELSE, BuiltIns.IF], { lineInserted: row + 1 }
+											]
+										}
 									];
 								}
 							}
@@ -557,8 +570,10 @@ export default class Script {
 
 						//if no succeeding else block is found, allow the user to create one
 						options.push(
-							{text: "else", style: "keyword", action: this.appendPushAndSave,
-							args: [row, [BuiltIns.ELSE], {lineInserted: row+1}]}
+							{
+								text: "else", style: "keyword", action: this.appendPushAndSave,
+								args: [row, [BuiltIns.ELSE], { lineInserted: row + 1 }]
+							}
 						);
 						break;
 					} else if (this.getItemCount(r) !== 0) {
@@ -568,20 +583,24 @@ export default class Script {
 			}
 
 			options.push(
-				{text: "for", style: "keyword", action: function(row) {
-					const items = [
-						BuiltIns.FOR,
-						new VarDef("index", BuiltIns.I32),
-						BuiltIns.IN,
-						new NumericLiteral("0"),
-						BuiltIns.HALF_OPEN_RANGE
-					];
+				{
+					text: "for", style: "keyword", action: function (row) {
+						const items = [
+							BuiltIns.FOR,
+							new VarDef("index", BuiltIns.I32),
+							BuiltIns.IN,
+							new NumericLiteral("0"),
+							BuiltIns.HALF_OPEN_RANGE
+						];
 
-					return this.appendPushAndSave(row, items, {lineInserted: row+1});
-				}, args: [row]},
+						return this.appendPushAndSave(row, items, { lineInserted: row + 1 });
+					}, args: [row]
+				},
 
-				{text: "while", style: "keyword", action: this.appendPushAndSave,
-				args: [row, [BuiltIns.WHILE], {lineInserted: row+1}]},
+				{
+					text: "while", style: "keyword", action: this.appendPushAndSave,
+					args: [row, [BuiltIns.WHILE], { lineInserted: row + 1 }]
+				},
 			);
 
 			for (let r = Math.min(rowCount, row) - 1; r >= 0; --r) {
@@ -590,25 +609,29 @@ export default class Script {
 					indent = lineIndent;
 					const firstItem = this.getItem(r, 0);
 					if (firstItem === BuiltIns.WHILE
-					|| firstItem === BuiltIns.DO_WHILE
-					|| firstItem === BuiltIns.FOR) {
+						|| firstItem === BuiltIns.DO_WHILE
+						|| firstItem === BuiltIns.FOR) {
 						options.push(
-							{text: "break", style: "keyword", action: () => {
-								this.pushItems(row, BuiltIns.BREAK);
-								this.saveLines(row);
-								return {lineUpdated: true};
-							}},
-							{text: "continue", style: "keyword", action: () => {
-								this.pushItems(row, BuiltIns.CONTINUE);
-								this.saveLines(row);
-								return {lineUpdated: true};
-							}},
+							{
+								text: "break", style: "keyword", action: () => {
+									this.pushItems(row, BuiltIns.BREAK);
+									this.saveLines(row);
+									return { lineUpdated: true };
+								}
+							},
+							{
+								text: "continue", style: "keyword", action: () => {
+									this.pushItems(row, BuiltIns.CONTINUE);
+									this.saveLines(row);
+									return { lineUpdated: true };
+								}
+							},
 						);
 						break;
 					}
 				}
 			}
-			
+
 			const callback = (varDef) => {
 				const items = [
 					new VarRef(varDef, BuiltIns.VOID),
@@ -623,7 +646,7 @@ export default class Script {
 			const style = "keyword";
 			const action = this.getVisibleFuncs;
 			for (const scope of scopes) {
-				options.push({text: scope.text, style, action, args: [row, 0, scope, BuiltIns.ANY]});
+				options.push({ text: scope.text, style, action, args: [row, 0, scope, BuiltIns.ANY] });
 			}
 
 			return options;
@@ -631,22 +654,24 @@ export default class Script {
 
 		const firstItem = this.getItem(row, 0);
 		const lastItem = this.getItem(row, itemCount - 1);
-		
+
 		const defineVar = (type) => {
 			const newVar = new VarDef(null, type);
 			this.pushItems(row, newVar);
 			this.saveLines(row);
-			return {lineUpdated: true};
+			return { lineUpdated: true };
 		}
 
 		if (firstItem === BuiltIns.VAR) {
 			if (itemCount === 2) {
 				return [
-					{text: "=", action: () => {
-						this.pushItems(row, BuiltIns.ASSIGN);
-						this.saveLines(row);
-						return {lineUpdated: true};
-					}},
+					{
+						text: "=", action: () => {
+							this.pushItems(row, BuiltIns.ASSIGN);
+							this.saveLines(row);
+							return { lineUpdated: true };
+						}
+					},
 					...this.getSizedTypes(defineVar)
 				];
 			}
@@ -658,11 +683,13 @@ export default class Script {
 
 		if (firstItem === BuiltIns.FOR) {
 			if (lastItem.constructor !== Symbol && !this.lines[row].items.includes(BuiltIns.STEP)) {
-				return [{text: "step", style: "keyword", action: () => {
-					this.pushItems(row, BuiltIns.STEP);
-					this.saveLines(row);
-					return {lineUpdated: true};
-				}}];
+				return [{
+					text: "step", style: "keyword", action: () => {
+						this.pushItems(row, BuiltIns.STEP);
+						this.saveLines(row);
+						return { lineUpdated: true };
+					}
+				}];
 			}
 		}
 
@@ -699,7 +726,7 @@ export default class Script {
 
 		const symbol = this.getItem(row, end);
 		const matchingSymbol = symbol.matching;
-		const step = symbol.direction|0;
+		const step = symbol.direction | 0;
 
 		if (step !== 0) {
 			let matchingIndex = end;
@@ -752,14 +779,14 @@ export default class Script {
 		if (!this.canInsert(row)) {
 			return {};
 		}
-		const response = {lineInserted: row};
+		const response = { lineInserted: row };
 
 		const indent = this.getInsertIndent(row);
 		let key;
 
 		//find the best place to insert a line to minimize key size
 		//moving the insertion within equally indented blank lines is unnoticable
-		for (let end = row ;; ++end) {
+		for (let end = row; ; ++end) {
 			if (end >= this.lineCount) {
 				//end of script found, append a line instead
 				if (indent === 0) {
@@ -772,7 +799,7 @@ export default class Script {
 				row = end;
 				break;
 			}
-			
+
 			if (this.getIndent(end) !== indent || this.getItemCount(end) !== 0) {
 				let begin = row;
 				while (begin > 0
@@ -780,7 +807,7 @@ export default class Script {
 					&& this.getItemCount(begin - 1) === 0) {
 					--begin;
 				}
-	
+
 				let bestScore = 0x7FFFFFFF;
 				for (let i = begin; i <= end; ++i) {
 					const lowKey = new Uint8Array((i > 0) ? this.lines[i - 1].key : 1);
@@ -788,7 +815,7 @@ export default class Script {
 					const avgKey = getAvgKey(lowKey, highKey);
 					const last = avgKey.length - 1;
 					const score = last * 256 + (lowKey[last] || 0) - avgKey[last];
-	
+
 					if (score < bestScore) {
 						row = i;
 						key = avgKey;
@@ -805,13 +832,14 @@ export default class Script {
 			indent
 		};
 		this.lines.splice(row, 0, line);
-		this.writeCallback(this.id, row, 1);
+		this.saveLines(row);
+
 		return response;
 	}
 
 	deleteLine(row, keepLine = false) {
 		if (row >= this.lineCount) {
-			return {removeLinesPosition: row, removeLinesCount: 1};
+			return { removeLinesPosition: row, removeLinesCount: 1 };
 		}
 
 		const response = {};
@@ -824,13 +852,13 @@ export default class Script {
 				++r;
 			} while (r < this.lineCount && this.getIndent(r) > indent);
 			count = r - row;
-			
+
 			//manage orphaned else and else if structures
 			if (this.getItem(row, 0) === BuiltIns.IF) {
 				while (r + 1 < this.lineCount && this.getItemCount(r) === 0) {
 					++r;
 				}
-				
+
 				if (this.getItem(r, 0) === BuiltIns.ELSE) {
 					this.spliceLine(r, 0, this.getItemCount(r), BuiltIns.IF, BuiltIns.TRUE);
 					this.saveLines(row);
@@ -839,7 +867,7 @@ export default class Script {
 				}
 			}
 		}
-		
+
 		if (row + count === this.lineCount && indent === 0) {
 			//trim whitespace off the bottom of the script
 			response.removeLinesPosition = row
@@ -863,13 +891,8 @@ export default class Script {
 		}
 
 		if (count > 0) {
-			if (!this.isSaved) {
-				this.firstWriteCallback(this.id);
-				this.isSaved = true;
-			}
-			this.deleteCallback(this.id, this.lines[row].key, this.lines[row + count - 1].key)
-	
-			this.lines.splice(row, count);
+			const removesLines = this.lines.splice(row, count);
+			this.deleteCallback(this.id, removesLines[0].key, removesLines[removesLines.length - 1].key)
 		} else {
 			response.lineUpdated = true;
 		}
@@ -896,41 +919,41 @@ export default class Script {
 		const nextItem = this.getItem(row, col + 1) || {};
 
 		if ((col === 0 && item !== BuiltIns.ELSE)
-		|| (col > 0 && item.constructor === Keyword && item !== BuiltIns.IF && item !== BuiltIns.STEP)
-		|| item.constructor === FuncSig
-		|| item.isAssignment && this.getItem(row, 0) === BuiltIns.LET
-		|| (item.constructor === VarDef && nextItem.isAssignment)
-		//|| this.getItemCount(row) === 2 //this deletes small if statements
+			|| (col > 0 && item.constructor === Keyword && item !== BuiltIns.IF && item !== BuiltIns.STEP)
+			|| item.constructor === FuncSig
+			|| item.isAssignment && this.getItem(row, 0) === BuiltIns.LET
+			|| (item.constructor === VarDef && nextItem.isAssignment)
+			//|| this.getItemCount(row) === 2 //this deletes small if statements
 		) {
 			return this.deleteLine(row, true);
 		}
 
 		if (item.isUnary
-		|| (col === this.getItemCount(row) - 1 && item === BuiltIns.PLACEHOLDER)
-		|| item.constructor === VarDef) {
+			|| (col === this.getItemCount(row) - 1 && item === BuiltIns.PLACEHOLDER)
+			|| item.constructor === VarDef) {
 			this.spliceLine(row, col, 1);
 			this.saveLines(row);
-			return {lineUpdated: true, selectedCol: selCol - 1};
+			return { lineUpdated: true, selectedCol: selCol - 1 };
 		}
 		else if (item.isBinary) {
-			const delCount = 2 + (nextItem.isUnary|0);
+			const delCount = 2 + (nextItem.isUnary | 0);
 			this.spliceLine(row, col, delCount);
 			this.saveLines(row);
-			return {lineUpdated: true, selectedCol: selCol - 1};
+			return { lineUpdated: true, selectedCol: selCol - 1 };
 		}
 		else if (item === BuiltIns.PLACEHOLDER) {
 			if (prevItem.isBinary) {
 				this.spliceLine(row, col - 1, 2);
 				this.saveLines(row);
-				return {lineUpdated: true, selectedCol: selCol - 2};
+				return { lineUpdated: true, selectedCol: selCol - 2 };
 			} else if (prevItem.isUnary) {
 				this.spliceLine(row, col - 1, 1);
 				this.saveLines(row);
-				return {lineUpdated: true, selectedCol: selCol - 1};
+				return { lineUpdated: true, selectedCol: selCol - 1 };
 			} else if (prevItem === BuiltIns.ARG_SEPARATOR) {
 				this.spliceLine(row, col - 1, 2);
 				this.saveLines(row);
-				return {lineUpdated: true, selectedCol: selCol - 1};
+				return { lineUpdated: true, selectedCol: selCol - 1 };
 			}
 			console.error("unhandled placeholder delection");
 			throw "unhandled placeholder delection";
@@ -938,7 +961,7 @@ export default class Script {
 		else if (item === BuiltIns.IF) {
 			this.spliceLine(row, col, this.getItemCount(row) - col);
 			this.saveLines(row);
-			return {lineUpdated: true, selectedCol: 0};
+			return { lineUpdated: true, selectedCol: 0 };
 		}
 		else {
 			const [start, end] = this.getExpressionBounds(row, col);
@@ -958,7 +981,7 @@ export default class Script {
 				const nextItem = this.getItem(row, end);
 				const prevItem = this.getItem(row, start - 1);
 				if ((nextItem === BuiltIns.ARG_SEPARATOR || nextItem === BuiltIns.END_ARGS)
-				&& (prevItem === BuiltIns.ARG_SEPARATOR || prevItem === BuiltIns.BEGIN_ARGS)) {
+					&& (prevItem === BuiltIns.ARG_SEPARATOR || prevItem === BuiltIns.BEGIN_ARGS)) {
 					for (let c = start - 1; c >= 0; --c) {
 						//TODO take into account function calls used as function arguments
 						const item = this.getItem(row, c);
@@ -979,12 +1002,12 @@ export default class Script {
 						if (paramIndex > 0) {
 							this.spliceLine(row, col - 1, 2);
 							this.saveLines(row);
-							return {lineUpdated: true, selectedCol: selCol - 2};
+							return { lineUpdated: true, selectedCol: selCol - 2 };
 						}
 						if (paramIndex === 0 && this.getItem(row, col + 1) === BuiltIns.ARG_SEPARATOR) {
 							this.spliceLine(row, col, 2);
 							this.saveLines(row);
-							return {lineUpdated: true};
+							return { lineUpdated: true };
 						}
 					}
 					this.spliceLine(row, start, end - start, new ArgHint(func.funcDef, paramIndex));
@@ -993,37 +1016,33 @@ export default class Script {
 					if (end === this.getItemCount(row)) {
 						this.spliceLine(row, start, end - start);
 						this.saveLines(row);
-						return {lineUpdated: true, selectedCol: 0x7FFFFFFF};
+						return { lineUpdated: true, selectedCol: 0x7FFFFFFF };
 					} else {
 						this.spliceLine(row, start, end - start, BuiltIns.PLACEHOLDER);
 						this.saveLines(row);
 					}
 				}
 			}
-			return {lineUpdated: true, selectedCol: start};
+			return { lineUpdated: true, selectedCol: start };
 		}
 
 		console.error("Reached bottom of DELETE_ITEM without hitting a case");
 	}
 
 	saveLines(position, count = 1) {
-		if (!this.isSaved) {
-			this.firstWriteCallback(this.id);
-			this.isSaved = true;
-		}
 		this.writeCallback(this.id, position, count);
 	}
-	
+
 	getSizedTypes(action, ...args) {
 		const options = [];
 
 		for (const type of BuiltIns.TYPES.filter(t => t.size > 0)) {
-			options.push({text: type.text, style: "keyword", action, args: [type, ...args]});
+			options.push({ text: type.text, style: "keyword", action, args: [type, ...args] });
 		}
 
 		return options;
 	}
-	
+
 	getVisibleVars(row, requiresMutable, action, ...args) {
 		const options = [];
 
@@ -1035,7 +1054,7 @@ export default class Script {
 				indent = lineIndent;
 				if (!requiresMutable || this.getItem(r, 0) === BuiltIns.VAR) {
 					for (const item of this.lines[r].items.filter(item => item.constructor === VarDef)) {
-						options.push({text: item.name, style: "vardef", action, args: [...args, item]});
+						options.push({ text: item.name, style: "vardef", action, args: [...args, item] });
 					}
 				}
 			}
@@ -1071,12 +1090,12 @@ export default class Script {
 
 			const lossier = funcs.filter(func => {
 				return expectedType.casts
-				&& expectedType.casts.get(func.signature.returnType)
+					&& expectedType.casts.get(func.signature.returnType)
 			});
 
 			funcs = [...perfect, ...lossLess, ...lossy, ...lossier];
 		}
-		
+
 		//keep only the first function with a given name (rely on overloading)
 		funcs = funcs.filter((v, i, a) => {
 			return a.findIndex(func => func.signature.name === v.signature.name) === i;
@@ -1100,9 +1119,9 @@ export default class Script {
 			BuiltIns.I64, BuiltIns.F32, BuiltIns.F64,
 			BuiltIns.STRING, BuiltIns.BOOL
 		];
-		
+
 		let status = -1;
-		
+
 		const items = this.lines[row].items.slice(start, end);
 		for (const item of items) {
 			if (item.isUnary) {
@@ -1209,7 +1228,7 @@ export default class Script {
 		function noticePredefinedFunc(func) {
 			if (!predefinedFuncs.includes(func)) {
 				predefinedFuncs.push(func);
-				
+
 				for (const dependency of func.dependencies) {
 					if (dependency.constructor === ImportedFunc) {
 						if (!importedFuncs.includes(dependency)) {
@@ -1236,7 +1255,7 @@ export default class Script {
 							}
 							func = BuiltIns.PRINT;
 						}
-	
+
 						if (func !== BuiltIns.PRINT) {
 							if (!importedFuncs.includes(func)) {
 								importedFuncs.push(func);
@@ -1291,7 +1310,7 @@ export default class Script {
 
 			//create a new local var with the same type as the looping var to hold the end value
 			const endValLocalIndex = localVarMapping.length;
-			localVarMapping.push(new VarDef("inc", lvar.type, {id: -1}));
+			localVarMapping.push(new VarDef("inc", lvar.type, { id: -1 }));
 
 			const comparisonOpcode = wasmCode.pop();
 
@@ -1308,13 +1327,13 @@ export default class Script {
 			endOfLineInstructions.push(Wasm.br_if, 1);
 		}
 
-		const topOfStack = 2**15;
+		const topOfStack = 2 ** 15;
 		const initialData = [];
 
 		for (let row = 0, endRow = this.lineCount; row < endRow; ++row) {
 			lvalueType = BuiltIns.VOID;
 			lvalueLocalIndex = -1;
-			
+
 			if (row > 0) {
 				let scopeDrop = this.getIndent(row - 1) - this.getIndent(row);
 				if (this.getItem(row, 0) === BuiltIns.ELSE) {
@@ -1335,16 +1354,16 @@ export default class Script {
 						expression.push(new LocalVarReference(localVarMapping.length, item));
 						localVarMapping.push(item);
 					} break;
-					
+
 					case VarRef: {
 						const localIndex = localVarMapping.findIndex(localVar => localVar === item.varDef);
 						if (localIndex === -1) {
 							throw "var" + value + " is referenced before it is declared";
 						}
-						
+
 						expression.push(new LocalVarReference(localIndex, localVarMapping[localIndex]));
 					} break;
-					
+
 					case FuncRef:
 						callStack.push(item.funcDef);
 						break;
@@ -1365,25 +1384,25 @@ export default class Script {
 
 					case Symbol: {
 						const func = callStack[callStack.length - 1];
-						
+
 						if (item.isAssignment) {
 							const localVar = expression.pop();
 							lvalueType = localVar.getType();
 							lvalueLocalIndex = localVar.index;
-							
+
 							if (item !== BuiltIns.ASSIGN) {
 								mainFunc.push(Wasm.get_local, ...varint(localVar.index));
-								const {wasmCode, resultType} = item.uses.get(lvalueType);
+								const { wasmCode, resultType } = item.uses.get(lvalueType);
 								endOfLineInstructions.push(...wasmCode);
 							}
-							
+
 							endOfLineInstructions.push(Wasm.set_local, localVar.index);
 						}
 
 						let wasmCode = [];
 						let expressionType;
 						if ((item === BuiltIns.ARG_SEPARATOR || item === BuiltIns.END_ARGS)
-						&& func.signature.parameters.length > 0) {
+							&& func.signature.parameters.length > 0) {
 							//find argument type
 							let expectedType = BuiltIns.ANY;
 							let funcCallDepth = 0;
@@ -1407,7 +1426,7 @@ export default class Script {
 										}
 										break;
 									}
-									
+
 									--funcCallDepth;
 								}
 							}
@@ -1433,7 +1452,7 @@ export default class Script {
 
 								mainFunc.push(Wasm.call, ...varuint(funcIndex));
 							}
-							
+
 							if (item === BuiltIns.ARG_SEPARATOR) {
 								//print ' '
 								mainFunc.push(
@@ -1471,18 +1490,18 @@ export default class Script {
 						if (item === BuiltIns.END_ARGS) {
 							callStack.pop()
 						}
-						
+
 						if (![BuiltIns.ARG_SEPARATOR, BuiltIns.BEGIN_ARGS, BuiltIns.END_ARGS].includes(item) && !item.isAssignment) {
 							expression.push(item);
 						}
 					} break;
-					
+
 					case Keyword: {
 						switch (item) {
 							case BuiltIns.IF: {
 								lvalueType = BuiltIns.BOOL;
 								endOfLineInstructions.push(Wasm.if, WasmTypes.void);
-								endOfScopeData.push({wasmCode: []});
+								endOfScopeData.push({ wasmCode: [] });
 							} break;
 							case BuiltIns.ELSE: {
 								endOfLineInstructions.push(Wasm.else);
@@ -1491,18 +1510,18 @@ export default class Script {
 								lvalueType = BuiltIns.BOOL;
 								mainFunc.push(Wasm.block, WasmTypes.void, Wasm.loop, WasmTypes.void);
 								endOfLineInstructions.push(Wasm.i32_eqz, Wasm.br_if, 1);
-								endOfScopeData.push({wasmCode: [Wasm.br, 0], isBranchable: true, blockCount: 2});
+								endOfScopeData.push({ wasmCode: [Wasm.br, 0], isBranchable: true, blockCount: 2 });
 							} break;
 							case BuiltIns.DO_WHILE: {
 								lvalueType = BuiltIns.BOOL;
 								mainFunc.push(Wasm.block, WasmTypes.void, Wasm.loop, WasmTypes.void);
-								endOfScopeData.push({wasmCode: [Wasm.br_if, 0], isBranchable: true, blockCount: 2});
+								endOfScopeData.push({ wasmCode: [Wasm.br_if, 0], isBranchable: true, blockCount: 2 });
 							} break;
 							case BuiltIns.BREAK: {
 								let requestedDepth = 1;
 
 								if (this.getItemCount(row) >= 2) {
-									const {value} = this.getData(row, col + 1);
+									const { value } = this.getData(row, col + 1);
 									requestedDepth = +this.literals.get(value);
 								}
 
@@ -1557,17 +1576,19 @@ export default class Script {
 
 								const lvar = localVarMapping[lvalueLocalIndex];
 								const stepSizeLocalIndex = localVarMapping.length;
-								localVarMapping.push(new VarDef("inc", lvar.type, {id: -1}));
+								localVarMapping.push(new VarDef("inc", lvar.type, { id: -1 }));
 
 								endOfLineInstructions.push(Wasm.set_local, stepSizeLocalIndex);
 
-								endOfScopeData.push({wasmCode: [
-									Wasm.get_local, lvalueLocalIndex,
-									Wasm.get_local, stepSizeLocalIndex,
-									incrementOpcode,
-									Wasm.set_local, lvalueLocalIndex,
-									Wasm.br, 0,
-								], isBranchable: true, blockCount: 2});
+								endOfScopeData.push({
+									wasmCode: [
+										Wasm.get_local, lvalueLocalIndex,
+										Wasm.get_local, stepSizeLocalIndex,
+										incrementOpcode,
+										Wasm.set_local, lvalueLocalIndex,
+										Wasm.br, 0,
+									], isBranchable: true, blockCount: 2
+								});
 
 								insertPrecondition(wasmCode);
 							} break;
@@ -1575,20 +1596,20 @@ export default class Script {
 					} break;
 
 					case BooleanLiteral:
-						expression.push(new Placeholder(BuiltIns.BOOL, Wasm.i32_const, item.value|0));
-					break;
-					
+						expression.push(new Placeholder(BuiltIns.BOOL, Wasm.i32_const, item.value | 0));
+						break;
+
 					case StringLiteral:
 						const stringLiteral = item.text.replace(/\\n/g, "\n");
 						const bytes = encodeString(stringLiteral);
 						const operand = new InternalStringLiteral(initialData.length + topOfStack, bytes.length);
 						expression.push(operand);
 						initialData.push(...bytes);
-					break;
+						break;
 
 					case NumericLiteral:
 						expression.push(new InternalNumericLiteral(item.text));
-					break;
+						break;
 				}
 			}
 
@@ -1609,13 +1630,15 @@ export default class Script {
 						//if the step size is not specified, use the numeric literal "1"
 						const constStep = (new InternalNumericLiteral("1")).getWasmCode(lvalueType);
 
-						endOfScopeData.push({wasmCode: [
-							Wasm.get_local, lvalueLocalIndex,
-							...constStep,
-							incrementOpcode,
-							Wasm.set_local, lvalueLocalIndex,
-							Wasm.br, 0,
-						], isBranchable: true, blockCount: 2});
+						endOfScopeData.push({
+							wasmCode: [
+								Wasm.get_local, lvalueLocalIndex,
+								...constStep,
+								incrementOpcode,
+								Wasm.set_local, lvalueLocalIndex,
+								Wasm.br, 0,
+							], isBranchable: true, blockCount: 2
+						});
 					} else {
 						mainFunc.push(...wasmCode);
 					}
@@ -1626,13 +1649,13 @@ export default class Script {
 					}
 				}
 			}
-			
+
 			if (endOfLineInstructions.length > 0) {
 				mainFunc.push(...endOfLineInstructions);
 				endOfLineInstructions.length = 0;
 			}
 		}
-		
+
 		while (endOfScopeData.length > 0) {
 			const scopeData = endOfScopeData.pop();
 			mainFunc.push(...scopeData.wasmCode);
@@ -1730,7 +1753,7 @@ export default class Script {
 			typeSection.push(signature.parameterTypes.length, ...signature.parameterTypes);
 			typeSection.push(wasmReturnTypes.length, ...wasmReturnTypes);
 		}
-	 
+
 		let importSection = [
 			...varuint(importedFuncs.length + 1), //count of things to import
 
@@ -1804,15 +1827,15 @@ export default class Script {
 		const wasmModule = [
 			0x00, 0x61, 0x73, 0x6d, //magic numbers
 			0x01, 0x00, 0x00, 0x00, //wasm version
-	
+
 			section.Type,
 			...varuint(typeSection.length), //size in bytes of section
 			...typeSection,
-	
+
 			section.Import,
 			...varuint(importSection.length),
 			...importSection,
-	
+
 			section.Function,
 			...varuint(functionSection.length),
 			...functionSection,
@@ -1820,7 +1843,7 @@ export default class Script {
 			section.Global,
 			...varuint(globalSection.length),
 			...globalSection,
-	
+
 			// section.Export,
 			// ...varuint(exportSection.length),
 			// ...exportSection,
@@ -1828,7 +1851,7 @@ export default class Script {
 			section.Start,
 			[...varuint(importedFuncs.length)].length,
 			...varuint(importedFuncs.length), //the start function is the first function after the imports
-	
+
 			section.Code,
 			...varuint(codeSection.length),
 			...codeSection,
@@ -1837,7 +1860,7 @@ export default class Script {
 		if (initialData.length > 0) {
 			const dataSection = [
 				1, //1 data segment
-	
+
 				0, //memory index 0
 				Wasm.i32_const, ...varuint(topOfStack), Wasm.end, //fill memory after stack
 				...varuint(initialData.length), //count of bytes to fill in
@@ -1882,12 +1905,12 @@ function getNextKey(key) {
 function getAvgKey(lowKey, highKey) {
 	let diff = 0;
 	for (let i = 1; i < Math.max(lowKey.length, highKey.length) + 1; ++i) {
-		diff = diff * 256 + (highKey[i]|0) - (lowKey[i]|0);
+		diff = diff * 256 + (highKey[i] | 0) - (lowKey[i] | 0);
 
 		if (diff > 1) {
 			const newKey = new Uint8Array(i + 1);
 			newKey.set(lowKey.slice(0, i + 1));
-			newKey[i] = (lowKey[i]|0) + (diff >>> 1);
+			newKey[i] = (lowKey[i] | 0) + (diff >>> 1);
 			return newKey;
 		}
 	}
@@ -1914,7 +1937,7 @@ function getWasmTypes(type) {
 
 		case BuiltIns.F64:
 			return [WasmTypes.f64];
-		
+
 		case BuiltIns.VOID:
 			return [WasmTypes.void];
 
@@ -1953,7 +1976,7 @@ class InternalNumericLiteral {
 		this.value = +rawString;
 		this.isFloat = /[\.e]/i.test(rawString);
 	}
-	
+
 	performUnaryOp(unaryOp) {
 		switch (unaryOp) {
 			case "!":
@@ -1966,7 +1989,7 @@ class InternalNumericLiteral {
 				throw "unrecognized unary operator " + unaryOp;
 		}
 	}
-	
+
 	performBinaryOp(binOp, operand) {
 		switch (binOp) {
 			case "+":
@@ -2002,13 +2025,13 @@ class InternalNumericLiteral {
 			default:
 				throw "unrecognized binary operator: " + binOp;
 		}
-		
+
 		this.isFloat = this.isFloat || operand.hasDecimalPoint;
 		if (!this.isFloat) {
 			this.value = Math.trunc(this.value);
 		}
 	}
-	
+
 	getWasmCode(expectedType) {
 		const outputType = this.getType(expectedType);
 		switch (outputType) {
@@ -2031,7 +2054,7 @@ class InternalNumericLiteral {
 
 	getType(expectedType = BuiltIns.ANY) {
 		if ([BuiltIns.I32, BuiltIns.I64, BuiltIns.U32, BuiltIns.U64,
-			BuiltIns.F32, BuiltIns.F64].includes(expectedType)) {
+		BuiltIns.F32, BuiltIns.F64].includes(expectedType)) {
 			return expectedType;
 		}
 
@@ -2044,11 +2067,11 @@ class InternalStringLiteral {
 		this.address = address;
 		this.size = size;
 	}
-	
+
 	getType() {
 		return BuiltIns.STRING;
 	}
-	
+
 	getWasmCode() {
 		return [
 			Wasm.i32_const, ...varint(this.address),
@@ -2062,11 +2085,11 @@ class LocalVarReference {
 		this.index = index;
 		this.variable = variable;
 	}
-	
+
 	getType() {
 		return this.variable.type;
 	}
-	
+
 	getWasmCode() {
 		return [Wasm.get_local, ...varuint(this.index)];
 	}
@@ -2077,11 +2100,11 @@ class Placeholder {
 		this.type = type;
 		this.wasmCode = wasmCode;
 	}
-	
+
 	getType() {
 		return this.type;
 	}
-	
+
 	getWasmCode() {
 		return this.wasmCode;
 	}
@@ -2091,7 +2114,7 @@ function compileExpression(expression, expectedType) {
 	const operators = [];
 	const operands = [];
 
-	expression.push(new Symbol("term", -1, -1000, {isFoldable: false})); //terminate expression
+	expression.push(new Symbol("term", -1, -1000, { isFoldable: false })); //terminate expression
 	for (let i = 0; i < expression.length; ++i) {
 		const item = expression[i];
 		if (item.constructor === Symbol) {
@@ -2105,13 +2128,13 @@ function compileExpression(expression, expectedType) {
 							rightOperand.performUnaryOp(operator.appearance);
 							operands.push(rightOperand);
 						} else {
-							const {resultType, wasmCode} = operator.uses.get(rightOperand.getType());
+							const { resultType, wasmCode } = operator.uses.get(rightOperand.getType());
 							operands.push(new Placeholder(resultType, ...rightOperand.getWasmCode(), ...wasmCode));
 						}
 					} else {
 						const leftOperand = operands.pop();
 						if (operator.isFoldable && leftOperand.constructor === InternalNumericLiteral
-						&& rightOperand.constructor === InternalNumericLiteral) {
+							&& rightOperand.constructor === InternalNumericLiteral) {
 							leftOperand.performBinaryOp(operator.appearance, rightOperand);
 							operands.push(leftOperand);
 						} else {
@@ -2119,7 +2142,7 @@ function compileExpression(expression, expectedType) {
 							if (operator.isRange) {
 								type = expectedType;
 							}
-							const {resultType, wasmCode} = operator.uses.get(type);
+							const { resultType, wasmCode } = operator.uses.get(type);
 							operands.push(new Placeholder(resultType, ...leftOperand.getWasmCode(type), ...rightOperand.getWasmCode(type), ...wasmCode));
 						}
 					}
@@ -2135,7 +2158,7 @@ function compileExpression(expression, expectedType) {
 			operands.push(item);
 		}
 	}
-	
+
 	//console.log("remaining operands", ...operands, "remaining operators", ...operators.slice(0, -1));
 	const expressionType = operands[0].getType(expectedType);
 	const wasmCode = operands[0].getWasmCode(expectedType);
@@ -2148,6 +2171,6 @@ function compileExpression(expression, expectedType) {
 			console.error("cast from", expressionType.text, "to", expectedType.text, "not found");
 		}
 	}
-	
+
 	return [expressionType, wasmCode];
 }

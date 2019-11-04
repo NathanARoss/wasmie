@@ -27,7 +27,7 @@ playButton.activeTouch = {
     direction: 0, //whether the user is draging it upward or downward
 };
 
-playButton.addEventListener("touchstart", function(event) {
+playButton.addEventListener("touchstart", function (event) {
     event.stopPropagation();
     event.preventDefault();
 
@@ -107,7 +107,7 @@ playButton.addEventListener("touchmove", existingTouchHandler);
 playButton.addEventListener("touchend", existingTouchHandler);
 playButton.addEventListener("touchcancel", existingTouchHandler);
 
-playButtonAnchor.onclick = function(event) {
+playButtonAnchor.onclick = function (event) {
     openActionMenu();
 };
 
@@ -122,6 +122,7 @@ let selCol = -1;
 
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script;
+let scriptHasPreviousSaveData = false;
 const runtimeEnvironment = new RuntimeEnvironment(print);
 
 function longTapHandler(event) {
@@ -135,13 +136,13 @@ function startLongTapTimer(event) {
     //forward the touchstart event to the right click handler
     //it has a preventDefault() and a target property
     this.longTapTimer = setTimeout(longTapHandler, 500, event);
-    
+
     const touch = event.changedTouches[0];
 }
 
 //remove the long tap timer if the finger moves too much
 function longTapMovementListener(event) {
-    
+
 }
 
 function stopLongTapTimer(event) {
@@ -197,7 +198,7 @@ function deSelectActiveProject() {
     }
 }
 
-playButton.onclick = function(event) {
+playButton.onclick = function (event) {
     event.stopPropagation();
     closeActionMenu();
 
@@ -205,7 +206,7 @@ playButton.onclick = function(event) {
     window.onpopstate();
 };
 
-document.getElementById("new-project").onclick = function(event) {
+document.getElementById("new-project").onclick = function (event) {
     event.stopPropagation();
     deSelectActiveProject();
     closeActionMenu();
@@ -214,19 +215,19 @@ document.getElementById("new-project").onclick = function(event) {
     closeMenu();
 };
 
-viewCodeButton.onclick = function(event) {
+viewCodeButton.onclick = function (event) {
     event.stopPropagation();
-	closeActionMenu();
+    closeActionMenu();
 
-	history.pushState({ action: "disassemble" }, "TouchScript Disassembly");
-	window.onpopstate();
+    history.pushState({ action: "disassemble" }, "TouchScript Disassembly");
+    window.onpopstate();
 
     // viewCodeButton.style.backgroundColor = "yellow";
 
     // setTimeout(() => viewCodeButton.style.backgroundColor = "", 100);
 };
 
-viewCodeButton.oncontextmenu = function(event) {
+viewCodeButton.oncontextmenu = function (event) {
     event.preventDefault();
     // 	closeActionMenu();
 
@@ -239,22 +240,22 @@ viewCodeButton.oncontextmenu = function(event) {
 enrollElementInLongTapListening(viewCodeButton);
 
 
-menu.childNodes[1].onclick = function() {
-    document.onkeydown({ key: "Enter", preventDefault: () => {} });
+menu.childNodes[1].onclick = function () {
+    document.onkeydown({ key: "Enter", preventDefault: () => { } });
 };
 
-menu.childNodes[2].onclick = function() {
-    document.onkeydown({ key: "Backspace", preventDefault: () => {} });
+menu.childNodes[2].onclick = function () {
+    document.onkeydown({ key: "Backspace", preventDefault: () => { } });
 };
 
-menu.childNodes[2].oncontextmenu = function(event) {
-    document.onkeydown({ key: "Delete", preventDefault: () => {} });
+menu.childNodes[2].oncontextmenu = function (event) {
+    document.onkeydown({ key: "Delete", preventDefault: () => { } });
 
     event.preventDefault();
     event.stopPropagation();
 };
 
-document.body.onresize = function() {
+document.body.onresize = function () {
     const potentialLoadedCount = Math.ceil(window.innerHeight / lineHeight) + bufferCount;
 
     if (potentialLoadedCount > loadedCount) {
@@ -271,7 +272,7 @@ document.body.onresize = function() {
 };
 
 
-window.onpopstate = function(event) {
+window.onpopstate = function (event) {
     if (!event) {
         event = { state: history.state };
     }
@@ -305,10 +306,10 @@ window.onpopstate = function(event) {
         document.title = "TouchScript Disassembly";
         const wasm = getWasmBinary();
         if (wasm !== undefined) {
-            import ("https://nathanross.me/small-wasm-disassembler/disassembler.min.mjs")
-            .then(module => {
-                print(module.default(wasm, 9))
-            });
+            import("https://nathanross.me/small-wasm-disassembler/disassembler.min.mjs")
+                .then(module => {
+                    print(module.default(wasm, 9))
+                });
         }
         runtime.style.display = "initial";
     }
@@ -321,7 +322,7 @@ function scriptLoaded() {
 
     //detect when items need to be loaded in the direction of scroll
     //take nodes from the back to add to the front
-    window.onscroll = function() {
+    window.onscroll = function () {
         const firstVisiblePosition = Math.floor(window.scrollY / lineHeight);
 
         //keep a number of lines prepared for both direction
@@ -354,7 +355,8 @@ function selectProject(event) {
             event.target.classList.add("open");
 
             localStorage.setItem(ACTIVE_PROJECT_KEY, projectID);
-            script = new Script(projectID, true, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
+            scriptHasPreviousSaveData = true;
+            script = new Script(projectID, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
         }
         closeMenu();
     }
@@ -570,7 +572,7 @@ function configureMenu(options, prevRow = selRow, teleport = false) {
         else {
             const { text, style = "" } = option;
             menuItem = getItem(text, "menu-item " + style);
-            menuItem.onclick = function(event) {
+            menuItem.onclick = function (event) {
                 const response = option.action.apply(script, option.args || []);
 
                 if (Array.isArray(response) && response.length > 0) {
@@ -641,7 +643,7 @@ function closeMenu() {
 }
 
 
-document.onkeydown = function(event) {
+document.onkeydown = function (event) {
     if (history.state) {
         //ignore keyboard commands unless the editor is open
         return;
@@ -782,7 +784,7 @@ function print(value) {
 let db; {
     const openRequest = indexedDB.open("TouchScript", 1);
     openRequest.onerror = (event) => alert("Error opening database: " + event.message);
-    openRequest.onupgradeneeded = function(event) {
+    openRequest.onupgradeneeded = function (event) {
         console.log("upgrading database");
         db = event.target.result;
         db.createObjectStore("name");
@@ -791,7 +793,7 @@ let db; {
         db.createObjectStore("lines");
         db.createObjectStore("save-data");
     };
-    openRequest.onsuccess = function(event) {
+    openRequest.onsuccess = function (event) {
         db = event.target.result;
         db.onerror = event => console.dir(event.target.error);
 
@@ -800,9 +802,10 @@ let db; {
 
         const activeProjectId = localStorage.getItem(ACTIVE_PROJECT_KEY);
         if (activeProjectId !== null) {
-            objStore.get(activeProjectId | 0).onsuccess = function(event) {
+            objStore.get(activeProjectId | 0).onsuccess = function (event) {
                 if (event.target.result !== undefined) {
-                    script = new Script(activeProjectId | 0, true, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
+                    scriptHasPreviousSaveData = true;
+                    script = new Script(activeProjectId | 0, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
                 }
                 else {
                     console.log("Project " + activeProjectId + " no longer exists");
@@ -826,7 +829,7 @@ let db; {
 function createNewScript() {
     localStorage.removeItem(ACTIVE_PROJECT_KEY);
 
-    this.getAllKeys().onsuccess = function(event) {
+    this.getAllKeys().onsuccess = function (event) {
         //find a gap in the IDs, or grab the one after last
         const projectIds = event.target.result;
         let id = projectIds.findIndex((id, index) => id !== index);
@@ -835,14 +838,14 @@ function createNewScript() {
         }
         //project IDs must fit within an unsigned byte because the first byte of every
         //line key is the project ID
-        let isEixstingProject = false;
+        scriptHasPreviousSaveData = false;
         if (id > 255) {
             //load project 255 rather than creatng a new project
             id = 255;
-            isEixstingProject = true;
+            scriptHasPreviousSaveData = true;
         }
 
-        script = new Script(id, isEixstingProject, commitDateCreated, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
+        script = new Script(id, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
     };
 }
 
@@ -862,7 +865,7 @@ function saveActiveScriptAsWasm() {
         }
     }
 
-    dbAction("readonly", "name", function(id) {
+    dbAction("readonly", "name", function (id) {
         const request = this.get(id);
         request.onsuccess = (event) => {
             if (event.target.result) {
@@ -890,9 +893,22 @@ function dbAction(mode, store, action, args) {
  * @param {} args arguments that are passed to the callback
  */
 function writeLinesInDB(id, row, count) {
+    let linesToSave;
+
+    if (!scriptHasPreviousSaveData) {
+        localStorage.setItem(ACTIVE_PROJECT_KEY, id);
+        dbAction("readwrite", "date-created", IDBObjectStore.prototype.add, [new Date(), id]);
+        insertProjectListing(id, "Project" + id, true);
+
+        scriptHasPreviousSaveData = true;
+        linesToSave = script.lines;
+    } else {
+        linesToSave = script.lines.slice(row, row + count);
+    }
+
     dbAction("readwrite", "last-modified", IDBObjectStore.prototype.put, [new Date(), id]);
 
-    dbAction("readwrite", "lines", function(lines) {
+    dbAction("readwrite", "lines", function (lines) {
         for (const line of lines) {
             const serialized = {};
             if (line.items.length > 0) {
@@ -903,20 +919,18 @@ function writeLinesInDB(id, row, count) {
             }
             this.put(serialized, line.key);
         }
-    }, [script.lines.slice(row, row + count)]);
+    }, [linesToSave]);
 }
 
 function deleteLinesFromDB(id, lowKey, highKey) {
-    dbAction("readwrite", "last-modified", IDBObjectStore.prototype.put, [new Date(), id]);
+    if (!scriptHasPreviousSaveData) {
+        writeLinesInDB(id, 0, script.lines.length);
+    } else {
+        dbAction("readwrite", "last-modified", IDBObjectStore.prototype.put, [new Date(), id]);
 
-    const keyRange = IDBKeyRange.bound(lowKey, highKey);
-    dbAction("readwrite", "lines", IDBObjectStore.prototype.delete, [keyRange]);
-}
-
-function commitDateCreated(id) {
-    localStorage.setItem(ACTIVE_PROJECT_KEY, id);
-    dbAction("readwrite", "date-created", IDBObjectStore.prototype.add, [new Date(), id]);
-    insertProjectListing(id, "Project" + id, true);
+        const keyRange = IDBKeyRange.bound(lowKey, highKey);
+        dbAction("readwrite", "lines", IDBObjectStore.prototype.delete, [keyRange]);
+    }
 }
 
 function getLineKeyRangeForProject(id) {
@@ -979,7 +993,7 @@ function loadExistingProjectsIntoMenu() {
     let remaining = 2;
 
     function readKeysAndVals(map) {
-        this.openCursor().onsuccess = function(event) {
+        this.openCursor().onsuccess = function (event) {
             const cursor = event.target.result;
             if (cursor) {
                 map.set(cursor.primaryKey, cursor.value);
