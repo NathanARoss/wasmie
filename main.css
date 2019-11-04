@@ -195,6 +195,10 @@ button {
 	}
 }
 
+#drag-menu {
+	position: relative;
+}
+
 #drag-menu-actions > button, #drag-menu-actions > label {
 	background-position: right;
 	background-repeat: no-repeat;
@@ -226,6 +230,14 @@ input.visually-hidden:focus + label {
 }
 input.visually-hidden:focus-within + label {
   outline: thin dotted;
+}
+
+#close-action-menu {
+	position: absolute;
+	right: 20px;
+	bottom: 40px;
+	width: 50px;
+	height: 50px;
 }
 
 #drag-menu-actions, .project-list-entry {
