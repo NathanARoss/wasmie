@@ -7,7 +7,6 @@ authors = ["Nathan Ross <NathanAnthonyRoss19@gmail.com>"]
 crate-type = ["cdylib"]
 
 [dependencies]
-wee_alloc = { version = "0.4.2" }
 
 [profile.release]
 # Tell `rustc` to optimize for small code size.

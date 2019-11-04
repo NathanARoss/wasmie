@@ -287,6 +287,14 @@ const BuiltIns = new (function BuiltIns() {
 		[this.F32, {wasmCode: [Wasm.i32_trunc_s_from_f32]}],
 		[this.F64, {wasmCode: [Wasm.i32_trunc_s_from_f64]}],
 	]);
+	
+	this.U32.casts = new Map([
+		[this.I64, {wasmCode: [Wasm.i32_wrap_from_i64], preferred: true}],
+		[this.I32, {wasmCode: [], preferred: true}],
+		[this.U64, {wasmCode: [Wasm.i32_wrap_from_i64], preferred: true}],
+		[this.F32, {wasmCode: [Wasm.i32_trunc_u_from_f32]}],
+		[this.F64, {wasmCode: [Wasm.i32_trunc_u_from_f64]}],
+	]);
 
 	this.F32.casts = new Map([
 		[this.I32, {wasmCode: [Wasm.f32_convert_s_from_i32]}],

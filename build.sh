@@ -10,7 +10,8 @@ fi
 #I do not intend to load more than one module at a time, so these two exports are not necessary
 #this command also removes all custom sections by default, namely the producer's section
 #Binaryen has no easy way to specify which exports are unwanted, so I wrote this small utility.
-#./small-wasm-trimmer --remove-exports "__heap_base" "__data_end" < target/wasm32-unknown-unknown/release/touchscript_backend.wasm > backend.wasm 2>/dev/null
+#I keep "__heap_base" so I can give it as an argument to main()
+./small-wasm-trimmer --remove-exports "__data_end" < target/wasm32-unknown-unknown/release/touchscript_backend.wasm > backend.wasm 2>/dev/null
 
 #When debugging, allow myself to inspect the generated wasm file without wasm-opt restructuring it
 if [[ $1 != "--skip-wasm-opt" ]]; then
