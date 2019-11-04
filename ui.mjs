@@ -15,8 +15,12 @@ const playButtonAnchor = document.getElementById("play-button-anchor");
 const dragMenuContainer = document.getElementById("drag-menu-container");
 const dragMenu = document.getElementById("drag-menu");
 const viewCodeButton = document.getElementById("view-code");
+const exportButton = document.getElementById("export-project");
+const importButton = document.getElementById("import-project");
 
 dragMenuContainer.classList.add("smooth-slide");
+
+function doNothing() { }
 
 playButton.activeTouch = {
     identifier: null,
@@ -123,6 +127,7 @@ let selCol = -1;
 const ACTIVE_PROJECT_KEY = "TouchScript-active-project-id";
 let script;
 let scriptHasPreviousSaveData = false;
+const samplePrimeProgram = String.raw`{"4,1":{"items":[{"funcDef":-2},{"symbol":41},{"strLit":"Simple Prime Number Generator"},{"symbol":43}]},"4,2":{},"4,3":{"items":[{"funcDef":-2},{"symbol":41},{"strLit":"2\\n3"},{"symbol":43}]},"4,4":{},"4,5":{"items":[{"keyword":4},{"name":"number","type":-13,"id":0,"typeAnnotated":true},{"keyword":5},{"numLit":"5"},{"symbol":31},{"numLit":"1000"},{"keyword":11},{"numLit":"2"}]},"4,6":{"items":[{"keyword":0},{"name":"root","type":-13,"id":1,"typeAnnotated":true},{"symbol":0},{"funcDef":-21},{"symbol":41},{"varDef":0},{"symbol":43}],"indent":1},"4,7":{"items":[{"keyword":4},{"name":"factor","type":-13,"id":2,"typeAnnotated":true},{"keyword":5},{"numLit":"3"},{"symbol":32},{"varDef":1},{"keyword":11},{"numLit":"2"}],"indent":1},"4,8":{"items":[{"keyword":2},{"varDef":0},{"symbol":15},{"varDef":2},{"symbol":25},{"numLit":"0"}],"indent":2},"4,9":{"items":[{"keyword":9},{"loopLayers":2}],"indent":3},"4,11,128":{"indent":1},"4,12":{"items":[{"funcDef":-2},{"symbol":41},{"varDef":0},{"symbol":43}],"indent":1}}`;
 const runtimeEnvironment = new RuntimeEnvironment(print);
 
 function longTapHandler(event) {
@@ -211,7 +216,11 @@ document.getElementById("new-project").onclick = function (event) {
     deSelectActiveProject();
     closeActionMenu();
 
-    dbAction("readonly", "date-created", createNewScript);
+    if (db) {
+        dbAction("readonly", "date-created", createNewScript);
+    } else {
+        script = new Script(0, doNothing, doNothing, doNothing, scriptLoaded, "{}");
+    }
     closeMenu();
 };
 
@@ -229,27 +238,73 @@ viewCodeButton.onclick = function (event) {
 
 viewCodeButton.oncontextmenu = function (event) {
     event.preventDefault();
-    // 	closeActionMenu();
+    closeActionMenu();
 
-    // saveActiveScriptAsWasm();
-    viewCodeButton.style.backgroundColor = "green";
+    const wasm = getWasmBinary();
+    if (wasm) {
+        saveContentAsActiveProgramName(".wasm", wasm);
+    }
+
+    // viewCodeButton.style.backgroundColor = "green";
 
     return false;
 };
 
 enrollElementInLongTapListening(viewCodeButton);
 
+exportButton.onclick = function (event) {
+    const serializedLines = {};
+
+    for (const line of script.lines) {
+        const serialized = {};
+        if (line.items.length) {
+            serialized.items = line.items.map(item => item.serialize());
+        }
+        if (line.indent) {
+            serialized.indent = line.indent;
+        }
+
+        const key = new Uint8Array(line.key);
+        serializedLines[key] = serialized;
+    }
+
+    const programAsAString = JSON.stringify(serializedLines);
+
+    //replace every occurance of `\n` with `\\n` so it is processed correctly by JSON.parse()
+    programAsAString.replace(/\\n/g, String.raw`\\n`);
+    console.log(programAsAString);
+    saveContentAsActiveProgramName(".proj", programAsAString);
+    closeActionMenu();
+}
+
+importButton.addEventListener("change", function () {
+    const input = this.files[0];
+
+    var reader = new FileReader();
+    reader.onload = function () {
+        scriptHasPreviousSaveData = false;
+
+        if (db) {
+            dbAction("readonly", "date-created", createNewScript, [{ requestedSampleProgram: reader.result, forceSampleProgram: true }]);
+        } else {
+            script = new Script(0, doNothing, doNothing, doNothing, scriptLoaded, reader.result);
+        }
+    };
+    reader.readAsText(input);
+    closeActionMenu();
+}, false);
+
 
 menu.childNodes[1].onclick = function () {
-    document.onkeydown({ key: "Enter", preventDefault: () => { } });
+    document.onkeydown({ key: "Enter", preventDefault: doNothing });
 };
 
 menu.childNodes[2].onclick = function () {
-    document.onkeydown({ key: "Backspace", preventDefault: () => { } });
+    document.onkeydown({ key: "Backspace", preventDefault: doNothing });
 };
 
 menu.childNodes[2].oncontextmenu = function (event) {
-    document.onkeydown({ key: "Delete", preventDefault: () => { } });
+    document.onkeydown({ key: "Delete", preventDefault: doNothing });
 
     event.preventDefault();
     event.stopPropagation();
@@ -783,7 +838,12 @@ function print(value) {
 
 let db; {
     const openRequest = indexedDB.open("TouchScript", 1);
-    openRequest.onerror = (event) => alert("Error opening database: " + event.message);
+    openRequest.onerror = (event) => {
+        console.log("Error opening database: " + event.message + "\nCannot save programs");
+        script = new Script(0, doNothing, doNothing, doNothing, scriptLoaded, samplePrimeProgram);
+        db = null;
+    }
+
     openRequest.onupgradeneeded = function (event) {
         console.log("upgrading database");
         db = event.target.result;
@@ -809,12 +869,12 @@ let db; {
                 }
                 else {
                     console.log("Project " + activeProjectId + " no longer exists");
-                    createNewScript.apply(objStore);
+                    createNewScript.apply(objStore, [{ requestedSampleProgram: samplePrimeProgram, isInitialPageLoad: true }]);
                 }
             }
         }
         else {
-            createNewScript.apply(objStore);
+            createNewScript.apply(objStore, [{ requestedSampleProgram: samplePrimeProgram, isInitialPageLoad: true }]);
         }
 
         loadExistingProjectsIntoMenu();
@@ -826,7 +886,7 @@ let db; {
  *
  * Either open an empty script with an unused ID, or open project 255
  */
-function createNewScript() {
+function createNewScript(options) {
     localStorage.removeItem(ACTIVE_PROJECT_KEY);
 
     this.getAllKeys().onsuccess = function (event) {
@@ -843,43 +903,56 @@ function createNewScript() {
             //load project 255 rather than creatng a new project
             id = 255;
             scriptHasPreviousSaveData = true;
+            alert("256 programs exist, so you're editing program 255 rather than a new one");
         }
 
-        script = new Script(id, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded);
+        let sampleProgram = null;
+        if (!scriptHasPreviousSaveData && options.requestedSampleProgram && (
+            options.isInitialPageLoad && projectIds.length === 0 || options.forceSampleProgram
+        )) {
+            //give new users a sample program to edit.
+            //pressing the new script button will just give a blank program
+            //pressing the import button will load the uploaded file unless all 256 programs are taken up
+            sampleProgram = options.requestedSampleProgram;
+        }
+
+        script = new Script(id, writeLinesInDB, deleteLinesFromDB, dbAction, scriptLoaded, sampleProgram);
     };
 }
 
-function saveActiveScriptAsWasm() {
-    function save(filename) {
-        const wasm = getWasmBinary();
-        if (wasm !== undefined) {
-            var a = document.createElement('a');
-            a.href = window.URL.createObjectURL(new File([wasm], filename));
-            a.download = filename;
+function saveFile(filename, content) {
+    var a = document.createElement('a');
+    a.href = window.URL.createObjectURL(new File([content], filename));
+    a.download = filename;
 
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 
-            window.URL.revokeObjectURL(a.href);
-        }
+    window.URL.revokeObjectURL(a.href);
+}
+
+function saveContentAsActiveProgramName(extension, content) {
+    if (!db) {
+        saveFile("temp" + extension, content);
+    } else {
+        dbAction("readonly", "name", function (id) {
+            const request = this.get(id);
+            request.onsuccess = (event) => {
+                if (event.target.result) {
+                    saveFile(event.target.result + extension, content);
+                }
+                else {
+                    saveFile("Project " + id + extension, content);
+                }
+            };
+            request.onerror = (event) => {
+                console.log("Error getting project name: ", event.target.error);
+                saveFile("temp" + extension, content);
+            };
+        }, [script.id]);
     }
 
-    dbAction("readonly", "name", function (id) {
-        const request = this.get(id);
-        request.onsuccess = (event) => {
-            if (event.target.result) {
-                save(event.target.result + ".wasm");
-            }
-            else {
-                save("Project " + id + ".wasm");
-            }
-        };
-        request.onerror = (event) => {
-            console.log("Error getting project name: ", event.target.error);
-            save("temp.wasm")
-        };
-    }, [script.id]);
 }
 
 function dbAction(mode, store, action, args) {
@@ -911,7 +984,7 @@ function writeLinesInDB(id, row, count) {
     dbAction("readwrite", "lines", function (lines) {
         for (const line of lines) {
             const serialized = {};
-            if (line.items.length > 0) {
+            if (line.items.length) {
                 serialized.items = line.items.map(item => item.serialize());
             }
             if (line.indent) {

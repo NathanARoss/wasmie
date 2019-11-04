@@ -13,7 +13,8 @@ import Wasm, {
 
 export default class Script {
 	constructor(id, writeCallback, deleteCallback,
-		genericDBActionCallback, scriptLoadedCallback
+		genericDBActionCallback, scriptLoadedCallback,
+		sampleProgram = null
 	) {
 		this.id = id;
 		this.writeCallback = writeCallback;
@@ -21,21 +22,11 @@ export default class Script {
 
 		this.lines = [];
 
-		function decodeData(script) {
+		function decodeData(script, sampleProgram) {
 			const varDefs = new Map();
 			let highestVarId = -1;
 
-			const range = IDBKeyRange.bound(Uint8Array.of(id), Uint8Array.of(id + 1), false, true);
-			this.openCursor(range).onsuccess = function (event) {
-				const cursor = event.target.result;
-				if (!cursor) {
-					VarDef.nextId = highestVarId + 1;
-					scriptLoadedCallback();
-					return;
-				}
-
-				const lineKey = cursor.primaryKey;
-				const lineData = cursor.value;
+			function decodeLine(lineKey, lineData) {
 				const items = [];
 
 				for (const data of lineData.items || []) {
@@ -85,12 +76,41 @@ export default class Script {
 					indent: lineData.indent | 0,
 					items,
 				});
+			}
 
-				cursor.continue();
+			//decode a program either from IDB or from a JSON string
+			if (typeof sampleProgram === "string") {
+				const parsedProgram = JSON.parse(sampleProgram);
+
+				for (const key in parsedProgram) {
+					decodeLine(key, parsedProgram[key]);
+				}
+
+				VarDef.nextId = highestVarId + 1;
+
+				//queue this event so the constructor can finish first
+				setTimeout(scriptLoadedCallback, 0);
+			} else {
+				const range = IDBKeyRange.bound(Uint8Array.of(id), Uint8Array.of(id + 1), false, true);
+				this.openCursor(range).onsuccess = function (event) {
+					const cursor = event.target.result;
+					if (!cursor) {
+						VarDef.nextId = highestVarId + 1;
+						scriptLoadedCallback();
+						return;
+					}
+
+					decodeLine(cursor.primaryKey, cursor.value);
+					cursor.continue();
+				}
 			}
 		}
 
-		genericDBActionCallback("readonly", "lines", decodeData, [this]);
+		if (typeof sampleProgram !== "string") {
+			genericDBActionCallback("readonly", "lines", decodeData, [this]);
+		} else {
+			decodeData(this, sampleProgram);
+		}
 	}
 
 	appendPushAndSave(row, items, response) {

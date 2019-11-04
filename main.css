@@ -195,7 +195,7 @@ button {
 	}
 }
 
-#view-code, #new-project {
+#drag-menu-actions > button, #drag-menu-actions > label {
 	background-position: right;
 	background-repeat: no-repeat;
 	color: white;
@@ -204,15 +204,35 @@ button {
 	background-color: #3B3B3B;
 }
 
+#drag-menu-actions > button:not(:first-child), #drag-menu-actions > label {
+	margin-left: 1em;
+}
+
+#drag-menu-actions > label {
+	line-height: 40px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+}
+
+/* Separate rule for compatibility, :focus-within is required on modern Firefox and Chrome */
+input.visually-hidden:focus + label {
+  outline: thin dotted;
+}
+input.visually-hidden:focus-within + label {
+  outline: thin dotted;
+}
+
 #drag-menu-actions, .project-list-entry {
 	display: flex;
 	align-items: center;
 	border-radius: 50px;
 	margin: 1em;
-}
-
-#drag-menu-actions > button:not(:first-child) {
-	margin-left: 1em;
 }
 
 .project-list-entry {
