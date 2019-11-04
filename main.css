@@ -146,7 +146,7 @@ button {
 	position: fixed;
 	width: 100%;
 	height: calc(100% + 25px);
-	bottom: calc(-100%);
+	bottom: -100%;
 	z-index: 10000001;
 }
 
@@ -156,6 +156,7 @@ button {
 
 #play-button {
 	position: absolute;
+	font-size: 2em;
 	top: -50px;
 	right: 25px;
 	color: white;
@@ -200,6 +201,7 @@ button {
 }
 
 #drag-menu-actions > button, #drag-menu-actions > label {
+	font: 400 13.3333px Arial;
 	background-position: right;
 	background-repeat: no-repeat;
 	color: white;
