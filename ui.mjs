@@ -12,6 +12,7 @@ const runtime = document.getElementById("runtime");
 const consoleOutput = document.getElementById("console-output");
 const playButton = document.getElementById("play-button");
 const playButtonAnchor = document.getElementById("play-button-anchor");
+const closeActionMenuButton = document.getElementById("close-action-menu");
 const dragMenuContainer = document.getElementById("drag-menu-container");
 const dragMenu = document.getElementById("drag-menu");
 const viewCodeButton = document.getElementById("view-code");
@@ -114,6 +115,10 @@ playButton.addEventListener("touchcancel", existingTouchHandler);
 playButtonAnchor.onclick = function (event) {
     openActionMenu();
 };
+
+closeActionMenuButton.onclick = function (event) {
+    closeActionMenu();
+}
 
 
 editor.style.height = "10000000px";
